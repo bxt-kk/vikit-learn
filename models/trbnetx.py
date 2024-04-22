@@ -1,6 +1,7 @@
 from typing import List, Any, Dict, Tuple
 
 from torch import Tensor
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +11,8 @@ from torchvision.ops import (
     generalized_box_iou_loss,
     box_convert,
 )
+
+from torchmetrics.detection import MeanAveragePrecision
 
 
 class BasicConvBD(nn.Sequential):
@@ -80,6 +83,7 @@ class TRBNetX(nn.Module):
         self.num_classes = num_classes
         self.anchors     = torch.tensor(anchors, dtype=torch.float32)
         self.cell_size   = cell_size
+        self.m_ap_metric = MeanAveragePrecision(iou_type='bbox')
 
         self.features = nn.Sequential(
             nn.Conv2d(3, 16, 5, 2, 2, bias=False),
@@ -174,13 +178,17 @@ class TRBNetX(nn.Module):
             target_labels: Tensor,
             target_bboxes: Tensor,
             weights:       List[float] | None=None,
-            reduction:     str='mean',
+            alpha:         float=0.25,
+            gamma:         float=2,
         ) -> Dict[str, Any]:
+
+        reduction = 'mean'
 
         pred_conf = inputs[..., 0]
         targ_conf = torch.zeros_like(pred_conf)
         targ_conf[target_index] = 1.
-        conf_loss = sigmoid_focal_loss(pred_conf, targ_conf, reduction=reduction)
+        conf_loss = sigmoid_focal_loss(
+            pred_conf, targ_conf, alpha=alpha, gamma=gamma, reduction=reduction)
 
         objects = inputs[target_index]
 
@@ -261,6 +269,40 @@ class TRBNetX(nn.Module):
             iou_score=iou_score,
             clss_accuracy=clss_accuracy,
         )
+
+    def calc_mean_ap(
+            self,
+            inputs:        Tensor,
+            target_index:  List[Tensor],
+            target_labels: Tensor,
+            target_bboxes: Tensor,
+        ) -> Dict[str, Any]:
+
+        objects = inputs[target_index]
+
+        pred_scores = torch.sigmoid(objects[:, 0])
+
+        pred_cxcywh = objects[:, 1:5]
+        pred_cxcywh[:, 0] = (pred_cxcywh[:, 0] + target_index[3].type_as(pred_cxcywh)) * self.cell_size
+        pred_cxcywh[:, 1] = (pred_cxcywh[:, 1] + target_index[2].type_as(pred_cxcywh)) * self.cell_size
+        pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * self.anchors[target_index[1]]
+        pred_bboxes = box_convert(pred_cxcywh, 'cxcywh', 'xyxy')
+
+        pred_labels = torch.argmax(objects[:, 5:], dim=-1)
+
+        preds = [dict(
+            scores=pred_scores,
+            boxes=pred_bboxes,
+            labels=pred_labels,
+        )]
+
+        target = [dict(
+            boxes=target_bboxes,
+            labels=target_labels,
+        )]
+
+        self.m_ap_metric.update(preds, target)
+        return self.m_ap_metric.compute()
 
     def _select_anchor(self, boxes:Tensor) -> Tensor:
         sizes = boxes[:, 2:] - boxes[:, :2]
