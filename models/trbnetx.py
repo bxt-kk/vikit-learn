@@ -12,6 +12,10 @@ from torchvision.ops import (
     box_convert,
 )
 
+from torchvision.transforms import v2
+from torchvision import tv_tensors
+
+
 from torchmetrics.detection import MeanAveragePrecision
 
 
@@ -364,12 +368,16 @@ class TRBNetX(nn.Module):
         return inputs, target_index, target_labels, target_bboxes
 
     @classmethod
-    def get_transfomrs(cls, task_name:str):
-        from torchvision.transforms import v2
-        from torchvision import tv_tensors
+    def get_transfomrs(
+            cls,
+            task_name:str,
+        ) -> Tuple[v2.Transform, v2.Transform]:
+
+        train_transforms = None
+        test_transforms  = None
 
         if task_name == 'coco2017det':
-            return v2.Compose([
+            train_transforms = v2.Compose([
                 v2.ToImage(),
                 # v2.RandomIoUCrop(min_scale=0.3),
                 v2.ScaleJitter(
@@ -385,7 +393,23 @@ class TRBNetX(nn.Module):
                 v2.SanitizeBoundingBoxes(min_size=10),
                 v2.ToDtype(torch.float32, scale=True),
             ])
-        raise ValueError(f'unsupported the task {task_name}')
+            test_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=640,
+                    max_size=640,
+                    antialias=True),
+                v2.RandomCrop(
+                    size=(640, 640),
+                    pad_if_needed=True,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+                v2.SanitizeBoundingBoxes(min_size=10),
+                v2.ToDtype(torch.float32, scale=True),
+            ])
+        else:
+            raise ValueError(f'Unsupported the task `{task_name}`')
+
+        return train_transforms, test_transforms
 
 
 # Debug code.
