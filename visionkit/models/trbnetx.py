@@ -197,16 +197,19 @@ class TRBNetX(nn.Module):
 
         objects = inputs[target_index]
 
-        pred_cxcywh = objects[:, 1:5]
-        anchors = self.anchors.type_as(pred_cxcywh)
-        pred_cxcywh[:, 0] = (pred_cxcywh[:, 0] + target_index[3].type_as(pred_cxcywh)) * self.cell_size
-        pred_cxcywh[:, 1] = (pred_cxcywh[:, 1] + target_index[2].type_as(pred_cxcywh)) * self.cell_size
-        pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * anchors[target_index[1]]
-        pred_xyxy = box_convert(pred_cxcywh, 'cxcywh', 'xyxy')
-        bbox_loss = generalized_box_iou_loss(pred_xyxy, target_bboxes, reduction=reduction)
+        bbox_loss = torch.zeros_like(conf_loss)
+        clss_loss = torch.zeros_like(conf_loss)
+        if objects.shape[0] > 0:
+            pred_cxcywh = objects[:, 1:5]
+            anchors = self.anchors.type_as(pred_cxcywh)
+            pred_cxcywh[:, 0] = (pred_cxcywh[:, 0] + target_index[3].type_as(pred_cxcywh)) * self.cell_size
+            pred_cxcywh[:, 1] = (pred_cxcywh[:, 1] + target_index[2].type_as(pred_cxcywh)) * self.cell_size
+            pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * anchors[target_index[1]]
+            pred_xyxy = box_convert(pred_cxcywh, 'cxcywh', 'xyxy')
+            bbox_loss = generalized_box_iou_loss(pred_xyxy, target_bboxes, reduction=reduction)
 
-        pred_clss = objects[:, 5:]
-        clss_loss = F.cross_entropy(pred_clss, target_labels, reduction=reduction)
+            pred_clss = objects[:, 5:]
+            clss_loss = F.cross_entropy(pred_clss, target_labels, reduction=reduction)
 
         if weights is None:
             weights = [1] * 3
@@ -241,7 +244,7 @@ class TRBNetX(nn.Module):
 
         pred_obj = pred_conf > 0.
         pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
-        conf_precision = pred_obj_true / pred_obj.sum()
+        conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), 1)
         conf_recall = pred_obj_true / targ_conf.sum()
         conf_f1 = 2 * conf_precision * conf_recall / (conf_precision + conf_recall)
 

@@ -74,6 +74,7 @@ class Trainer:
                 num_workers=loader.num_workers,
             ))
             
+        self.model = self.model.to(self.device)
         self.optimizer = self.setting_optimizer()
         print('optimizer:', self.optimizer)
 
