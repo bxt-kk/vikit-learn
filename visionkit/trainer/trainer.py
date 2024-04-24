@@ -109,13 +109,13 @@ class Trainer:
         loss.backward()
         optimizer.step()
 
-        for k, v in losses.items():
-            logs['loss']['k'] += v.item()
-
         with torch.no_grad():
             scores = model.calc_score(outputs, target_index, target_labels, target_bboxes)
-            for k, v in scores.items():
-                logs['score'][k] += v.item()
+
+        for k, v in losses.items():
+            logs['loss'][k] += v.item()
+        for k, v in scores.items():
+            logs['score'][k] += v.item()
 
         if (step + 1) % self.show_step == 0:
             print('epoch: {}/{}, step: {}/{}'.format(
@@ -149,7 +149,7 @@ class Trainer:
             scores = model.calc_score(outputs, target_index, target_labels, target_bboxes)
 
         for k, v in losses.items():
-            logs['loss']['k'] += v.item()
+            logs['loss'][k] += v.item()
         for k, v in scores.items():
             logs['score'][k] += v.item()
 
@@ -184,7 +184,7 @@ class Trainer:
             scores = model.calc_score(outputs, target_index, target_labels, target_bboxes)
 
         for k, v in losses.items():
-            logs['loss']['k'] += v.item()
+            logs['loss'][k] += v.item()
         for k, v in scores.items():
             logs['score'][k] += v.item()
 
@@ -198,6 +198,7 @@ class Trainer:
         ))
         print('losses:', {k: round(v / (step + 1), 5) for k, v in logs['loss'].items()})
         print('scores:', {k: round(v / (step + 1), 5) for k, v in logs['score'].items()})
+        print('metrics:', {k: round(v / (step + 1), 5) for k, v in logs['metric'].items()})
 
     def fit(self):
         print('-' * 80)
@@ -217,6 +218,7 @@ class Trainer:
             logs = dict(
                 loss=defaultdict(float),
                 score=defaultdict(float),
+                metric=defaultdict(float),
             )
             model = model.eval()
             test_loader = self.dataloaders['test']

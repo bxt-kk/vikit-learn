@@ -311,7 +311,9 @@ class TRBNetX(nn.Module):
         )]
 
         self.m_ap_metric.update(preds, target)
-        return self.m_ap_metric.compute()
+        return {k: v
+            for k, v in self.m_ap_metric.compute().items()
+            if k != 'classes'}
 
     def _select_anchor(self, boxes:Tensor) -> Tensor:
         sizes = boxes[:, 2:] - boxes[:, :2]
