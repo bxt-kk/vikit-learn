@@ -23,7 +23,6 @@ class Trainer:
             test_loader:  DataLoader=None,
             lr:           float=1e-3,
             weight_decay: float=0.,
-            batch_size:   int=16,
             epochs:       int=1,
             show_step:    int=100,
             save_epoch:   int=1,
@@ -68,6 +67,7 @@ class Trainer:
         print('Preparing ...')
         print('device:', self.device)
         for kind, loader in self.dataloaders.items():
+            if loader is None: continue
             print(f'{kind} dataset:', loader.dataset)
             pprint(dict(
                 batch_size=loader.batch_size,
@@ -122,7 +122,7 @@ class Trainer:
                 epoch + 1,
                 self.epochs,
                 step + 1,
-                ceil(len(dataloader.dataset) / self.batch_size),
+                ceil(len(dataloader.dataset) / dataloader.batch_size),
             ))
             print('losses:', {k: round(v / (step + 1), 5) for k, v in logs['loss'].items()})
             print('scores:', {k: round(v / (step + 1), 5) for k, v in logs['score'].items()})
@@ -158,7 +158,7 @@ class Trainer:
                 epoch + 1,
                 self.epochs,
                 step + 1,
-                ceil(len(dataloader.dataset) / self.batch_size),
+                ceil(len(dataloader.dataset) / dataloader.batch_size),
             ))
             print('losses:', {k: round(v / (step + 1), 5) for k, v in logs['loss'].items()})
             print('scores:', {k: round(v / (step + 1), 5) for k, v in logs['score'].items()})
@@ -194,7 +194,7 @@ class Trainer:
             epoch + 1,
             self.epochs,
             step + 1,
-            ceil(len(dataloader.dataset) / self.batch_size),
+            ceil(len(dataloader.dataset) / dataloader.batch_size),
         ))
         print('losses:', {k: round(v / (step + 1), 5) for k, v in logs['loss'].items()})
         print('scores:', {k: round(v / (step + 1), 5) for k, v in logs['score'].items()})
