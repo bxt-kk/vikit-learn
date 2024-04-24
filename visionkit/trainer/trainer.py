@@ -212,7 +212,7 @@ class Trainer:
             train_loader = self.dataloaders['train']
             for step, sample in enumerate(train_loader):
                 self.train_on_step(epoch, step, sample, logs)
-                self.valid_on_step(epoch, step, sample, logs)
+                # self.valid_on_step(epoch, step, sample, logs)
 
             logs = dict(
                 loss=defaultdict(float),
