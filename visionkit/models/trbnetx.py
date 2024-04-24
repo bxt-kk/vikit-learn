@@ -194,17 +194,27 @@ class TRBNetX(nn.Module):
         targ_conf[target_index] = 1.
         # conf_loss = sigmoid_focal_loss(
         #     pred_conf, targ_conf, alpha=alpha, gamma=gamma, reduction=reduction)
-        back_loss = F.binary_cross_entropy_with_logits(
-            pred_conf, targ_conf, reduction=reduction)
+        noobj_mask = targ_conf < 0.5
+        noobj_pred = torch.masked_select(pred_conf, noobj_mask)
+        noobj_targ = torch.masked_select(targ_conf, noobj_mask)
+        noobj_loss = F.binary_cross_entropy_with_logits(
+            noobj_pred, noobj_targ, reduction=reduction)
 
         objects = inputs[target_index]
 
-        bbox_loss = torch.zeros_like(back_loss)
-        clss_loss = torch.zeros_like(back_loss)
-        objs_loss = 0.
+        obj_loss = 0.
         if objects.shape[0] > 0:
-            objs_loss = F.binary_cross_entropy_with_logits(
-                objects[:, 0], targ_conf[target_index], reduction=reduction)
+            obj_mask = noobj_mask.logical_not()
+            obj_pred = torch.masked_select(pred_conf, obj_mask)
+            obj_targ = torch.masked_select(targ_conf, obj_mask)
+            obj_loss = F.binary_cross_entropy_with_logits(
+                obj_pred, obj_targ, reduction=reduction)
+
+        conf_loss = alpha * obj_loss + (1 - alpha) * noobj_loss
+
+        bbox_loss = torch.zeros_like(conf_loss)
+        clss_loss = torch.zeros_like(conf_loss)
+        if objects.shape[0] > 0:
             pred_cxcywh = objects[:, 1:5]
             anchors = self.anchors.type_as(pred_cxcywh)
             pred_cxcywh[:, 0] = (pred_cxcywh[:, 0] + target_index[3].type_as(pred_cxcywh)) * self.cell_size
@@ -215,8 +225,6 @@ class TRBNetX(nn.Module):
 
             pred_clss = objects[:, 5:]
             clss_loss = F.cross_entropy(pred_clss, target_labels, reduction=reduction)
-
-        conf_loss = alpha * objs_loss + (1 - alpha) * back_loss
 
         if weights is None:
             weights = [1] * 3
