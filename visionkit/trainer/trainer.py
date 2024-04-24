@@ -27,6 +27,7 @@ class Trainer:
             show_step:    int=100,
             save_epoch:   int=1,
             device:       torch.device | str=None,
+            focal_loss_alpha:   float=-1.,
             ):
         
         if device is None:
@@ -56,6 +57,8 @@ class Trainer:
         self.save_epoch = save_epoch
 
         self.output = output
+
+        self.focal_loss_alpha = focal_loss_alpha
 
     def setting_optimizer(self):
         return torch.optim.Adam(
@@ -103,7 +106,13 @@ class Trainer:
         dataloader = self.dataloaders['train']
 
         outputs = model(inputs)
-        losses = model.calc_loss(outputs, target_index, target_labels, target_bboxes)
+        losses = model.calc_loss(
+            outputs,
+            target_index,
+            target_labels,
+            target_bboxes,
+            alpha=self.focal_loss_alpha,
+        )
         loss = losses['loss']
 
         optimizer.zero_grad()
@@ -146,7 +155,13 @@ class Trainer:
 
         with torch.no_grad():
             outputs = model(inputs)
-            losses = model.calc_loss(outputs, target_index, target_labels, target_bboxes)
+            losses = model.calc_loss(
+                outputs,
+                target_index,
+                target_labels,
+                target_bboxes,
+                alpha=self.focal_loss_alpha,
+            )
             scores = model.calc_score(outputs, target_index, target_labels, target_bboxes)
 
         for k, v in losses.items():
@@ -181,7 +196,13 @@ class Trainer:
 
         with torch.no_grad():
             outputs = model(inputs)
-            losses = model.calc_loss(outputs, target_index, target_labels, target_bboxes)
+            losses = model.calc_loss(
+                outputs,
+                target_index,
+                target_labels,
+                target_bboxes,
+                alpha=self.focal_loss_alpha,
+            )
             scores = model.calc_score(outputs, target_index, target_labels, target_bboxes)
 
         for k, v in losses.items():
