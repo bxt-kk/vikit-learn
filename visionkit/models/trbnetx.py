@@ -202,7 +202,8 @@ class TRBNetX(nn.Module):
         bbox_loss = torch.zeros_like(conf_loss)
         clss_loss = torch.zeros_like(conf_loss)
         if objects.shape[0] > 0:
-            conf_loss = (1 - alpha) * conf_loss + alpha * F.binary_cross_entropy_with_logits(
+            conf_loss *= (1 - alpha)
+            conf_loss += alpha * F.binary_cross_entropy_with_logits(
                 objects[:, 0], targ_conf[target_index], reduction=reduction)
             pred_cxcywh = objects[:, 1:5]
             anchors = self.anchors.type_as(pred_cxcywh)
