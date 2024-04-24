@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torchvision.ops import (
-    sigmoid_focal_loss,
+    # sigmoid_focal_loss,
     generalized_box_iou_loss,
     box_convert,
 )
@@ -192,14 +192,18 @@ class TRBNetX(nn.Module):
         pred_conf = inputs[..., 0]
         targ_conf = torch.zeros_like(pred_conf)
         targ_conf[target_index] = 1.
-        conf_loss = sigmoid_focal_loss(
-            pred_conf, targ_conf, alpha=alpha, gamma=gamma, reduction=reduction)
+        # conf_loss = sigmoid_focal_loss(
+        #     pred_conf, targ_conf, alpha=alpha, gamma=gamma, reduction=reduction)
+        conf_loss = F.binary_cross_entropy_with_logits(
+            pred_conf, targ_conf, reduction=reduction)
 
         objects = inputs[target_index]
 
         bbox_loss = torch.zeros_like(conf_loss)
         clss_loss = torch.zeros_like(conf_loss)
         if objects.shape[0] > 0:
+            conf_loss = (1 - alpha) * conf_loss + alpha * F.binary_cross_entropy_with_logits(
+                objects[:, 0], targ_conf[target_index], reduction=reduction)
             pred_cxcywh = objects[:, 1:5]
             anchors = self.anchors.type_as(pred_cxcywh)
             pred_cxcywh[:, 0] = (pred_cxcywh[:, 0] + target_index[3].type_as(pred_cxcywh)) * self.cell_size
@@ -236,6 +240,7 @@ class TRBNetX(nn.Module):
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
+            eps:           float=1e-5,
         ) -> Dict[str, Any]:
 
         pred_conf = inputs[..., 0]
@@ -244,9 +249,9 @@ class TRBNetX(nn.Module):
 
         pred_obj = pred_conf > 0.
         pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
-        conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), 1)
+        conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
         conf_recall = pred_obj_true / targ_conf.sum()
-        conf_f1 = 2 * conf_precision * conf_recall / (conf_precision + conf_recall)
+        conf_f1 = 2 * conf_precision * conf_recall / torch.clamp_min(conf_precision + conf_recall, eps)
 
         objects = inputs[target_index]
 
