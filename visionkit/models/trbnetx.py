@@ -166,8 +166,9 @@ class TRBNetX(nn.Module):
         objects[:, 0] = 1000.
 
         targ_cxcywh = box_convert(target_bboxes, 'xyxy', 'cxcywh')
+        anchors = self.anchors.type_as(targ_cxcywh)
         targ_cxcywh[:, :2] = targ_cxcywh[:, :2] % self.cell_size / self.cell_size
-        targ_cxcywh[:, 2:] = torch.log(targ_cxcywh[:, 2:] / self.anchors[target_index[1]])
+        targ_cxcywh[:, 2:] = torch.log(targ_cxcywh[:, 2:] / anchors[target_index[1]])
         objects[:, 1:5] = targ_cxcywh
 
         objects[:, 5:].scatter_(-1, target_labels.unsqueeze(dim=-1), 1000.)
@@ -197,9 +198,10 @@ class TRBNetX(nn.Module):
         objects = inputs[target_index]
 
         pred_cxcywh = objects[:, 1:5]
+        anchors = self.anchors.type_as(pred_cxcywh)
         pred_cxcywh[:, 0] = (pred_cxcywh[:, 0] + target_index[3].type_as(pred_cxcywh)) * self.cell_size
         pred_cxcywh[:, 1] = (pred_cxcywh[:, 1] + target_index[2].type_as(pred_cxcywh)) * self.cell_size
-        pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * self.anchors[target_index[1]]
+        pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * anchors[target_index[1]]
         pred_xyxy = box_convert(pred_cxcywh, 'cxcywh', 'xyxy')
         bbox_loss = generalized_box_iou_loss(pred_xyxy, target_bboxes, reduction=reduction)
 
@@ -246,9 +248,10 @@ class TRBNetX(nn.Module):
         objects = inputs[target_index]
 
         pred_cxcywh = objects[:, 1:5]
+        anchors = self.anchors.type_as(pred_cxcywh)
         pred_cxcywh[:, 0] = (pred_cxcywh[:, 0] + target_index[3].type_as(pred_cxcywh)) * self.cell_size
         pred_cxcywh[:, 1] = (pred_cxcywh[:, 1] + target_index[2].type_as(pred_cxcywh)) * self.cell_size
-        pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * self.anchors[target_index[1]]
+        pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * anchors[target_index[1]]
         pred_xyxy = box_convert(pred_cxcywh, 'cxcywh', 'xyxy')
         targ_xyxy = target_bboxes
 
@@ -287,9 +290,10 @@ class TRBNetX(nn.Module):
         pred_scores = torch.sigmoid(objects[:, 0])
 
         pred_cxcywh = objects[:, 1:5]
+        anchors = self.anchors.type_as(pred_cxcywh)
         pred_cxcywh[:, 0] = (pred_cxcywh[:, 0] + target_index[3].type_as(pred_cxcywh)) * self.cell_size
         pred_cxcywh[:, 1] = (pred_cxcywh[:, 1] + target_index[2].type_as(pred_cxcywh)) * self.cell_size
-        pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * self.anchors[target_index[1]]
+        pred_cxcywh[:, 2:] = torch.exp(pred_cxcywh[:, 2:]) * anchors[target_index[1]]
         pred_bboxes = box_convert(pred_cxcywh, 'cxcywh', 'xyxy')
 
         pred_labels = torch.argmax(objects[:, 5:], dim=-1)
@@ -334,7 +338,7 @@ class TRBNetX(nn.Module):
     def collate_fn(
             self,
             batch: List[Any],
-        ) -> Tuple[Any, torch.Tensor, torch.Tensor]:
+        ) -> Any:
 
         batch_ids   = []
         anchor_ids  = []
