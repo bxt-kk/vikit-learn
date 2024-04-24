@@ -280,10 +280,11 @@ class TRBNetX(nn.Module):
     def calc_mean_ap(
             self,
             inputs:        Tensor,
-            target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
         ) -> Dict[str, Any]:
+
+        target_index = torch.nonzero(inputs[..., 0] > 0, as_tuple=True)
 
         objects = inputs[target_index]
 
