@@ -371,9 +371,10 @@ class TRBNetX(nn.Module):
         list_bboxes = []
 
         for i, (image, target) in enumerate(batch):
-            labels = target['labels']
-            boxes = target['boxes']
             list_image.append(image.unsqueeze(dim=0))
+            labels = target['labels']
+            if labels.shape[0] == 0: continue
+            boxes = target['boxes']
             list_labels.append(labels)
             list_bboxes.append(boxes)
 
