@@ -222,7 +222,7 @@ class Trainer:
         print('scores:', {k: round(v / (step + 1), 5) for k, v in logs['score'].items()})
         print('metrics:', {k: round(v / (step + 1), 5) for k, v in logs['metric'].items()})
 
-    def fit(self):
+    def fit(self, max_iter:int=0):
         print('-' * 80)
         print('Training ...')
         model = self.model.train()
@@ -236,6 +236,8 @@ class Trainer:
             for step, sample in enumerate(train_loader):
                 self.train_on_step(epoch, step, sample, logs)
                 # self.valid_on_step(epoch, step, sample, logs)
+                if (max_iter > 0) and (step >= max_iter):
+                    break
 
             logs = dict(
                 loss=defaultdict(float),
