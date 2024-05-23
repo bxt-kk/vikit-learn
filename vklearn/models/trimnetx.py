@@ -33,9 +33,9 @@ class TrimNetX(nn.Module):
     Args:
         num_classes: Number of target categories.
         anchors: Preset anchor boxes.
-        num_dilation_blocks: Number of layers in the dilation module.
+        num_dilation_blocks: Number of blocks in the dilation module.
         num_dilation_ranges: Number of linear dilation convolution layers
-            in a single diffusion module.
+            in a single dilation block.
         num_tries: Number of attempts to guess.
         swap_size: Dimensions of the exchanged data.
         dropout: Dropout parameters in the classifier.
