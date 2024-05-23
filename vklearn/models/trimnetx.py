@@ -4,7 +4,6 @@ import math
 from torch import Tensor
 
 import torch
-torch.manual_seed(3)
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -29,6 +28,18 @@ except ImportError:
 
 
 class TrimNetX(nn.Module):
+    '''A light-weight and easy-to-train model for object detection
+
+    Args:
+        num_classes: Number of target categories.
+        anchors: Preset anchor boxes.
+        num_dilation_blocks: Number of layers in the dilation module.
+        num_dilation_ranges: Number of linear dilation convolution layers
+            in a single diffusion module.
+        num_tries: Number of attempts to guess.
+        swap_size: Dimensions of the exchanged data.
+        dropout: Dropout parameters in the classifier.
+    '''
 
     def __init__(
             self,
