@@ -40,7 +40,7 @@ class TrimNetX(nn.Module):
         swap_size: Dimensions of the exchanged data.
         dropout: Dropout parameters in the classifier.
         backbone: Specify a basic model as a feature extraction module.
-		backbone_pretrained: Whether to load backbone pretrained weights.
+        backbone_pretrained: Whether to load backbone pretrained weights.
     '''
 
     def __init__(
@@ -53,7 +53,7 @@ class TrimNetX(nn.Module):
             swap_size:           int=4,
             dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
-			backbone_pretrained: bool=False,
+            backbone_pretrained: bool=False,
         ):
         super().__init__()
 
@@ -77,9 +77,9 @@ class TrimNetX(nn.Module):
 
         if backbone == 'mobilenet_v3_small':
             features = mobilenet_v3_small(
-				weights=MobileNet_V3_Small_Weights.DEFAULT
-				if backbone_pretrained else None,
-			).features
+                weights=MobileNet_V3_Small_Weights.DEFAULT
+                if backbone_pretrained else None,
+            ).features
 
             features_dim = 24 * 4 + 40 + 96
             merged_dim   = 160
@@ -93,7 +93,7 @@ class TrimNetX(nn.Module):
         elif backbone == 'mobilenet_v2':
             features = mobilenet_v2(
                 weights=MobileNet_V2_Weights.DEFAULT
-				if backbone_pretrained else None,
+                if backbone_pretrained else None,
             ).features
 
             features_dim = 32 * 4 + 64 + 320
