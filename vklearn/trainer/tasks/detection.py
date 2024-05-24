@@ -132,8 +132,6 @@ class Detection(Task):
         filename = f'{out_path}-{epoch}.pt'
         torch.save({
             'model': self.model.state_dict(),
-            'anchors': self.model.anchors,
-            'cell_size': self.model.cell_size,
-            'num_classes': self.model.num_classes,
+            'hyperparameters': self.model.hyperparameters(),
             'optim': optimizer.state_dict()}, filename)
         return filename

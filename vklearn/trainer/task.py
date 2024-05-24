@@ -1,5 +1,5 @@
 from typing import Any, Dict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from torch.optim import Optimizer
 
@@ -16,9 +16,9 @@ class Task:
     device:             torch.device
     metric_start_epoch: int=0
     fit_features_start: int=0
-    loss_options:       Dict[str, Any] | None=None,
-    score_options:      Dict[str, Any] | None=None,
-    metric_options:     Dict[str, Any] | None=None,
+    loss_options:       Dict[str, Any]=field(default_factory=dict)
+    score_options:      Dict[str, Any]=field(default_factory=dict)
+    metric_options:     Dict[str, Any]=field(default_factory=dict)
 
     def setting_optimizer(
             self,

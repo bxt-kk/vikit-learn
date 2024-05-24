@@ -16,6 +16,7 @@ from torchvision.ops import (
 from torchvision import tv_tensors
 from torchvision.transforms import v2
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 
 from torchmetrics.detection import MeanAveragePrecision
 
@@ -33,58 +34,85 @@ class TrimNetX(nn.Module):
     Args:
         num_classes: Number of target categories.
         anchors: Preset anchor boxes.
-        num_dilation_blocks: Number of blocks in the dilation module.
-        num_dilation_ranges: Number of linear dilation convolution layers
-            in a single dilation block.
+        dilation_depth: Depth of dilation module.
+        dilation_range: The impact region of dilation convolution.
         num_tries: Number of attempts to guess.
         swap_size: Dimensions of the exchanged data.
         dropout: Dropout parameters in the classifier.
+        backbone: Specify a basic model as a feature extraction module.
+		backbone_pretrained: Whether to load backbone pretrained weights.
     '''
 
     def __init__(
             self,
             num_classes:         int,
-            anchors:             List[Tuple[float, float]],
-            num_dilation_blocks: int=3,
-            num_dilation_ranges: int=4,
+            anchors:             List[Tuple[float, float]] | Tensor,
+            dilation_depth:      int=4,
+            dilation_range:      int=4,
             num_tries:           int=3,
             swap_size:           int=4,
             dropout:             float=0.2,
+            backbone:            str='mobilenet_v3_small',
+			backbone_pretrained: bool=False,
         ):
         super().__init__()
 
-        self.num_classes         = num_classes
-        self.anchors             = torch.tensor(anchors, dtype=torch.float32)
-        self.num_dilation_blocks = num_dilation_blocks
-        self.num_dilation_ranges = num_dilation_ranges
-        self.num_tries           = num_tries
-        self.swap_size           = swap_size
-        self.dropout             = dropout
+        load_anchors = lambda anchors: (
+            anchors if isinstance(anchors, Tensor)
+            else torch.tensor(anchors, dtype=torch.float32))
+
+        self.num_classes    = num_classes
+        self.anchors        = load_anchors(anchors)
+        self.dilation_depth = dilation_depth
+        self.dilation_range = dilation_range
+        self.num_tries      = num_tries
+        self.swap_size      = swap_size
+        self.dropout        = dropout
+        self.backbone       = backbone
 
         self.num_anchors = len(anchors)
         self.cell_size   = 16
         self.m_ap_metric = MeanAveragePrecision(
             iou_type='bbox', backend='faster_coco_eval')
 
-        backbone = mobilenet_v3_small(
-            weights=MobileNet_V3_Small_Weights.DEFAULT,
-        ).features
+        if backbone == 'mobilenet_v3_small':
+            features = mobilenet_v3_small(
+				weights=MobileNet_V3_Small_Weights.DEFAULT
+				if backbone_pretrained else None,
+			).features
 
-        features_dim = 24 * 4 + 40 + 96
-        self.features_d = backbone[:4] # 24, 64, 64
-        self.features_c = backbone[4] # 40, 32, 32
-        self.features_u = backbone[5:-1] # 96, 16, 16
+            features_dim = 24 * 4 + 40 + 96
+            merged_dim   = 160
+            expanded_dim = 320
 
-        merged_dim = 160
+            self.features_d = features[:4] # 32, 64, 64
+            self.features_c = features[4] # 64, 32, 32
+            self.features_u = features[5:-1] # 320, 16, 16
+
+
+        elif backbone == 'mobilenet_v2':
+            features = mobilenet_v2(
+                weights=MobileNet_V2_Weights.DEFAULT
+				if backbone_pretrained else None,
+            ).features
+
+            features_dim = 32 * 4 + 64 + 320
+            merged_dim   = 320
+            expanded_dim = 640
+
+            self.features_d = features[:5] # 32, 64, 64
+            self.features_c = features[5:8] # 64, 32, 32
+            self.features_u = features[8:-1] # 320, 16, 16
+
         self.merge = nn.Sequential(
             nn.Conv2d(features_dim, merged_dim, 1, bias=False),
             nn.BatchNorm2d(merged_dim),
         )
 
         self.cluster = nn.ModuleList()
-        for _ in range(num_dilation_blocks):
+        for _ in range(dilation_depth):
             modules = []
-            for r in range(num_dilation_ranges):
+            for r in range(dilation_range):
                 modules.append(
                     LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
             modules.append(nn.Sequential(
@@ -110,7 +138,6 @@ class TrimNetX(nn.Module):
                 padding=1,
             ))
 
-        expanded_dim = 320
         object_dim = 4 + num_classes
         self.predict_objs = nn.Sequential(
             nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
@@ -165,31 +192,31 @@ class TrimNetX(nn.Module):
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetX':
-        model_state = state['model']
+        hyps = state['hyperparameters']
         model = cls(
-            num_classes         = model_state['num_classes'],
-            anchors             = model_state['anchors'].tolist(),
-            num_dilation_blocks = model_state['num_dilation_blocks'],
-            num_dilation_ranges = model_state['num_dilation_ranges'],
-            num_tries           = model_state['num_tries'],
-            swap_size           = model_state['swap_size'],
-            dropout             = model_state['dropout'],
+            num_classes    = hyps['num_classes'],
+            anchors        = hyps['anchors'],
+            dilation_depth = hyps['dilation_depth'],
+            dilation_range = hyps['dilation_range'],
+            num_tries      = hyps['num_tries'],
+            swap_size      = hyps['swap_size'],
+            dropout        = hyps['dropout'],
+            backbone       = hyps['backbone'],
         )
-        model.load_state_dict(model_state['weights'])
+        model.load_state_dict(state['model'])
         return model
 
-    def dump_to_state(self, state:Mapping[str, Any]) -> Mapping[str, Any]:
-        state['model'] = dict(
-            num_classes         = self.num_classes,
-            anchors             = self.anchors,
-            num_dilation_blocks = self.num_dilation_blocks,
-            num_dilation_ranges = self.num_dilation_ranges,
-            num_tries           = self.num_tries,
-            swap_size           = self.swap_size,
-            dropout             = self.dropout,
-            weights             = self.state_dict(),
+    def hyperparameters(self) -> Dict[str, Any]:
+        return dict(
+            num_classes    = self.num_classes,
+            anchors        = self.anchors,
+            dilation_depth = self.dilation_depth,
+            dilation_range = self.dilation_range,
+            num_tries      = self.num_tries,
+            swap_size      = self.swap_size,
+            dropout        = self.dropout,
+            backbone       = self.backbone,
         )
-        return state
 
     def _detect_preprocess(
             self,
@@ -199,7 +226,8 @@ class TrimNetX(nn.Module):
 
         _align_size = math.ceil(align_size / 64) * 64
         src_w, src_h = image.size
-        scale = min(1, _align_size / max(src_w, src_h))
+        # scale = min(1, _align_size / max(src_w, src_h))
+        scale = _align_size / max(src_w, src_h)
         dst_w, dst_h = round(scale * src_w), round(scale * src_h)
         sample = image.resize((dst_w, dst_h), resample=Image.Resampling.BILINEAR)
         frame = Image.new('RGB', (_align_size, _align_size), color=(127, 127, 127))
@@ -641,7 +669,6 @@ class TrimNetX(nn.Module):
         if task_name == 'coco2017det':
             train_transforms = v2.Compose([
                 v2.ToImage(),
-                # v2.RandomIoUCrop(min_scale=0.3),
                 v2.ScaleJitter(
                     target_size=(448, 448),
                     scale_range=(0.9, 1.1),
@@ -652,7 +679,7 @@ class TrimNetX(nn.Module):
                     size=(448, 448),
                     pad_if_needed=True,
                     fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.SanitizeBoundingBoxes(min_size=10),
+                v2.SanitizeBoundingBoxes(min_size=5),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -677,6 +704,15 @@ class TrimNetX(nn.Module):
         elif task_name == 'oxford_iiit_pet_det':
             train_transforms = v2.Compose([
                 v2.ToImage(),
+                # v2.RandomShortestSize(
+                #     min_size=224,
+                #     max_size=448,
+                #     antialias=True),
+                # v2.RandomAffine(
+                #     degrees=(-30, +30),
+                #     translate=(0.3, 0.3),
+                #     interpolation=v2.InterpolationMode.BILINEAR,
+                #     fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.ScaleJitter(
                     target_size=(448, 448),
                     scale_range=(0.9, 1.1),
