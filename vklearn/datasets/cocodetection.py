@@ -36,7 +36,7 @@ class CocoDetection(VisionDataset):
         transforms: A function/transform that takes input sample and its target as entry
             and returns a transformed version.
     '''
-    CLASSNAMES:Dict[str, str] = coco_classnames
+    CLASSNAMES:Dict[int, str] = coco_classnames
 
     def __init__(
         self,
