@@ -81,13 +81,13 @@ class TrimNetX(nn.Module):
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 24 * 4 + 40 + 96
+            features_dim = 24 * 4 + 48 + 96
             merged_dim   = 160
             expanded_dim = 320
 
-            self.features_d = features[:4] # 32, 64, 64
-            self.features_c = features[4] # 64, 32, 32
-            self.features_u = features[5:-1] # 320, 16, 16
+            self.features_d = features[:4] # 24, 64, 64
+            self.features_c = features[4:9] # 48, 32, 32
+            self.features_u = features[9:-1] # 96, 16, 16
 
         elif backbone == 'mobilenet_v2':
             features = mobilenet_v2(
@@ -95,13 +95,13 @@ class TrimNetX(nn.Module):
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 32 * 4 + 64 + 320
+            features_dim = 32 * 4 + 96 + 320
             merged_dim   = 320
             expanded_dim = 640
 
-            self.features_d = features[:5] # 32, 64, 64
-            self.features_c = features[5:8] # 64, 32, 32
-            self.features_u = features[8:-1] # 320, 16, 16
+            self.features_d = features[:7] # 32, 64, 64
+            self.features_c = features[7:14] # 96, 32, 32
+            self.features_u = features[14:-1] # 320, 16, 16
 
         self.merge = nn.Sequential(
             nn.Conv2d(features_dim, merged_dim, 1, bias=False),
@@ -357,6 +357,8 @@ class TrimNetX(nn.Module):
             target_index: List[Tensor],
             sample_mask:  Tensor | None,
             conf_id:      int,
+            alpha:        float,
+            gamma:        float,
         ) -> Tuple[Tensor, Tensor, Tensor]:
 
         reduction = 'mean'
@@ -371,7 +373,12 @@ class TrimNetX(nn.Module):
         sampled_pred = torch.masked_select(pred_conf, sample_mask)
         sampled_targ = torch.masked_select(targ_conf, sample_mask)
         sampled_loss = sigmoid_focal_loss(
-            sampled_pred, sampled_targ, reduction=reduction)
+            inputs=sampled_pred,
+            targets=sampled_targ,
+            alpha=alpha,
+            gamma=gamma,
+            reduction=reduction,
+        )
 
         obj_loss = 0.
         obj_mask = torch.logical_and(sample_mask, targ_conf > 0.5)
@@ -414,16 +421,18 @@ class TrimNetX(nn.Module):
             target_labels: Tensor,
             target_bboxes: Tensor,
             weights:       Dict[str, float] | None=None,
+            alpha:         float=0.25,
+            gamma:         float=2.,
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
         num_confs = len(self.predict_conf_tries)
 
         conf_loss, sampled_loss, sample_mask = self.focal_boost(
-            inputs, target_index, None, 0)
+            inputs, target_index, None, 0, alpha, gamma)
         for conf_id in range(1, num_confs):
             conf_loss_i, sampled_loss, sample_mask = self.focal_boost(
-                inputs, target_index, sample_mask, conf_id)
+                inputs, target_index, sample_mask, conf_id, alpha, gamma)
             conf_loss += conf_loss_i
 
         pred_conf = inputs[..., 0]
