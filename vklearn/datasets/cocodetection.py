@@ -59,11 +59,11 @@ class CocoDetection(VisionDataset):
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
 
-    def _load_image(self, id: int) -> Image.Image:
+    def _load_image(self, id:int) -> Image.Image:
         path = self.coco.loadImgs(id)[0]["file_name"]
         return Image.open(os.path.join(self.root, path)).convert("RGB")
 
-    def _load_anns(self, id: int) -> List[Any]:
+    def _load_anns(self, id:int) -> List[Any]:
         # return self.coco.loadAnns(self.coco.getAnnIds(id))
         return [
             ann for ann in self.coco.loadAnns(self.coco.getAnnIds(id))
@@ -84,7 +84,7 @@ class CocoDetection(VisionDataset):
         labels = torch.LongTensor([ann['category_id'] - 1 for ann in anns if validation(ann)])
         return dict(boxes=boxes, labels=labels)
 
-    def __getitem__(self, index: int) -> Tuple[Any, Any]:
+    def __getitem__(self, index:int) -> Tuple[Any, Any]:
 
         if not isinstance(index, int):
             raise ValueError(f'Index must be of type integer, got {type(index)} instead.')
