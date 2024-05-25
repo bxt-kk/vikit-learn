@@ -87,7 +87,7 @@ class CocoDetection(VisionDataset):
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
 
         if not isinstance(index, int):
-            raise ValueError(f"Index must be of type integer, got {type(index)} instead.")
+            raise ValueError(f'Index must be of type integer, got {type(index)} instead.')
 
         id = self.ids[index]
         anns = self._load_anns(id)

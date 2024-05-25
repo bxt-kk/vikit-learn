@@ -53,7 +53,7 @@ class TrimNetX(nn.Module):
             swap_size:           int=4,
             dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
-            backbone_pretrained: bool=False,
+            backbone_pretrained: bool=True,
         ):
         super().__init__()
 
@@ -88,7 +88,6 @@ class TrimNetX(nn.Module):
             self.features_d = features[:4] # 32, 64, 64
             self.features_c = features[4] # 64, 32, 32
             self.features_u = features[5:-1] # 320, 16, 16
-
 
         elif backbone == 'mobilenet_v2':
             features = mobilenet_v2(
@@ -194,14 +193,15 @@ class TrimNetX(nn.Module):
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetX':
         hyps = state['hyperparameters']
         model = cls(
-            num_classes    = hyps['num_classes'],
-            anchors        = hyps['anchors'],
-            dilation_depth = hyps['dilation_depth'],
-            dilation_range = hyps['dilation_range'],
-            num_tries      = hyps['num_tries'],
-            swap_size      = hyps['swap_size'],
-            dropout        = hyps['dropout'],
-            backbone       = hyps['backbone'],
+            num_classes         = hyps['num_classes'],
+            anchors             = hyps['anchors'],
+            dilation_depth      = hyps['dilation_depth'],
+            dilation_range      = hyps['dilation_range'],
+            num_tries           = hyps['num_tries'],
+            swap_size           = hyps['swap_size'],
+            dropout             = hyps['dropout'],
+            backbone            = hyps['backbone'],
+            backbone_pretrained = False,
         )
         model.load_state_dict(state['model'])
         return model
@@ -250,12 +250,11 @@ class TrimNetX(nn.Module):
             conf_thresh: float=0.6,
             iou_thresh:  float=0.55,
             align_size:  int=448,
-            device:      torch.device=None,
         ) -> List[Dict[str, Any]]:
 
+        device = next(self.parameters()).device
         x, scale, pad_x, pad_y = self._detect_preprocess(image, align_size)
-        if device is not None:
-            x = x.to(device)
+        x = x.to(device)
         x = self.forward_features(x, train_features=False)
 
         confs = [self.predict_conf_tries[0](x)]
