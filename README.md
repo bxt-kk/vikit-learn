@@ -102,6 +102,7 @@ Upon training completion, there will be visualization images of model training r
 ![](./asset/CATDOG-LOG-240524-17:31:18_map.png)
 ![](./asset/CATDOG-LOG-240524-17:31:18_map_50.png)
 
+Based on the focal-boost loss function I designed, the model can be successfully trained on tasks with extremely low positive sample ratio.
 
 ## Using model
 
