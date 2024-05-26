@@ -668,13 +668,13 @@ class TrimNetX(nn.Module):
     @classmethod
     def get_transforms(
             cls,
-            task_name:str,
+            task_name: str='default',
         ) -> Tuple[v2.Transform, v2.Transform]:
 
         train_transforms = None
         test_transforms  = None
 
-        if task_name == 'coco2017det':
+        if task_name in ('default', 'cocox448'):
             train_transforms = v2.Compose([
                 v2.ToImage(),
                 v2.ScaleJitter(
@@ -709,29 +709,20 @@ class TrimNetX(nn.Module):
                 )
             ])
 
-        elif task_name == 'oxford_iiit_pet_det':
+        elif task_name == 'cocox640':
             train_transforms = v2.Compose([
                 v2.ToImage(),
-                # v2.RandomShortestSize(
-                #     min_size=224,
-                #     max_size=448,
-                #     antialias=True),
-                # v2.RandomAffine(
-                #     degrees=(-30, +30),
-                #     translate=(0.3, 0.3),
-                #     interpolation=v2.InterpolationMode.BILINEAR,
-                #     fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.ScaleJitter(
-                    target_size=(448, 448),
-                    scale_range=(0.9, 1.1),
+                    target_size=(640, 640),
+                    scale_range=(0.8, 1.25),
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
                 v2.RandomCrop(
-                    size=(448, 448),
+                    size=(640, 640),
                     pad_if_needed=True,
                     fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.SanitizeBoundingBoxes(min_size=5),
+                v2.SanitizeBoundingBoxes(min_size=10),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -741,11 +732,11 @@ class TrimNetX(nn.Module):
             test_transforms = v2.Compose([
                 v2.ToImage(),
                 v2.Resize(
-                    size=447,
-                    max_size=448,
+                    size=639,
+                    max_size=640,
                     antialias=True),
-                v2.CenterCrop(448),
-                v2.SanitizeBoundingBoxes(min_size=5),
+                v2.CenterCrop(640),
+                v2.SanitizeBoundingBoxes(min_size=10),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],

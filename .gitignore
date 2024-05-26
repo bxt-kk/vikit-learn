@@ -85,3 +85,7 @@ logs/
 
 # checkpoints
 checkpoints/
+
+# package builds
+/build/
+/vikit_learn.egg-info/
