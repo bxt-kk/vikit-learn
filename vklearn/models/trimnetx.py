@@ -287,6 +287,7 @@ class TrimNetX(Detection):
             target_index: List[Tensor],
             sample_mask:  Tensor | None,
             conf_id:      int,
+            num_confs:    int,
             alpha:        float,
             gamma:        float,
         ) -> Tuple[Tensor, Tensor, Tensor]:
@@ -321,7 +322,7 @@ class TrimNetX(Detection):
             obj_pred_min = obj_pred.detach().min()
             sample_mask = pred_conf.detach() >= obj_pred_min
 
-        alpha = (math.cos(math.pi / len(self.predict_conf_tries) * conf_id) + 1) / 2
+        alpha = (math.cos(math.pi / num_confs * conf_id) + 1) / 2
         num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).numel()
 
         conf_loss = (
@@ -345,10 +346,10 @@ class TrimNetX(Detection):
         num_confs = len(self.predict_conf_tries)
 
         conf_loss, sampled_loss, sample_mask = self.focal_boost(
-            inputs, target_index, None, 0, alpha, gamma)
+            inputs, target_index, None, 0, num_confs, alpha, gamma)
         for conf_id in range(1, num_confs):
             conf_loss_i, sampled_loss, sample_mask = self.focal_boost(
-                inputs, target_index, sample_mask, conf_id, alpha, gamma)
+                inputs, target_index, sample_mask, conf_id, num_confs, alpha, gamma)
             conf_loss += conf_loss_i
 
         pred_conf = inputs[..., 0]
