@@ -35,7 +35,7 @@ class Detection:
             iou_thresh:  float=0.55,
             align_size:  int=448,
         ) -> List[Dict[str, Any]]:
-        
+
         if isinstance(image, str):
             image = Image.open(image)
         if isinstance(image, ndarray):
