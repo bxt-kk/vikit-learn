@@ -10,25 +10,18 @@ import torch.nn.functional as F
 from torchvision.ops import (
     sigmoid_focal_loss,
     generalized_box_iou_loss,
-    box_convert,
     boxes as box_ops,
 )
-from torchvision import tv_tensors
-from torchvision.transforms import v2
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 
-from torchmetrics.detection import MeanAveragePrecision
-
 from PIL import Image
 
-try:
-    from .component import LinearBasicConvBD
-except ImportError:
-    from component import LinearBasicConvBD
+from .component import LinearBasicConvBD
+from .detection import Detection
 
 
-class TrimNetX(nn.Module):
+class TrimNetX(Detection):
     '''A light-weight and easy-to-train model for object detection
 
     Args:
@@ -55,25 +48,14 @@ class TrimNetX(nn.Module):
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
         ):
-        super().__init__()
+        super().__init__(num_classes, anchors)
 
-        load_anchors = lambda anchors: (
-            anchors if isinstance(anchors, Tensor)
-            else torch.tensor(anchors, dtype=torch.float32))
-
-        self.num_classes    = num_classes
-        self.anchors        = load_anchors(anchors)
         self.dilation_depth = dilation_depth
         self.dilation_range = dilation_range
         self.num_tries      = num_tries
         self.swap_size      = swap_size
         self.dropout        = dropout
         self.backbone       = backbone
-
-        self.num_anchors = len(anchors)
-        self.cell_size   = 16
-        self.m_ap_metric = MeanAveragePrecision(
-            iou_type='bbox', backend='faster_coco_eval')
 
         if backbone == 'mobilenet_v3_small':
             features = mobilenet_v3_small(
@@ -218,32 +200,6 @@ class TrimNetX(nn.Module):
             backbone       = self.backbone,
         )
 
-    def _detect_preprocess(
-            self,
-            image:      Image.Image,
-            align_size: int,
-        ) -> Tuple[Tensor, float, int, int]:
-
-        _align_size = math.ceil(align_size / 64) * 64
-        src_w, src_h = image.size
-        # scale = min(1, _align_size / max(src_w, src_h))
-        scale = _align_size / max(src_w, src_h)
-        dst_w, dst_h = round(scale * src_w), round(scale * src_h)
-        sample = image.resize((dst_w, dst_h), resample=Image.Resampling.BILINEAR)
-        frame = Image.new('RGB', (_align_size, _align_size), color=(127, 127, 127))
-        pad_x = (align_size - dst_w) // 2
-        pad_y = (align_size - dst_h) // 2
-        frame.paste(sample, box=(pad_x, pad_y))
-        inputs = v2.Compose([
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            )
-        ])(frame).unsqueeze(dim=0)
-        return inputs, scale, pad_x, pad_y
-
     def detect(
             self,
             image:       Image.Image,
@@ -253,7 +209,8 @@ class TrimNetX(nn.Module):
         ) -> List[Dict[str, Any]]:
 
         device = next(self.parameters()).device
-        x, scale, pad_x, pad_y = self._detect_preprocess(image, align_size)
+        x, scale, pad_x, pad_y = self.preprocess(
+            image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
         x = self.forward_features(x, train_features=False)
 
@@ -324,33 +281,6 @@ class TrimNetX(nn.Module):
             ))
         return result
 
-    def test_target2outputs(
-            self,
-            _outputs:      Tensor,
-            target_index:  List[Tensor],
-            target_labels: Tensor,
-            target_bboxes: Tensor,
-        ) -> Tensor:
-
-        outputs = torch.full_like(_outputs, -1000)
-        num_confs = len(self.predict_conf_tries)
-        eps = 1e-5
-
-        objects = outputs[target_index]
-        objects[:, :num_confs] = 1000.
-
-        targ_cxcywh = box_convert(target_bboxes, 'xyxy', 'cxcywh')
-        anchors = self.anchors.type_as(targ_cxcywh)
-        inverse_sigmoid = lambda x: torch.log(x / (1 - x))
-        targ_cxcywh[:, :2] = inverse_sigmoid(torch.clamp(
-            targ_cxcywh[:, :2] % self.cell_size / self.cell_size, eps, 1 - eps))
-        targ_cxcywh[:, 2:] = torch.log(targ_cxcywh[:, 2:] / anchors[target_index[1]])
-        objects[:, num_confs:num_confs + 4] = targ_cxcywh
-        objects[:, num_confs + 4:].scatter_(-1, target_labels.unsqueeze(dim=-1), 1000.)
-
-        outputs[target_index] = objects
-        return outputs
-
     def focal_boost(
             self,
             inputs:       Tensor,
@@ -399,20 +329,6 @@ class TrimNetX(nn.Module):
             sampled_loss)
 
         return conf_loss, sampled_loss, sample_mask
-
-    def pred2boxes(
-            self,
-            cxcywh: Tensor,
-            index:  List[Tensor],
-            fmt:    str='xyxy',
-        ) -> Tensor:
-
-        anchors = self.anchors.type_as(cxcywh)
-        boxes_x  = (torch.tanh(cxcywh[:, 0]) + 0.5 + index[3].type_as(cxcywh)) * self.cell_size
-        boxes_y  = (torch.tanh(cxcywh[:, 1]) + 0.5 + index[2].type_as(cxcywh)) * self.cell_size
-        boxes_s  = torch.exp(cxcywh[:, 2:]) * anchors[index[1]]
-        bboxes = torch.cat([boxes_x.unsqueeze(-1), boxes_y.unsqueeze(-1), boxes_s], dim=-1)
-        return box_convert(bboxes, 'cxcywh', fmt)
 
     def calc_loss(
             self,
@@ -592,159 +508,3 @@ class TrimNetX(nn.Module):
                 labels=target_labels[target_ids],
             ))
         self.m_ap_metric.update(preds, target)
-
-    def compute_metric(self) -> Dict[str, Any]:
-        return self.m_ap_metric.compute()
-
-    def _select_anchor(self, boxes:Tensor) -> Tensor:
-        sizes = boxes[:, 2:] - boxes[:, :2]
-        inter_size = torch.minimum(sizes[:, None, ...], self.anchors)
-        inter_area = inter_size[..., 0] * inter_size[..., 1]
-        boxes_area = sizes[..., 0] * sizes[..., 1]
-        union_area = (
-            boxes_area[:, None] +
-            self.anchors[..., 0] * self.anchors[..., 1] -
-            inter_area)
-        ious = inter_area / union_area
-        anchor_ids = torch.argmax(ious, dim=1)
-        return anchor_ids
-
-    def _select_row(self, boxes:Tensor) -> Tensor:
-        cy = (boxes[:, 1] + boxes[:, 3]) * 0.5
-        cell_size = self.cell_size
-        noise = torch.rand_like(cy) * cell_size - cell_size / 2
-        hs = boxes[:, 3] - boxes[:, 1]
-        noise[hs < 2 * cell_size] = 0.
-        cy = cy + noise 
-        cell_row = (cy / self.cell_size).type(torch.int64)
-        return cell_row
-
-    def _select_column(self, boxes:Tensor) -> Tensor:
-        cx = (boxes[:, 0] + boxes[:, 2]) * 0.5
-        cell_size = self.cell_size
-        noise = torch.rand_like(cx) * cell_size - cell_size / 2
-        ws = boxes[:, 2] - boxes[:, 0]
-        noise[ws < 2 * cell_size] = 0.
-        cx = cx + noise
-        cell_col = (cx / self.cell_size).type(torch.int64)
-        return cell_col
-
-    def collate_fn(
-            self,
-            batch: List[Any],
-        ) -> Any:
-
-        batch_ids   = []
-        anchor_ids  = []
-        row_ids     = []
-        column_ids  = []
-        list_image  = []
-        list_labels = []
-        list_bboxes = []
-
-        for i, (image, target) in enumerate(batch):
-            labels = target['labels']
-            boxes = target['boxes']
-            list_image.append(image.unsqueeze(dim=0))
-            list_labels.append(labels)
-            list_bboxes.append(boxes)
-
-            batch_ids.append(torch.full_like(labels, i))
-            anchor_ids.append(self._select_anchor(boxes))
-            row_ids.append(self._select_row(boxes))
-            column_ids.append(self._select_column(boxes))
-
-        inputs = torch.cat(list_image, dim=0)
-        target_labels = torch.cat(list_labels, dim=0)
-        target_bboxes = torch.cat(list_bboxes, dim=0)
-        target_index = [
-            torch.cat(batch_ids),
-            torch.cat(anchor_ids),
-            torch.cat(row_ids),
-            torch.cat(column_ids),
-        ]
-        return inputs, target_index, target_labels, target_bboxes
-
-    @classmethod
-    def get_transforms(
-            cls,
-            task_name: str='default',
-        ) -> Tuple[v2.Transform, v2.Transform]:
-
-        train_transforms = None
-        test_transforms  = None
-
-        if task_name in ('default', 'cocox448'):
-            train_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.ScaleJitter(
-                    target_size=(448, 448),
-                    scale_range=(0.9, 1.1),
-                    antialias=True),
-                v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomCrop(
-                    size=(448, 448),
-                    pad_if_needed=True,
-                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.SanitizeBoundingBoxes(min_size=5),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-            test_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.Resize(
-                    size=447,
-                    max_size=448,
-                    antialias=True),
-                v2.CenterCrop(448),
-                v2.SanitizeBoundingBoxes(min_size=5),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-
-        elif task_name == 'cocox640':
-            train_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.ScaleJitter(
-                    target_size=(640, 640),
-                    scale_range=(0.8, 1.25),
-                    antialias=True),
-                v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomCrop(
-                    size=(640, 640),
-                    pad_if_needed=True,
-                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.SanitizeBoundingBoxes(min_size=10),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-            test_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.Resize(
-                    size=639,
-                    max_size=640,
-                    antialias=True),
-                v2.CenterCrop(640),
-                v2.SanitizeBoundingBoxes(min_size=10),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-
-        else:
-            raise ValueError(f'Unsupported the task `{task_name}`')
-
-        return train_transforms, test_transforms

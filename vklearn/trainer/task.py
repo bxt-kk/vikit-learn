@@ -2,17 +2,15 @@ from typing import Any, Dict
 from dataclasses import dataclass, field
 
 from torch.optim import Optimizer
-
 import torch
-import torch.nn as nn
 
-# from .logger import Logger
 from .logging import Logger
+from ..models.basic import Basic as Model
 
 
 @dataclass
 class Task:
-    model:              nn.Module
+    model:              Model
     device:             torch.device
     metric_start_epoch: int=0
     fit_features_start: int=0

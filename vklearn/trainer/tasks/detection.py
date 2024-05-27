@@ -8,10 +8,12 @@ import torch
 
 from ..logging import Logger
 from ..task import Task
+from ...models.detection import Detection as Model
 
 
 @dataclass
 class Detection(Task):
+    model: Model
 
     def sample_convert(self, sample: Any) -> Tuple[Any, Any]:
         inputs, target_labels, target_bboxes = [
