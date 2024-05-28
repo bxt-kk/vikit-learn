@@ -8,19 +8,16 @@ import torch
 
 from ..logging import Logger
 from ..task import Task
-from ...models.detector import Detector as Model
+from ...models.classifier import Classifier as Model
 
 
 @dataclass
-class Detection(Task):
+class Classification(Task):
     model: Model
 
     def sample_convert(self, sample: Any) -> Tuple[Any, Any]:
-        inputs, target_labels, target_bboxes = [
-            sample[i].to(self.device) for i in [0, 2, 3]]
-        target_index = sample[1]
-        target = target_index, target_labels, target_bboxes
-        return inputs, target
+        inputs, target = [item.to(self.device) for item in sample]
+        return inputs, [target]
 
     def setting_optimizer(
             self,
@@ -116,7 +113,7 @@ class Detection(Task):
         ):
 
         model = self.model
-        metric = dict(zip(['map', 'map_50', 'map_75'], [0.] * 3))
+        metric = dict(zip(['precision', 'recall', 'f1_score'], [0.] * 3))
         if epoch >= self.metric_start_epoch:
             metric = {k: v
                 for k, v in model.compute_metric().items()

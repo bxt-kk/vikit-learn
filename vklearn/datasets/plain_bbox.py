@@ -9,8 +9,8 @@ from torchvision.datasets.vision import VisionDataset
 from torchvision import tv_tensors
 
 
-class PlainDetection(VisionDataset):
-    '''`Plain annotated format common dataset.
+class PlainBBox(VisionDataset):
+    '''`Plain bbox annotated format common dataset.
 
     Args:
         root: Root directory where images are downloaded to.

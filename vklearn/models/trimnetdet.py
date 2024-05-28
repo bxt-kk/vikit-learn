@@ -18,10 +18,10 @@ from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 from PIL import Image
 
 from .component import LinearBasicConvBD
-from .detection import Detection
+from .detector import Detector
 
 
-class TrimNetX(Detection):
+class TrimNetDet(Detector):
     '''A light-weight and easy-to-train model for object detection
 
     Args:
@@ -172,7 +172,7 @@ class TrimNetX(Detection):
         return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
 
     @classmethod
-    def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetX':
+    def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':
         hyps = state['hyperparameters']
         model = cls(
             num_classes         = hyps['num_classes'],

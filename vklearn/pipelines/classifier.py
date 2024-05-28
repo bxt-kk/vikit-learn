@@ -5,10 +5,10 @@ from PIL.Image import Image as PILImage
 from numpy import ndarray
 from PIL import Image
 
-from ..models.detection import Detection as Model
+from ..models.classifier import Classifier as Model
 
 
-class Detection:
+class Classifier:
 
     def __init__(self, model:Model):
         self.model = model
@@ -18,22 +18,21 @@ class Detection:
             cls,
             model: Model,
             state: Mapping[str, Any] | str,
-        ) -> 'Detection':
+        ) -> 'Classifier':
 
         if isinstance(state, str):
             state = torch.load(state, map_location='cpu')
         return cls(model.load_from_state(state).eval())
 
-    def to(self, device:torch.device) -> 'Detection':
+    def to(self, device:torch.device) -> 'Classifier':
         self.model.to(device)
         return self
 
     def __call__(
             self,
-            image:       PILImage | str | ndarray,
-            conf_thresh: float=0.6,
-            iou_thresh:  float=0.55,
-            align_size:  int=448,
+            image:      PILImage | str | ndarray,
+            top_k:      int=10,
+            align_size: int=224,
         ) -> List[Dict[str, Any]]:
 
         if isinstance(image, str):
@@ -42,10 +41,9 @@ class Detection:
             image = Image.fromarray(image, mode='RGB')
 
         with torch.no_grad():
-            result = self.model.detect(
+            result = self.model.classify(
                 image=image,
-                conf_thresh=conf_thresh,
-                iou_thresh=iou_thresh,
+                top_k=top_k,
                 align_size=align_size,
             )
         return result

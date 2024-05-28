@@ -15,7 +15,7 @@ from PIL import Image
 from .basic import Basic
 
 
-class Detection(Basic):
+class Detector(Basic):
 
     def __init__(
             self,
