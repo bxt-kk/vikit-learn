@@ -10,6 +10,10 @@ from PIL import Image
 
 class Basic(nn.Module):
 
+    def __init__(self):
+        super().__init__()
+        self._keep_features = False
+
     @classmethod
     def get_transforms(
             cls,
@@ -61,3 +65,6 @@ class Basic(nn.Module):
             )
         ])(frame).unsqueeze(dim=0)
         return inputs, scale, pad_x, pad_y
+
+    def train_features(self, flag:bool):
+        self._keep_features = not flag

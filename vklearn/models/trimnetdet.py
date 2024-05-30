@@ -131,10 +131,9 @@ class TrimNetDet(Detector):
     def forward_features(
             self,
             x:              Tensor,
-            train_features: bool,
         ) -> Tensor:
 
-        if train_features:
+        if not self._keep_features:
             fd = self.features_d(x)
             fc = self.features_c(fd)
             fu = self.features_u(fc)
@@ -156,10 +155,9 @@ class TrimNetDet(Detector):
     def forward(
             self,
             x:              Tensor,
-            train_features: bool=True,
         ) -> Tensor:
 
-        x = self.forward_features(x, train_features)
+        x = self.forward_features(x)
         confs = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
             confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
@@ -212,7 +210,7 @@ class TrimNetDet(Detector):
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
-        x = self.forward_features(x, train_features=False)
+        x = self.forward_features(x)
 
         confs = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:

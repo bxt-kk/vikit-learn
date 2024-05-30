@@ -46,10 +46,10 @@ class Detection(Task):
         inputs, target = self.sample_convert(sample)
 
         model = self.model
+        model.train_features(
+            epoch >= self.fit_features_start)
 
-        train_features = epoch >= self.fit_features_start
-        outputs = model(
-            inputs, train_features=train_features)
+        outputs = model(inputs)
         losses = model.calc_loss(
             outputs, *target, **self.loss_options)
         loss = losses['loss']

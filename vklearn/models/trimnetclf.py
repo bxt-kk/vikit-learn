@@ -92,24 +92,21 @@ class TrimNetClf(Classifier):
             self.cluster.append(nn.Sequential(*modules))
 
         self.predict_clss = nn.Sequential(
-            nn.Conv2d(merged_dim, expanded_dim, kernel_size=1, bias=False),
-            nn.BatchNorm2d(expanded_dim),
+            # nn.BatchNorm2d(merged_dim),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(start_dim=1),
-            nn.Linear(expanded_dim, expanded_dim * 2),
-            nn.LayerNorm(expanded_dim * 2),
+            nn.Linear(merged_dim, expanded_dim),
             nn.Hardswish(inplace=True),
             nn.Dropout(p=dropout, inplace=True),
-            nn.Linear(expanded_dim * 2, num_classes)
+            nn.Linear(expanded_dim, num_classes)
         )
 
     def forward_features(
             self,
             x:              Tensor,
-            train_features: bool,
         ) -> Tensor:
 
-        if train_features:
+        if not self._keep_features:
             fd = self.features_d(x)
             fc = self.features_c(fd)
             fu = self.features_u(fc)
@@ -131,10 +128,9 @@ class TrimNetClf(Classifier):
     def forward(
             self,
             x:              Tensor,
-            train_features: bool=True,
         ) -> Tensor:
 
-        x = self.forward_features(x, train_features)
+        x = self.forward_features(x)
         return self.predict_clss(x)
 
     @classmethod
@@ -171,7 +167,7 @@ class TrimNetClf(Classifier):
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
-        x = self.forward(x, train_features=False)
+        x = self.forward(x)
         topk = x.squeeze(dim=0).softmax(dim=-1).topk(top_k)
         probs = [round(v, 5) for v in topk.values.tolist()]
         index = topk.indices.tolist()

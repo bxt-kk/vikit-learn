@@ -1,9 +1,11 @@
 from typing import List, Dict, Any, Mapping
+import io
 
 import torch
 from PIL.Image import Image as PILImage
 from numpy import ndarray
 from PIL import Image
+from matplotlib.pyplot import Subplot, Rectangle
 
 from ..models.detector import Detector as Model
 
@@ -23,6 +25,26 @@ class Detector:
         if isinstance(state, str):
             state = torch.load(state, map_location='cpu')
         return cls(model.load_from_state(state).eval())
+
+    def export_onnx(self, f: str | io.BytesIO):
+        inputs = torch.randn(1, 3, 448, 448)
+        torch.onnx.export(
+            model=self.model,
+            args=inputs,
+            f=f,
+            input_names=['input'],
+            output_names=['output'],
+            dynamic_axes={
+                'input': {
+                    0: 'batch_size',
+                    2: 'input_height',
+                    3: 'input_width'},
+                'output': {
+                    0: 'batch_size',
+                    2: 'output_height',
+                    3: 'output_width'},
+            },
+        )
 
     def to(self, device:torch.device) -> 'Detector':
         self.model.to(device)
@@ -49,3 +71,28 @@ class Detector:
                 align_size=align_size,
             )
         return result
+
+    def plot_result(
+            self,
+            image:      PILImage,
+            result:     List[Dict[str, Any]],
+            ax:         Subplot,
+            color:      str='red',
+            text_color: str='white',
+        ):
+        ax.imshow(image)
+        for obj in result:
+            x1, y1, x2, y2 = obj['box']
+            ax.add_patch(Rectangle(
+                (x1, y1), x2 - x1, y2 - y1, color=color, fill=False))
+            ax.annotate(
+                str(obj['label']),
+                (x1, y1),
+                color=text_color,
+                ha='left',
+                va='bottom',
+                bbox=dict(
+                    color=color,
+                    pad=0,
+                ),
+            )
