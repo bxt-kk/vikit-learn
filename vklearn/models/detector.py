@@ -56,6 +56,7 @@ class Detector(Basic):
             conf_thresh: float=0.6,
             iou_thresh:  float=0.55,
             align_size:  int=448,
+            mini_side:   int=1,
         ) -> List[Dict[str, Any]]:
         assert not 'this is an empty func'
 
