@@ -5,7 +5,7 @@ import torch
 from PIL.Image import Image as PILImage
 from numpy import ndarray
 from PIL import Image
-from matplotlib.pyplot import Subplot, Rectangle
+from matplotlib.pyplot import Figure, Rectangle
 
 from ..models.detector import Detector as Model
 
@@ -56,6 +56,7 @@ class Detector:
             conf_thresh: float=0.6,
             iou_thresh:  float=0.55,
             align_size:  int=448,
+            mini_side:   int=1,
         ) -> List[Dict[str, Any]]:
 
         if isinstance(image, str):
@@ -69,6 +70,7 @@ class Detector:
                 conf_thresh=conf_thresh,
                 iou_thresh=iou_thresh,
                 align_size=align_size,
+                mini_side=mini_side,
             )
         return result
 
@@ -76,10 +78,12 @@ class Detector:
             self,
             image:      PILImage,
             result:     List[Dict[str, Any]],
-            ax:         Subplot,
+            fig:        Figure,
             color:      str='red',
             text_color: str='white',
         ):
+
+        ax = fig.add_subplot()
         ax.imshow(image)
         for obj in result:
             x1, y1, x2, y2 = obj['box']

@@ -5,6 +5,7 @@ import torch
 from PIL.Image import Image as PILImage
 from numpy import ndarray
 from PIL import Image
+from matplotlib.pyplot import Figure
 
 from ..models.classifier import Classifier as Model
 
@@ -62,3 +63,26 @@ class Classifier:
                 align_size=align_size,
             )
         return result
+
+    def plot_result(
+            self,
+            image:      PILImage,
+            result:     List[Dict[str, Any]],
+            fig:        Figure,
+        ):
+
+        ax = fig.add_subplot(1, 9, (1, 6))
+        ax.margins(x=0, y=0)
+        ax.set_axis_off()
+        ax.imshow(image)
+        ax = fig.add_subplot(1, 9, (8, 9))
+        ax.margins(x=0, y=0)
+        for pos in ['top', 'right']:
+            ax.spines[pos].set_visible(False)
+        probs = result['probs']
+        colors = ['lightgray'] * len(probs)
+        colors[-1] = 'steelblue'
+        keys = list(probs.keys())[::-1]
+        values = [round(probs[k], 3) for k in keys]
+        p = ax.barh(list(map(str, keys)), values, color=colors)
+        ax.bar_label(p)
