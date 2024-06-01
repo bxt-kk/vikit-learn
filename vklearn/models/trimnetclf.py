@@ -19,7 +19,7 @@ class TrimNetClf(Classifier):
     '''A light-weight and easy-to-train model for image classification
 
     Args:
-        num_classes: Number of target categories.
+        categories: Target categories.
         dilation_depth: Depth of dilation module.
         dilation_range: The impact region of dilation convolution.
         num_tries: Number of attempts to guess.
@@ -31,14 +31,14 @@ class TrimNetClf(Classifier):
 
     def __init__(
             self,
-            num_classes:         int,
+            categories:          List[str],
             dilation_depth:      int=4,
             dilation_range:      int=4,
             dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
         ):
-        super().__init__(num_classes)
+        super().__init__(categories)
 
         self.dilation_depth = dilation_depth
         self.dilation_range = dilation_range
@@ -98,7 +98,7 @@ class TrimNetClf(Classifier):
             nn.Linear(merged_dim, expanded_dim),
             nn.Hardswish(inplace=True),
             nn.Dropout(p=dropout, inplace=True),
-            nn.Linear(expanded_dim, num_classes)
+            nn.Linear(expanded_dim, self.num_classes)
         )
 
     def forward_features(
@@ -137,7 +137,7 @@ class TrimNetClf(Classifier):
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetClf':
         hyps = state['hyperparameters']
         model = cls(
-            num_classes         = hyps['num_classes'],
+            categories          = hyps['categories'],
             dilation_depth      = hyps['dilation_depth'],
             dilation_range      = hyps['dilation_range'],
             dropout             = hyps['dropout'],
@@ -149,7 +149,7 @@ class TrimNetClf(Classifier):
 
     def hyperparameters(self) -> Dict[str, Any]:
         return dict(
-            num_classes    = self.num_classes,
+            categories     = self.categories,
             dilation_depth = self.dilation_depth,
             dilation_range = self.dilation_range,
             dropout        = self.dropout,
@@ -170,10 +170,10 @@ class TrimNetClf(Classifier):
         x = self.forward(x)
         topk = x.squeeze(dim=0).softmax(dim=-1).topk(top_k)
         probs = [round(v, 5) for v in topk.values.tolist()]
-        index = topk.indices.tolist()
+        labels = [self.categories[cid] for cid in topk.indices]
         return dict(
-            probs=dict(zip(index, probs)),
-            predict=index[0],
+            probs=dict(zip(labels, probs)),
+            predict=labels[0],
         )
 
     def calc_loss(

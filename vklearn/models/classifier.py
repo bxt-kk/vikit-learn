@@ -16,14 +16,19 @@ from .basic import Basic
 
 class Classifier(Basic):
 
-    def __init__(self, num_classes:int):
+    def __init__(self, categories:List[str]):
         super().__init__()
 
-        self.num_classes = num_classes
+        self.categories  = list(categories)
+        self.num_classes = len(categories)
         self.precision_metric = Precision(
-            task='multiclass', num_classes=num_classes, average='macro')
+            task='multiclass',
+            num_classes=self.num_classes,
+            average='macro')
         self.recall_metric = Recall(
-            task='multiclass', num_classes=num_classes, average='macro')
+            task='multiclass',
+            num_classes=self.num_classes,
+            average='macro')
 
     def classify(
             self,
