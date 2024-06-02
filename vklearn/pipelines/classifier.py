@@ -71,6 +71,7 @@ class Classifier:
             fig:        Figure,
         ):
 
+        fig.subplots_adjust(left=0.05)
         ax = fig.add_subplot(1, 9, (1, 6))
         ax.margins(x=0, y=0)
         ax.set_axis_off()
@@ -82,7 +83,8 @@ class Classifier:
         probs = result['probs']
         colors = ['lightgray'] * len(probs)
         colors[-1] = 'steelblue'
-        keys = list(probs.keys())[::-1]
-        values = [round(probs[k], 3) for k in keys]
-        p = ax.barh(list(map(str, keys)), values, color=colors)
-        ax.bar_label(p)
+        keys = sorted(probs.keys(), key=lambda k: probs[k])
+        values = [probs[k] for k in keys]
+        p = ax.barh(keys, values, color=colors)
+        ax.bar_label(p, padding=1)
+        ax.tick_params(axis='y', rotation=45)

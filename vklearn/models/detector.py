@@ -19,20 +19,28 @@ class Detector(Basic):
 
     def __init__(
             self,
-            num_classes: int,
-            anchors:     List[Tuple[float, float]] | Tensor,
+            categories: List[str],
+            bbox_limit: int,
+            anchors:    List[Tuple[float, float]] | Tensor | None=None,
         ):
         super().__init__()
 
-        load_anchors = lambda anchors: (
-            anchors if isinstance(anchors, Tensor)
-            else torch.tensor(anchors, dtype=torch.float32))
+        self.categories   = list(categories)
+        self.num_classes  = len(categories)
+        self.bbox_limit   = bbox_limit
+        self.region_scale = bbox_limit / 32
 
-        self.num_classes    = num_classes
-        self.anchors        = load_anchors(anchors)
+        anchors = anchors if anchors is not None else [
+            (self.region_scale * 3**k, ) * 2 for k in range(0, 3)]
+        anchors = anchors if isinstance(anchors, Tensor) else torch.tensor(
+            anchors, dtype=torch.float32)
 
+        self.anchors     = anchors
         self.num_anchors = len(anchors)
         self.cell_size   = 16
+        self.regions     = torch.tensor([[2**k for k in range(6)]])
+        self.bbox_dims   = 2 + (self.regions.shape[1] + 1) * 2
+
         self.m_ap_metric = MeanAveragePrecision(
             iou_type='bbox', backend='faster_coco_eval')
 
@@ -43,11 +51,29 @@ class Detector(Basic):
             fmt:    str='xyxy',
         ) -> Tensor:
 
-        anchors = self.anchors.type_as(cxcywh)
-        boxes_x  = (torch.tanh(cxcywh[:, 0]) + 0.5 + index[3].type_as(cxcywh)) * self.cell_size
-        boxes_y  = (torch.tanh(cxcywh[:, 1]) + 0.5 + index[2].type_as(cxcywh)) * self.cell_size
-        boxes_s  = torch.exp(cxcywh[:, 2:]) * anchors[index[1]]
-        bboxes = torch.cat([boxes_x.unsqueeze(-1), boxes_y.unsqueeze(-1), boxes_s], dim=-1)
+        regions = self.regions.type_as(cxcywh)
+        boxes_x = (
+            torch.tanh(cxcywh[:, 0]) + 0.5 +
+            index[3].type_as(cxcywh)
+        ) * self.cell_size
+        boxes_y = (
+            torch.tanh(cxcywh[:, 1]) + 0.5 +
+            index[2].type_as(cxcywh)
+        ) * self.cell_size
+        boxes_w = (
+            torch.tanh(cxcywh[:, 2 + 0]) +
+            (cxcywh[:, 2 + 1:2 + 7].softmax(dim=-1) * regions).sum(dim=-1)
+        ) * self.region_scale
+        boxes_h = (
+            torch.tanh(cxcywh[:, 2 + 7]) +
+            (cxcywh[:, 2 + 8:2 + 14].softmax(dim=-1) * regions).sum(dim=-1)
+        ) * self.region_scale
+        bboxes = torch.cat([
+            boxes_x.unsqueeze(-1),
+            boxes_y.unsqueeze(-1),
+            boxes_w.unsqueeze(-1),
+            boxes_h.unsqueeze(-1),
+            ], dim=-1)
         return box_convert(bboxes, 'cxcywh', fmt)
 
     def detect(
