@@ -1,5 +1,6 @@
 from torch import Tensor
 import torch.nn as nn
+from torchvision.ops.misc import SqueezeExcitation
 
 
 class BasicConvBD(nn.Sequential):
@@ -175,3 +176,48 @@ class CSENet(nn.Module):
 
     def forward(self, x:Tensor) -> Tensor:
         return self.project(x * self.fusion(x))
+
+
+class LocalSqueezeExcitation(nn.Module):
+
+    def __init__(
+        self,
+        input_channels:   int,
+        squeeze_channels: int,
+        kernel_size:      int=3,
+    ):
+
+        super().__init__()
+        padding = (kernel_size - 1) // 2
+        self.avgpool = nn.AvgPool2d(kernel_size, 1, padding=padding)
+        self.fc1 = nn.Conv2d(input_channels, squeeze_channels, 1)
+        self.fc2 = nn.Conv2d(squeeze_channels, input_channels, 1)
+        self.activation = nn.ReLU(inplace=True)
+        self.scale_activation = nn.Hardsigmoid(inplace=True)
+
+    @classmethod
+    def load_from_se_module(
+            cls,
+            se_module:   SqueezeExcitation,
+            kernel_size: int=3,
+        ) -> 'LocalSqueezeExcitation':
+        squeeze_channels, input_channels, _, _ = se_module.fc1.weight.shape
+        lse_module = cls(input_channels, squeeze_channels, kernel_size)
+        lse_module.fc1.load_state_dict(se_module.fc1.state_dict())
+        lse_module.fc2.load_state_dict(se_module.fc2.state_dict())
+        return lse_module
+
+    def _scale(self, x:Tensor) -> Tensor:
+        scale = self.avgpool(x)
+        scale = self.fc1(scale)
+        scale = self.activation(scale)
+        scale = self.fc2(scale)
+        return self.scale_activation(scale)
+
+    def forward(self, x:Tensor) -> Tensor:
+        scale = self._scale(x)
+        return scale * x
+
+
+if __name__ == "__main__":
+    LocalSqueezeExcitation(10, 5)

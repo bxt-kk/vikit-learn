@@ -19,7 +19,7 @@ from torchvision.models.mobilenetv3 import InvertedResidual
 
 from PIL import Image
 
-from .component import LinearBasicConvBD, CSENet
+from .component import LinearBasicConvBD, CSENet, LocalSqueezeExcitation
 from .detector import Detector
 
 
@@ -72,12 +72,13 @@ class TrimNetDet(Detector):
             for m in features:
                 if not isinstance(m, InvertedResidual): continue
                 block:nn.Sequential = m.block
-                remove_ids = []
+                _ids = []
                 for idx, child in block.named_children():
                     if not isinstance(child, SqueezeExcitation): continue
-                    remove_ids.append(int(idx))
-                for idx in remove_ids[::-1]:
-                    block.pop(idx)
+                    _ids.append(int(idx))
+                for idx in _ids:
+                    block[idx] = LocalSqueezeExcitation.load_from_se_module(
+                        block[idx], kernel_size=3)
 
             features_dim = 24 * 4 + 48 + 96
             merged_dim   = 160
