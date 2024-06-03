@@ -1,3 +1,4 @@
+from torch import Tensor
 import torch.nn as nn
 
 
@@ -111,3 +112,32 @@ class PixelShuffleSample(nn.Sequential):
             nn.BatchNorm2d(in_planes // 2),
             BasicConvBD(in_planes // 2, out_planes, 3),
         )
+
+
+class CSENet(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            out_planes:    int,
+            shrink_factor: int=4,
+        ):
+
+        super().__init__()
+
+        shrink_dim = in_planes // shrink_factor
+        self.merge = nn.Sequential(
+            nn.Conv2d(in_planes, shrink_dim, 1, bias=False),
+            nn.BatchNorm2d(shrink_dim),
+            nn.Conv2d(shrink_dim, shrink_dim, 3, padding=1, groups=shrink_dim, bias=False),
+            nn.BatchNorm2d(shrink_dim),
+            nn.Conv2d(shrink_dim, in_planes, 1, bias=False),
+            nn.Hardsigmoid(inplace=True),
+        )
+        self.project = nn.Sequential(
+            nn.Conv2d(in_planes, out_planes, 1, bias=False),
+            nn.BatchNorm2d(out_planes),
+        )
+
+    def forward(self, x:Tensor) -> Tensor:
+        return self.project(x * self.merge(x))

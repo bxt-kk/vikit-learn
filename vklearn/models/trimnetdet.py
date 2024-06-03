@@ -17,7 +17,7 @@ from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 
 from PIL import Image
 
-from .component import LinearBasicConvBD
+from .component import LinearBasicConvBD, CSENet
 from .detector import Detector
 
 
@@ -95,6 +95,7 @@ class TrimNetDet(Detector):
         )
 
         self.cluster = nn.ModuleList()
+        self.csenets = nn.ModuleList()
         for _ in range(dilation_depth):
             modules = []
             for r in range(dilation_range):
@@ -102,10 +103,11 @@ class TrimNetDet(Detector):
                     LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
             modules.append(nn.Sequential(
                 nn.Hardswish(inplace=True),
-                nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
-                nn.BatchNorm2d(merged_dim),
+                # nn.Conv2d(merged_dim, merged_dim, 1, bias=False), # Note!
+                # nn.BatchNorm2d(merged_dim),
             ))
             self.cluster.append(nn.Sequential(*modules))
+            self.csenets.append(CSENet(merged_dim * 2, merged_dim))
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
@@ -158,8 +160,8 @@ class TrimNetDet(Detector):
             fc,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
-        for layer in self.cluster:
-            x = x + layer(x)
+        for cse, layer in zip(self.csenets, self.cluster):
+            x = x + cse(torch.cat([x, layer(x)], dim=1))
         return x
 
     def forward(
