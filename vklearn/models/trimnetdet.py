@@ -76,7 +76,7 @@ class TrimNetDet(Detector):
                 for idx, child in block.named_children():
                     if not isinstance(child, SqueezeExcitation): continue
                     remove_ids.append(int(idx))
-                for idx in remove_ids:
+                for idx in remove_ids[::-1]:
                     block.pop(idx)
 
             features_dim = 24 * 4 + 48 + 96
