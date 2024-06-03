@@ -22,7 +22,28 @@ class BasicConvBD(nn.Sequential):
             nn.ReLU(inplace=True))
 
 
-class LinearBasicConvBD(nn.Sequential):
+# class LinearBasicConvBD(nn.Sequential):
+#
+#     def __init__(
+#             self,
+#             in_planes:   int,
+#             out_planes:  int,
+#             kernel_size: int=3,
+#             dilation:    int=1,
+#             stride:      int | tuple[int, int]=1
+#         ):
+#
+#         padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
+#         super().__init__(
+#             nn.Conv2d(
+#                 in_planes, in_planes, kernel_size, stride, padding,
+#                 dilation=dilation, groups=in_planes, bias=False),
+#             nn.BatchNorm2d(in_planes),
+#             nn.Conv2d(in_planes, out_planes, 1, bias=False),
+#             nn.BatchNorm2d(out_planes))
+
+
+class LinearBasicConvBD(nn.Module):
 
     def __init__(
             self,
@@ -34,13 +55,24 @@ class LinearBasicConvBD(nn.Sequential):
         ):
 
         padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
-        super().__init__(
+        super().__init__()
+
+        self.layers = nn.Sequential(
             nn.Conv2d(
                 in_planes, in_planes, kernel_size, stride, padding,
                 dilation=dilation, groups=in_planes, bias=False),
             nn.BatchNorm2d(in_planes),
             nn.Conv2d(in_planes, out_planes, 1, bias=False),
             nn.BatchNorm2d(out_planes))
+
+        self.use_res_connect = in_planes == out_planes
+
+    def forward(self, x:Tensor) -> Tensor:
+        result = self.layers(x)
+        if self.use_res_connect:
+            result = result + x
+        return result
+
 
 
 class BasicConvDB(nn.Sequential):
