@@ -11,7 +11,7 @@ from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 
 from PIL import Image
 
-from .component import LinearBasicConvBD
+from .component import LinearBasicConvBD, CSENet
 from .classifier import Classifier
 
 
@@ -79,17 +79,16 @@ class TrimNetClf(Classifier):
         )
 
         self.cluster = nn.ModuleList()
+        self.csenets = nn.ModuleList()
         for _ in range(dilation_depth):
             modules = []
             for r in range(dilation_range):
                 modules.append(
                     LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
-            modules.append(nn.Sequential(
-                nn.Hardswish(inplace=True),
-                nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
-                nn.BatchNorm2d(merged_dim),
-            ))
+            modules.append(nn.Hardswish(inplace=True))
             self.cluster.append(nn.Sequential(*modules))
+            self.csenets.append(CSENet(
+                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
 
         self.predict_clss = nn.Sequential(
             # nn.BatchNorm2d(merged_dim),
@@ -121,8 +120,8 @@ class TrimNetClf(Classifier):
             fc,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
-        for layer in self.cluster:
-            x = x + layer(x)
+        for csenet_i, cluster_i in zip(self.csenets, self.cluster):
+            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
         return x
 
     def forward(

@@ -120,16 +120,18 @@ class CSENet(nn.Module):
             self,
             in_planes:     int,
             out_planes:    int,
+            kernel_size:   int=3,
             shrink_factor: int=4,
         ):
 
         super().__init__()
 
         shrink_dim = in_planes // shrink_factor
-        self.merge = nn.Sequential(
+        padding = (kernel_size - 1) // 2
+        self.fusion = nn.Sequential(
             nn.Conv2d(in_planes, shrink_dim, 1, bias=False),
             nn.BatchNorm2d(shrink_dim),
-            nn.Conv2d(shrink_dim, shrink_dim, 3, padding=1, groups=shrink_dim, bias=False),
+            nn.Conv2d(shrink_dim, shrink_dim, kernel_size, padding=padding, groups=shrink_dim, bias=False),
             nn.BatchNorm2d(shrink_dim),
             nn.Conv2d(shrink_dim, in_planes, 1, bias=False),
             nn.Hardsigmoid(inplace=True),
@@ -140,4 +142,4 @@ class CSENet(nn.Module):
         )
 
     def forward(self, x:Tensor) -> Tensor:
-        return self.project(x * self.merge(x))
+        return self.project(x * self.fusion(x))

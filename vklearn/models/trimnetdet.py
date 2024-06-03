@@ -101,13 +101,10 @@ class TrimNetDet(Detector):
             for r in range(dilation_range):
                 modules.append(
                     LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
-            modules.append(nn.Sequential(
-                nn.Hardswish(inplace=True),
-                # nn.Conv2d(merged_dim, merged_dim, 1, bias=False), # Note!
-                # nn.BatchNorm2d(merged_dim),
-            ))
+            modules.append(nn.Hardswish(inplace=True))
             self.cluster.append(nn.Sequential(*modules))
-            self.csenets.append(CSENet(merged_dim * 2, merged_dim))
+            self.csenets.append(CSENet(
+                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
@@ -160,8 +157,8 @@ class TrimNetDet(Detector):
             fc,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
-        for cse, layer in zip(self.csenets, self.cluster):
-            x = x + cse(torch.cat([x, layer(x)], dim=1))
+        for csenet_i, cluster_i in zip(self.csenets, self.cluster):
+            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
         return x
 
     def forward(
