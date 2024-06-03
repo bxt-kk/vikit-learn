@@ -90,7 +90,7 @@ class Detector:
             ax.add_patch(Rectangle(
                 (x1, y1), x2 - x1, y2 - y1, color=color, fill=False))
             ax.annotate(
-                obj['label'],
+                f"{obj['label']}: {round(obj['score'], 3)}",
                 (x1, y1),
                 color=text_color,
                 ha='left',

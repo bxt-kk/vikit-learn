@@ -14,6 +14,8 @@ from torchvision.ops import (
 )
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
+from torchvision.ops.misc import SqueezeExcitation
+from torchvision.models.mobilenetv3 import InvertedResidual
 
 from PIL import Image
 
@@ -66,6 +68,16 @@ class TrimNetDet(Detector):
                 weights=MobileNet_V3_Small_Weights.DEFAULT
                 if backbone_pretrained else None,
             ).features
+
+            for m in features:
+                if not isinstance(m, InvertedResidual): continue
+                block:nn.Sequential = m.block
+                remove_ids = []
+                for idx, child in block.named_children():
+                    if not isinstance(child, SqueezeExcitation): continue
+                    remove_ids.append(int(idx))
+                for idx in remove_ids:
+                    block.pop(idx)
 
             features_dim = 24 * 4 + 48 + 96
             merged_dim   = 160

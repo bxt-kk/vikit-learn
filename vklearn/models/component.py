@@ -54,9 +54,9 @@ class LinearBasicConvBD(nn.Module):
             stride:      int | tuple[int, int]=1
         ):
 
-        padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
         super().__init__()
 
+        padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
         self.layers = nn.Sequential(
             nn.Conv2d(
                 in_planes, in_planes, kernel_size, stride, padding,
