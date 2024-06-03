@@ -160,12 +160,8 @@ class CSENet(nn.Module):
         super().__init__()
 
         shrink_dim = in_planes // shrink_factor
-        padding = (kernel_size - 1) // 2
         self.fusion = nn.Sequential(
-            nn.Conv2d(in_planes, shrink_dim, 1, bias=False),
-            nn.BatchNorm2d(shrink_dim),
-            nn.Conv2d(shrink_dim, shrink_dim, kernel_size, padding=padding, groups=shrink_dim, bias=False),
-            nn.BatchNorm2d(shrink_dim),
+            BasicConvDB(in_planes, shrink_dim, kernel_size),
             nn.Conv2d(shrink_dim, in_planes, 1, bias=False),
             nn.Hardsigmoid(inplace=True),
         )
@@ -181,15 +177,12 @@ class CSENet(nn.Module):
 class LocalSqueezeExcitation(nn.Module):
 
     def __init__(
-        self,
-        input_channels:   int,
-        squeeze_channels: int,
-        kernel_size:      int=3,
-    ):
+            self,
+            input_channels:   int,
+            squeeze_channels: int,
+        ):
 
         super().__init__()
-        padding = (kernel_size - 1) // 2
-        self.avgpool = nn.AvgPool2d(kernel_size, 1, padding=padding)
         self.fc1 = nn.Conv2d(input_channels, squeeze_channels, 1)
         self.fc2 = nn.Conv2d(squeeze_channels, input_channels, 1)
         self.activation = nn.ReLU(inplace=True)
@@ -199,17 +192,16 @@ class LocalSqueezeExcitation(nn.Module):
     def load_from_se_module(
             cls,
             se_module:   SqueezeExcitation,
-            kernel_size: int=3,
         ) -> 'LocalSqueezeExcitation':
+
         squeeze_channels, input_channels, _, _ = se_module.fc1.weight.shape
-        lse_module = cls(input_channels, squeeze_channels, kernel_size)
+        lse_module = cls(input_channels, squeeze_channels)
         lse_module.fc1.load_state_dict(se_module.fc1.state_dict())
         lse_module.fc2.load_state_dict(se_module.fc2.state_dict())
         return lse_module
 
     def _scale(self, x:Tensor) -> Tensor:
-        scale = self.avgpool(x)
-        scale = self.fc1(scale)
+        scale = self.fc1(x)
         scale = self.activation(scale)
         scale = self.fc2(scale)
         return self.scale_activation(scale)

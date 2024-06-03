@@ -77,8 +77,7 @@ class TrimNetDet(Detector):
                     if not isinstance(child, SqueezeExcitation): continue
                     _ids.append(int(idx))
                 for idx in _ids:
-                    block[idx] = LocalSqueezeExcitation.load_from_se_module(
-                        block[idx], kernel_size=3)
+                    block[idx] = LocalSqueezeExcitation.load_from_se_module(block[idx])
 
             features_dim = 24 * 4 + 48 + 96
             merged_dim   = 160
