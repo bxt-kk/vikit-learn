@@ -20,6 +20,7 @@ from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 from PIL import Image
 
 from .component import LinearBasicConvBD, CSENet #, LocalSqueezeExcitation
+from .component import DetPredictor
 from .detector import Detector
 
 
@@ -140,13 +141,23 @@ class TrimNetDet(Detector):
                 ),
             ))
 
-        object_dim = self.bbox_dims + self.num_classes
-        self.predict_objs = nn.Sequential(
-            nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
-            nn.BatchNorm2d(expanded_dim),
-            nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(expanded_dim, self.num_anchors * object_dim, kernel_size=1),
+        object_dim = self.bbox_dim + self.num_classes
+        # self.predict_objs = nn.Sequential(
+        #     nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
+        #     nn.BatchNorm2d(expanded_dim),
+        #     nn.Hardswish(inplace=True),
+        #     nn.Dropout(p=dropout, inplace=True),
+        #     nn.Conv2d(expanded_dim, self.num_anchors * object_dim, kernel_size=1),
+        # )
+        self.predict_objs = DetPredictor(
+            merged_dim + ex_anchor_dim,
+            correct_factor=4,
+            hidden_planes=expanded_dim,
+            num_anchors=self.num_anchors,
+            bbox_dim=self.bbox_dim,
+            num_classes=self.num_classes,
+            dropout_bbox=min(0.1, dropout),
+            dropout_clss=dropout,
         )
 
     def forward_features(
@@ -291,7 +302,7 @@ class TrimNetDet(Detector):
 
         boxes = torch.stack([x1, y1, x2, y2]).T
         # final_ids = nms(boxes, conf, iou_thresh)
-        clss = torch.softmax(objs[:, self.bbox_dims:], dim=-1).max(dim=-1)
+        clss = torch.softmax(objs[:, self.bbox_dim:], dim=-1).max(dim=-1)
         labels, probs = clss.indices, clss.values
         scores = conf * probs
         final_ids = box_ops.batched_nms(boxes, scores, labels, iou_thresh)
@@ -394,12 +405,12 @@ class TrimNetDet(Detector):
         bbox_loss = torch.zeros_like(conf_loss)
         clss_loss = torch.zeros_like(conf_loss)
         if objects.shape[0] > 0:
-            pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dims]
+            pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
             pred_xyxy = self.pred2boxes(pred_cxcywh, target_index)
             bbox_loss = generalized_box_iou_loss(
                 pred_xyxy, target_bboxes, reduction=reduction)
 
-            pred_clss = objects[:, num_confs + self.bbox_dims:]
+            pred_clss = objects[:, num_confs + self.bbox_dim:]
             clss_loss = F.cross_entropy(
                 pred_clss, target_labels, reduction=reduction)
 
@@ -408,7 +419,7 @@ class TrimNetDet(Detector):
         loss = (
             weights.get('conf', 1.) * conf_loss +
             weights.get('bbox', 1.) * bbox_loss +
-            weights.get('clss', 1.) * clss_loss
+            weights.get('clss', 0.33) * clss_loss
         )
 
         return dict(
@@ -452,7 +463,7 @@ class TrimNetDet(Detector):
         clss_accuracy = torch.ones_like(conf_f1)
         obj_conf_min = torch.zeros_like(conf_f1)
         if objects.shape[0] > 0:
-            pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dims]
+            pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
             pred_xyxy = self.pred2boxes(pred_cxcywh, target_index)
             targ_xyxy = target_bboxes
 
@@ -467,7 +478,7 @@ class TrimNetDet(Detector):
             union = pred_area + targ_area - intersection
             iou_score = (intersection / union).mean()
 
-            pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dims:], dim=-1)
+            pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
             clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
 
             obj_conf = torch.sigmoid(objects[:, :num_confs])
@@ -516,9 +527,9 @@ class TrimNetDet(Detector):
         objects = inputs[preds_index]
 
         pred_scores = torch.sigmoid(objects[:, num_confs - 1])
-        pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dims]
+        pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
         pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index), 0.)
-        pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dims:], dim=-1)
+        pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
 
         preds = []
         target = []

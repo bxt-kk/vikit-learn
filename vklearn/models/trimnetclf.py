@@ -179,6 +179,7 @@ class TrimNetClf(Classifier):
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
         x = self.forward(x)
+        top_k = min(self.num_classes, top_k)
         topk = x.squeeze(dim=0).softmax(dim=-1).topk(top_k)
         probs = [round(v, 5) for v in topk.values.tolist()]
         labels = [self.categories[cid] for cid in topk.indices]

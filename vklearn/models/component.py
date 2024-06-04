@@ -1,4 +1,5 @@
 from torch import Tensor
+import torch
 import torch.nn as nn
 from torchvision.ops.misc import SqueezeExcitation
 
@@ -188,3 +189,45 @@ class LocalSqueezeExcitation(nn.Module):
     def forward(self, x:Tensor) -> Tensor:
         scale = self._scale(x)
         return scale * x
+
+
+class DetPredictor(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:      int,
+            correct_factor: int,
+            hidden_planes:  int,
+            num_anchors:    int,
+            bbox_dim:       int,
+            num_classes:    int,
+            dropout_bbox:   float,
+            dropout_clss:   float,
+        ):
+
+        super().__init__()
+
+        corrected_dim = correct_factor * bbox_dim
+        self.predict_bbox = nn.Sequential(
+            nn.Conv2d(in_planes, corrected_dim, kernel_size=1, bias=False),
+            nn.BatchNorm2d(corrected_dim),
+            nn.Hardswish(inplace=True),
+            nn.Dropout(p=dropout_bbox, inplace=True),
+            nn.Conv2d(corrected_dim, num_anchors * bbox_dim, kernel_size=1),
+        )
+
+        self.predict_clss = nn.Sequential(
+            nn.Conv2d(in_planes, hidden_planes, kernel_size=1, bias=False),
+            nn.BatchNorm2d(hidden_planes),
+            nn.Hardswish(inplace=True),
+            nn.Dropout(p=dropout_clss, inplace=True),
+            nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
+        )
+
+        self.num_anchors = num_anchors
+
+    def forward(self, x:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+        p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
+        p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
+        return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)

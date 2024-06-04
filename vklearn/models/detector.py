@@ -39,7 +39,7 @@ class Detector(Basic):
         self.num_anchors = len(anchors)
         self.cell_size   = 16
         self.regions     = torch.tensor([[2**k for k in range(6)]])
-        self.bbox_dims   = 2 + (self.regions.shape[1] + 1) * 2
+        self.bbox_dim    = 2 + (self.regions.shape[1] + 1) * 2
 
         self.m_ap_metric = MeanAveragePrecision(
             iou_type='bbox', backend='faster_coco_eval')
