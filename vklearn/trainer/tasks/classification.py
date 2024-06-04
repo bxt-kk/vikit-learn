@@ -134,3 +134,22 @@ class Classification(Task):
             'hyperparameters': self.model.hyperparameters(),
             'optim': optimizer.state_dict()}, filename)
         return filename
+
+    def choose_best_model(
+            self,
+            output:    str,
+            optimizer: Optimizer,
+            logger:    Logger,
+        ) -> bool:
+
+        metric = logger.compute('metric')['f1_score']
+        if self.best_metric >= metric: return False
+
+        self.best_metric = metric
+        out_path = os.path.splitext(output)[0]
+        filename = f'{out_path}-best.pt'
+        torch.save({
+            'model': self.model.state_dict(),
+            'hyperparameters': self.model.hyperparameters(),
+            'optim': optimizer.state_dict()}, filename)
+        return True

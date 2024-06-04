@@ -17,6 +17,7 @@ class Task:
     loss_options:       Dict[str, Any]=field(default_factory=dict)
     score_options:      Dict[str, Any]=field(default_factory=dict)
     metric_options:     Dict[str, Any]=field(default_factory=dict)
+    best_metric:        float=0
 
     def setting_optimizer(
             self,
@@ -71,5 +72,14 @@ class Task:
             output:    str,
             optimizer: Optimizer,
         ) -> str:
+
+        assert not 'this is an empty func'
+
+    def choose_best_model(
+            self,
+            output:    str,
+            optimizer: Optimizer,
+            logger:    Logger,
+        ) -> bool:
 
         assert not 'this is an empty func'

@@ -143,6 +143,9 @@ class Trainer:
             task.end_on_epoch(epoch, logger)
             print(logger.dumpf())
 
+            print('A new best model emerges:',
+                task.choose_best_model(self.output, optimizer, logger))
+
             if (epoch + 1) % self.save_epoch == 0:
                 checkpoint_filename = task.save_checkpoint(
                     epoch, self.output, optimizer)
