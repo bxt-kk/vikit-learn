@@ -49,7 +49,7 @@ class TrimNetDet(Detector):
             dilation_range:      int=4,
             num_tries:           int=3,
             swap_size:           int=8,
-            dropout:             float=0.1,
+            dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
         ):
@@ -141,7 +141,7 @@ class TrimNetDet(Detector):
                 ),
             ))
 
-        object_dim = self.bbox_dim + self.num_classes
+        # object_dim = self.bbox_dim + self.num_classes
         # self.predict_objs = nn.Sequential(
         #     nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
         #     nn.BatchNorm2d(expanded_dim),
