@@ -18,10 +18,10 @@ class BasicConvBD(nn.Sequential):
         super().__init__(
             nn.Conv2d(in_planes, in_planes, kernel_size, stride, padding, groups=in_planes, bias=False),
             nn.BatchNorm2d(in_planes),
-            nn.ReLU(inplace=True),
+            nn.Hardswish(inplace=True),
             nn.Conv2d(in_planes, out_planes, 1, bias=False),
             nn.BatchNorm2d(out_planes),
-            nn.ReLU(inplace=True))
+            nn.Hardswish(inplace=True))
 
 
 class LinearBasicConvBD(nn.Module):

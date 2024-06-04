@@ -19,7 +19,7 @@ from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 
 from PIL import Image
 
-from .component import LinearBasicConvBD, CSENet #, LocalSqueezeExcitation
+from .component import LinearBasicConvBD, CSENet, BasicConvBD #, LocalSqueezeExcitation
 # from .component import DetPredictor
 from .detector import Detector
 
@@ -48,7 +48,7 @@ class TrimNetDet(Detector):
             dilation_depth:      int=4,
             dilation_range:      int=4,
             num_tries:           int=3,
-            swap_size:           int=8,
+            swap_size:           int=16,
             dropout:             float=0.1,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
@@ -122,23 +122,29 @@ class TrimNetDet(Detector):
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
         self.predict_conf_tries = nn.ModuleList([nn.Sequential(
+            # nn.Dropout(p=dropout, inplace=True),
+            # nn.Conv2d(
+            #     merged_dim,
+            #     ex_anchor_dim,
+            #     kernel_size=3,
+            #     padding=1,
+            # ),
+            BasicConvBD(merged_dim, merged_dim, kernel_size=3),
             nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(
-                merged_dim,
-                ex_anchor_dim,
-                kernel_size=3,
-                padding=1,
-            ),
+            nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
         )])
         for _ in range(1, num_tries):
             self.predict_conf_tries.append(nn.Sequential(
+                # nn.Dropout(p=dropout, inplace=True),
+                # nn.Conv2d(
+                #     merged_dim + ex_anchor_dim,
+                #     ex_anchor_dim,
+                #     kernel_size=3,
+                #     padding=1,
+                # ),
+                BasicConvBD(merged_dim + ex_anchor_dim, merged_dim, kernel_size=3),
                 nn.Dropout(p=dropout, inplace=True),
-                nn.Conv2d(
-                    merged_dim + ex_anchor_dim,
-                    ex_anchor_dim,
-                    kernel_size=3,
-                    padding=1,
-                ),
+                nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
         # self.predict_objs = DetPredictor(
