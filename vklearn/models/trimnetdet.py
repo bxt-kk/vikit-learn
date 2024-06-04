@@ -122,41 +122,17 @@ class TrimNetDet(Detector):
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
         self.predict_conf_tries = nn.ModuleList([nn.Sequential(
-            # nn.Dropout(p=dropout, inplace=True),
-            # nn.Conv2d(
-            #     merged_dim,
-            #     ex_anchor_dim,
-            #     kernel_size=3,
-            #     padding=1,
-            # ),
             BasicConvBD(merged_dim, merged_dim, kernel_size=3),
             nn.Dropout(p=dropout, inplace=True),
             nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
         )])
         for _ in range(1, num_tries):
             self.predict_conf_tries.append(nn.Sequential(
-                # nn.Dropout(p=dropout, inplace=True),
-                # nn.Conv2d(
-                #     merged_dim + ex_anchor_dim,
-                #     ex_anchor_dim,
-                #     kernel_size=3,
-                #     padding=1,
-                # ),
                 BasicConvBD(merged_dim + ex_anchor_dim, merged_dim, kernel_size=3),
                 nn.Dropout(p=dropout, inplace=True),
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        # self.predict_objs = DetPredictor(
-        #     merged_dim + ex_anchor_dim,
-        #     correct_factor=4,
-        #     hidden_planes=expanded_dim,
-        #     num_anchors=self.num_anchors,
-        #     bbox_dim=self.bbox_dim,
-        #     num_classes=self.num_classes,
-        #     dropout_bbox=min(0.1, dropout),
-        #     dropout_clss=dropout,
-        # )
         object_dim = self.bbox_dim + self.num_classes
         self.predict_objs = nn.Sequential(
             nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
