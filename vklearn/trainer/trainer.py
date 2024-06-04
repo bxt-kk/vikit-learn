@@ -26,7 +26,7 @@ class Trainer:
     drop_optim:   bool=False
     lr:           float=1e-3
     eta_min:      float=1e-5
-    T_num:        int=1,
+    T_num:        int=1
     weight_decay: float=0.
     epochs:       int=1
     show_step:    int=50
