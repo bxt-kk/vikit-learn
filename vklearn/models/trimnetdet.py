@@ -360,7 +360,7 @@ class TrimNetDet(Detector):
 
         conf_loss = (
             obj_loss * alpha / max(1, num_foreground_per_img) +
-            sampled_loss)
+            sampled_loss) / num_confs
 
         return conf_loss, sampled_loss, sample_mask
 
