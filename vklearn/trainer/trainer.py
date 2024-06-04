@@ -26,6 +26,7 @@ class Trainer:
     drop_optim:   bool=False
     lr:           float=1e-3
     eta_min:      float=1e-5
+    T_num:        int=1,
     weight_decay: float=0.
     epochs:       int=1
     show_step:    int=50
@@ -75,7 +76,7 @@ class Trainer:
         lrf = self.eta_min / self.lr
         self.lr_scheduler = LambdaLR(self.optimizer, lr_lambda=
             lambda epoch:
-            (1 + math.cos(epoch / self.epochs * math.pi)) *
+            (1 + math.cos(epoch / (self.epochs / self.T_num) * math.pi)) *
             0.5 * (1 - lrf) + lrf)
 
     def fit(
