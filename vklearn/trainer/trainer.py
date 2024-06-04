@@ -1,15 +1,16 @@
 #! /usr/bin/env python3
 from pprint import pprint
 from dataclasses import dataclass
+import math
 
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LambdaLR
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from .task import Task
-# from .logger import Logger
 from .logging import Logger
 
 
@@ -22,8 +23,9 @@ class Trainer:
     valid_loader: DataLoader=None
     test_loader:  DataLoader=None
     checkpoint:   str=None
-    drop_optim:   bool=False,
+    drop_optim:   bool=False
     lr:           float=1e-3
+    eta_min:      float=1e-5
     weight_decay: float=0.
     epochs:       int=1
     show_step:    int=50
@@ -44,11 +46,14 @@ class Trainer:
     def initialize(self):
         print('Preparing ...')
         self.device:torch.device = self.task.device
-        self.model:nn.Module     = self.task.model.to(self.device)
+        print('device:', self.device)
+
+        self.model:nn.Module = self.task.model.to(self.device)
+
         self.optimizer:Optimizer = self.task.setting_optimizer(
             self.lr, self.weight_decay)
+        print('optimizer:', self.optimizer)
 
-        print('device:', self.device)
         for kind, loader in zip(
             ['train', 'valid', 'test'],
             [self.train_loader, self.valid_loader, self.test_loader],
@@ -59,8 +64,6 @@ class Trainer:
                 batch_size=loader.batch_size,
                 num_workers=loader.num_workers,
             ))
-            
-        print('optimizer:', self.optimizer)
 
         if self.checkpoint is not None:
             print('checkpoint:', self.checkpoint)
@@ -68,6 +71,12 @@ class Trainer:
             self.model.load_state_dict(state_dict['model'])
             if not self.drop_optim:
                 self.optimizer.load_state_dict(state_dict['optim'])
+
+        lrf = self.eta_min / self.lr
+        self.lr_scheduler = LambdaLR(self.optimizer, lr_lambda=
+            lambda epoch:
+            (1 + math.cos(epoch / self.epochs * math.pi)) *
+            0.5 * (1 - lrf) + lrf)
 
     def fit(
             self,
@@ -91,6 +100,7 @@ class Trainer:
                 valid_generator = iter(valid_loader)
 
             print('train mode:', self.model.training)
+            print(f'lr={self.lr_scheduler.get_last_lr()}')
             for step, sample in enumerate(train_loader):
                 task.train_on_step(epoch, step, sample, optimizer, logger)
 
@@ -111,6 +121,8 @@ class Trainer:
 
                 if (max_train_step > 0) and (step >= max_train_step):
                     break
+
+            self.lr_scheduler.step()
 
             self.model.eval()
             test_loader = self.test_loader
