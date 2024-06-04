@@ -14,12 +14,12 @@ from torchvision.ops import (
 )
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
-from torchvision.ops.misc import SqueezeExcitation
-from torchvision.models.mobilenetv3 import InvertedResidual
+# from torchvision.ops.misc import SqueezeExcitation
+# from torchvision.models.mobilenetv3 import InvertedResidual
 
 from PIL import Image
 
-from .component import LinearBasicConvBD, CSENet, LocalSqueezeExcitation
+from .component import LinearBasicConvBD, CSENet #, LocalSqueezeExcitation
 from .detector import Detector
 
 
@@ -69,15 +69,15 @@ class TrimNetDet(Detector):
                 if backbone_pretrained else None,
             ).features
 
-            for m in features:
-                if not isinstance(m, InvertedResidual): continue
-                block:nn.Sequential = m.block
-                _ids = []
-                for idx, child in block.named_children():
-                    if not isinstance(child, SqueezeExcitation): continue
-                    _ids.append(int(idx))
-                for idx in _ids:
-                    block[idx] = LocalSqueezeExcitation.load_from_se_module(block[idx])
+            # for m in features:
+            #     if not isinstance(m, InvertedResidual): continue
+            #     block:nn.Sequential = m.block
+            #     _ids = []
+            #     for idx, child in block.named_children():
+            #         if not isinstance(child, SqueezeExcitation): continue
+            #         _ids.append(int(idx))
+            #     for idx in _ids:
+            #         block[idx] = LocalSqueezeExcitation.load_from_se_module(block[idx])
 
             features_dim = 24 * 4 + 48 + 96
             merged_dim   = 160
