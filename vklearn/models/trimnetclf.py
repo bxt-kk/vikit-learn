@@ -8,12 +8,10 @@ import torch.nn.functional as F
 
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
-# from torchvision.ops.misc import SqueezeExcitation
-# from torchvision.models.mobilenetv3 import InvertedResidual
 
 from PIL import Image
 
-from .component import LinearBasicConvBD, CSENet #, LocalSqueezeExcitation
+from .component import LinearBasicConvBD, CSENet
 from .classifier import Classifier
 
 
@@ -67,16 +65,6 @@ class TrimNetClf(Classifier):
                 if backbone_pretrained else None,
             ).features
 
-            # for m in features:
-            #     if not isinstance(m, InvertedResidual): continue
-            #     block:nn.Sequential = m.block
-            #     _ids = []
-            #     for idx, child in block.named_children():
-            #         if not isinstance(child, SqueezeExcitation): continue
-            #         _ids.append(int(idx))
-            #     for idx in _ids:
-            #         block[idx] = LocalSqueezeExcitation.load_from_se_module(block[idx])
-
             features_dim = 32 * 4 + 96 + 320
             merged_dim   = 320
             expanded_dim = 640
@@ -112,11 +100,7 @@ class TrimNetClf(Classifier):
             nn.Linear(expanded_dim, self.num_classes)
         )
 
-    def forward_features(
-            self,
-            x:              Tensor,
-        ) -> Tensor:
-
+    def forward_features(self, x:Tensor) -> Tensor:
         if not self._keep_features:
             fd = self.features_d(x)
             fc = self.features_c(fd)
@@ -136,11 +120,7 @@ class TrimNetClf(Classifier):
             x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
         return x
 
-    def forward(
-            self,
-            x:              Tensor,
-        ) -> Tensor:
-
+    def forward(self, x:Tensor) -> Tensor:
         x = self.forward_features(x)
         return self.predict_clss(x)
 
@@ -174,7 +154,7 @@ class TrimNetClf(Classifier):
             align_size: int=224,
         ) -> List[Dict[str, Any]]:
 
-        device = next(self.parameters()).device
+        device = self.get_model_device()
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
@@ -198,7 +178,6 @@ class TrimNetClf(Classifier):
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
-
         loss = F.cross_entropy(inputs, target, reduction=reduction)
 
         return dict(

@@ -142,11 +142,7 @@ class TrimNetDet(Detector):
             nn.Conv2d(expanded_dim, self.num_anchors * object_dim, kernel_size=1),
         )
 
-    def forward_features(
-            self,
-            x:              Tensor,
-        ) -> Tensor:
-
+    def forward_features(self, x:Tensor) -> Tensor:
         if not self._keep_features:
             fd = self.features_d(x)
             fc = self.features_c(fd)
@@ -166,11 +162,7 @@ class TrimNetDet(Detector):
             x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
         return x
 
-    def forward(
-            self,
-            x:              Tensor,
-        ) -> Tensor:
-
+    def forward(self, x:Tensor) -> Tensor:
         x = self.forward_features(x)
         confs = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
@@ -222,8 +214,9 @@ class TrimNetDet(Detector):
             align_size:  int=448,
             mini_side:   int=1,
         ) -> List[Dict[str, Any]]:
+        # RV-240605
 
-        device = next(self.parameters()).device
+        device = self.get_model_device()
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
@@ -247,7 +240,6 @@ class TrimNetDet(Detector):
         index = torch.nonzero(mask, as_tuple=True)
         if len(index[0]) == 0: return []
 
-        # p_objs = self.predict_objs(mix)[index[0], :, index[2], index[3]]
         p_objs = self.predict_objs(
             mix[index[0], :, index[2], index[3]].reshape(len(index[0]), -1, 1, 1))
 
@@ -265,11 +257,11 @@ class TrimNetDet(Detector):
         cy = (rids + torch.tanh(objs[:, 1]) + 0.5) * self.cell_size
 
         regions = self.regions.type_as(objs)
-        rw  = (
+        rw = (
             torch.tanh(objs[:, 2 + 0]) +
             (objs[:, 2 + 1:2 + 7].softmax(dim=-1) * regions).sum(dim=-1)
         ) * self.region_scale
-        rh  = (
+        rh = (
             torch.tanh(objs[:, 2 + 7]) +
             (objs[:, 2 + 8:2 + 14].softmax(dim=-1) * regions).sum(dim=-1)
         ) * self.region_scale
@@ -283,7 +275,6 @@ class TrimNetDet(Detector):
         y2 = torch.clamp((y2 - pad_y) / scale, 1, raw_h)
 
         boxes = torch.stack([x1, y1, x2, y2]).T
-        # final_ids = nms(boxes, conf, iou_thresh)
         clss = torch.softmax(objs[:, self.bbox_dim:], dim=-1).max(dim=-1)
         labels, probs = clss.indices, clss.values
         scores = conf * probs
@@ -292,13 +283,12 @@ class TrimNetDet(Detector):
         boxes = boxes[final_ids]
         labels = labels[final_ids]
         probs = probs[final_ids]
-        # scores = conf[final_ids] * probs
         scores = scores[final_ids]
 
         result = []
         for score, box, label, prob in zip(scores, boxes, labels, probs):
-            if score.item() < conf_thresh: continue
-            if (box[2:] - box[:2]).min().item() < mini_side: continue
+            if score < conf_thresh: continue
+            if (box[2:] - box[:2]).min() < mini_side: continue
             result.append(dict(
                 score=round(score.item(), 5),
                 box=box.round().tolist(),
@@ -317,6 +307,7 @@ class TrimNetDet(Detector):
             alpha:        float,
             gamma:        float,
         ) -> Tuple[Tensor, Tensor, Tensor]:
+        # RV-240605
 
         reduction = 'mean'
 
@@ -338,7 +329,8 @@ class TrimNetDet(Detector):
         )
 
         obj_loss = 0.
-        obj_mask = torch.logical_and(sample_mask, targ_conf > 0.5)
+        # obj_mask = torch.logical_and(sample_mask, targ_conf > 0.5)
+        obj_mask = targ_conf > 0.5
         if obj_mask.sum() > 0:
             obj_pred = torch.masked_select(pred_conf, obj_mask)
             obj_targ = torch.masked_select(targ_conf, obj_mask)

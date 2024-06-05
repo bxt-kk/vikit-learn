@@ -66,5 +66,8 @@ class Basic(nn.Module):
         ])(frame).unsqueeze(dim=0)
         return inputs, scale, pad_x, pad_y
 
+    def get_model_device(self) -> torch.device:
+        return next(self.parameters()).device
+
     def train_features(self, flag:bool):
         self._keep_features = not flag
