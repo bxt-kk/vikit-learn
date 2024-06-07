@@ -1,21 +1,11 @@
-from typing import Any, Callable, List, Tuple, Dict
+from typing import Any, Callable, List, Tuple
 import os.path
-import json
 
 from PIL import Image
 
 import torch
 from torchvision.datasets.vision import VisionDataset
 from torchvision import tv_tensors
-
-
-COCO_LABELS_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), 'ms_coco_classnames.json')
-
-with open(COCO_LABELS_PATH) as f:
-    coco_classnames = {int(_id) - 1: name
-        for _id, name in json.load(f).items()
-        if _id != '0'}
 
 
 class CocoDetection(VisionDataset):
@@ -26,7 +16,6 @@ class CocoDetection(VisionDataset):
     Args:
         root: Root directory where images are downloaded to.
         annFile: Path to json annotation file.
-        category_max_id: Set the maximum category ID to limit the target category range.
         max_datas_size: For large amounts of data, it is used to limit the number of samples,
             and the default is 0, which means no limit.
         transform: A function/transform that takes in a PIL image
@@ -36,13 +25,11 @@ class CocoDetection(VisionDataset):
         transforms: A function/transform that takes input sample and its target as entry
             and returns a transformed version.
     '''
-    CLASSNAMES:Dict[int, str] = coco_classnames
-
     def __init__(
         self,
         root:             str,
         annFile:          str,
-        category_max_id:  int=80,
+        category_type:    str='name',
         max_datas_size:   int=0,
         transform:        Callable | None=None,
         target_transform: Callable | None=None,
@@ -51,10 +38,35 @@ class CocoDetection(VisionDataset):
         super().__init__(root, transforms, transform, target_transform)
         from pycocotools.coco import COCO
 
+        assert category_type in ('name', 'supercategory')
+
         self.coco = COCO(annFile)
         self.ids = list(sorted(self.coco.imgs.keys()))
-        self.category_max_id = category_max_id
+        self.category_type = category_type
         self.max_datas_size = max_datas_size if max_datas_size > 0 else len(self.ids)
+
+        self.coid2name = {
+            clss['id']: clss['name']
+            for clss in self.coco.dataset['categories']}
+        self.coid2supercategory = {
+            clss['id']: clss['supercategory']
+            for clss in self.coco.dataset['categories']}
+
+        self.names = [
+            self.coid2name[i]
+            for i in range(len(self.coid2name))]
+        self.supercategories = []
+        for i in range(len(self.coid2supercategory)):
+            category = self.coid2supercategory[i]
+            if category in self.supercategories: continue
+            self.supercategories.append(category)
+
+        if category_type == 'name':
+            self.classes = self.names
+            self.coid2class = self.coid2name
+        elif category_type == 'supercategory':
+            self.classes = self.supercategories
+            self.coid2class = self.coid2supercategory
 
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
@@ -67,7 +79,7 @@ class CocoDetection(VisionDataset):
         # return self.coco.loadAnns(self.coco.getAnnIds(id))
         return [
             ann for ann in self.coco.loadAnns(self.coco.getAnnIds(id))
-            if (0 < ann['category_id']) and (ann['category_id'] <= self.category_max_id)]
+            if ann['category_id'] > 0]
 
     def _format_anns(
             self,
@@ -81,7 +93,9 @@ class CocoDetection(VisionDataset):
             format='XYXY',
             canvas_size=(image_size[1], image_size[0]),
         )
-        labels = torch.LongTensor([ann['category_id'] - 1 for ann in anns if validation(ann)])
+        labels = torch.LongTensor([
+            self.classes.index(self.coid2class[ann['category_id']])
+            for ann in anns if validation(ann)])
         return dict(boxes=boxes, labels=labels)
 
     def __getitem__(self, index:int) -> Tuple[Any, Any]:

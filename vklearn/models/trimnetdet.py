@@ -20,7 +20,7 @@ from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 from PIL import Image
 
 from .component import LinearBasicConvBD, CSENet, BasicConvBD #, LocalSqueezeExcitation
-# from .component import DetPredictor
+from .component import DetPredictor
 from .detector import Detector
 
 
@@ -133,13 +133,21 @@ class TrimNetDet(Detector):
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        object_dim = self.bbox_dim + self.num_classes
-        self.predict_objs = nn.Sequential(
-            nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
-            nn.BatchNorm2d(expanded_dim),
-            nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(expanded_dim, self.num_anchors * object_dim, kernel_size=1),
+        # object_dim = self.bbox_dim + self.num_classes
+        # self.predict_objs = nn.Sequential(
+        #     nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
+        #     nn.BatchNorm2d(expanded_dim),
+        #     nn.Hardswish(inplace=True),
+        #     nn.Dropout(p=dropout, inplace=True),
+        #     nn.Conv2d(expanded_dim, self.num_anchors * object_dim, kernel_size=1),
+        # )
+        self.predict_objs = DetPredictor(
+            merged_dim + ex_anchor_dim,
+            expanded_dim,
+            num_anchors=self.num_anchors,
+            bbox_dim=self.bbox_dim,
+            num_classes=self.num_classes,
+            dropout=dropout,
         )
 
     def forward_features(self, x:Tensor) -> Tensor:

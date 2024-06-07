@@ -196,31 +196,28 @@ class DetPredictor(nn.Module):
     def __init__(
             self,
             in_planes:      int,
-            correct_factor: int,
             hidden_planes:  int,
             num_anchors:    int,
             bbox_dim:       int,
             num_classes:    int,
-            dropout_bbox:   float,
-            dropout_clss:   float,
+            dropout:   float,
         ):
 
         super().__init__()
 
-        corrected_dim = correct_factor * bbox_dim
         self.predict_bbox = nn.Sequential(
-            nn.Conv2d(in_planes, corrected_dim, kernel_size=1, bias=False),
-            nn.BatchNorm2d(corrected_dim),
+            nn.Conv2d(in_planes, in_planes, kernel_size=1, bias=False),
+            nn.BatchNorm2d(in_planes),
             nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout_bbox, inplace=True),
-            nn.Conv2d(corrected_dim, num_anchors * bbox_dim, kernel_size=1),
+            nn.Dropout(p=dropout, inplace=True),
+            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
         )
 
         self.predict_clss = nn.Sequential(
             nn.Conv2d(in_planes, hidden_planes, kernel_size=1, bias=False),
             nn.BatchNorm2d(hidden_planes),
             nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout_clss, inplace=True),
+            nn.Dropout(p=dropout, inplace=True),
             nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
         )
 
