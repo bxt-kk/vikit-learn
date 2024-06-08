@@ -68,15 +68,15 @@ class CocoDetection(VisionDataset):
             self.supercategories.append(category)
         self.subcategories = list(sub_categories)
 
-        if category_type == 'name':
+        if len(sub_categories) > 0:
+            self.classes = self.subcategories
+            self.coid2class = self.coid2subcategory
+        elif category_type == 'name':
             self.classes = self.names
             self.coid2class = self.coid2name
         elif category_type == 'supercategory':
             self.classes = self.supercategories
             self.coid2class = self.coid2supercategory
-        elif len(sub_categories) > 0:
-            self.classes = self.subcategories
-            self.coid2class = self.coid2subcategory
 
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
