@@ -66,7 +66,7 @@ class CocoDetection(VisionDataset):
             category = self.coid2supercategory[i]
             if category in self.supercategories: continue
             self.supercategories.append(category)
-        self.subcategories = list(sub_categories)
+        self.subcategories = sub_categories + ['other']
 
         if len(sub_categories) > 0:
             self.classes = self.subcategories
