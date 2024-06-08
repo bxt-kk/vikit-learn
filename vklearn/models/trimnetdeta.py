@@ -57,7 +57,7 @@ class TrimNetDet(Detector):
 
         super().__init__(
             categories, bbox_limit=bbox_limit, anchors=anchors)
-        self.bbox_dim = 10 + (self.regions.shape[1] + 1) * 2
+        self.bbox_dim = 12 + (self.regions.shape[1] + 1) * 2
 
         self.dilation_depth = dilation_depth
         self.dilation_range = dilation_range
@@ -561,17 +561,19 @@ class TrimNetDet(Detector):
             fmt:    str='xyxy',
         ) -> Tensor:
 
-        marks = torch.tensor([[-0.5, 0, 0.5, 1, 1.5]]).type_as(cxcywh)
+        marks = torch.tensor([[-0.3, 0.1, 0.5, 0.9, 1.3]]).type_as(cxcywh)
         regions = self.regions.type_as(cxcywh)
         boxes_x = (
-            (cxcywh[:, :5].softmax(dim=-1) * marks).sum(dim=-1) +
+            torch.tanh(cxcywh[:, 0]) * 0.2 +
+            (cxcywh[:, 1:1 + 5].softmax(dim=-1) * marks).sum(dim=-1) +
             index[3].type_as(cxcywh)
         ) * self.cell_size
         boxes_y = (
-            (cxcywh[:, 5:5 + 5].softmax(dim=-1) * marks).sum(dim=-1) +
+            torch.tanh(cxcywh[:, 6]) * 0.2 +
+            (cxcywh[:, 7:7 + 5].softmax(dim=-1) * marks).sum(dim=-1) +
             index[2].type_as(cxcywh)
         ) * self.cell_size
-        size_ix = 10
+        size_ix = 12
         boxes_w = (
             torch.tanh(cxcywh[:, size_ix + 0]) +
             (cxcywh[:, size_ix + 1:size_ix + 7].softmax(dim=-1) * regions).sum(dim=-1)
