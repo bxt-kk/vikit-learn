@@ -1,5 +1,6 @@
 from typing import Any, Callable, List, Tuple
 import os.path
+import math
 
 from PIL import Image
 
@@ -97,14 +98,30 @@ class CocoDetection(VisionDataset):
         ) -> dict[str, Any]:
         xywh2xyxy  = lambda x, y, w, h: (x, y, x + w, y + h)
         validation = lambda ann: ann['iscrowd'] == 0
+        # boxes = tv_tensors.BoundingBoxes(
+        #     [xywh2xyxy(*ann['bbox']) for ann in anns if validation(ann)],
+        #     format='XYXY',
+        #     canvas_size=(image_size[1], image_size[0]),
+        # )
+        # labels = torch.LongTensor([
+        #     self.classes.index(self.coid2class[ann['category_id']])
+        #     for ann in anns if validation(ann)])
+        box_list = []
+        label_list = []
+        for ann in anns:
+            if not validation(ann): continue
+            x1, y1, x2, y2 = xywh2xyxy(*ann['bbox'])
+            class_name = self.coid2class[ann['category_id']]
+            if class_name == 'other':
+                x1 = x1 // 16 * 16
+                y1 = y1 // 16 * 16
+                x2 = math.ceil(x2 / 16) * 16
+                y2 = math.ceil(y2 / 16) * 16
+            box_list.append((x1, y1, x2, y2))
+            label_list.append(self.classes.index(class_name))
         boxes = tv_tensors.BoundingBoxes(
-            [xywh2xyxy(*ann['bbox']) for ann in anns if validation(ann)],
-            format='XYXY',
-            canvas_size=(image_size[1], image_size[0]),
-        )
-        labels = torch.LongTensor([
-            self.classes.index(self.coid2class[ann['category_id']])
-            for ann in anns if validation(ann)])
+            box_list, format='XYXY', canvas_size=(image_size[1], image_size[0]))
+        labels = torch.LongTensor(label_list)
         return dict(boxes=boxes, labels=labels)
 
     def __getitem__(self, index:int) -> Tuple[Any, Any]:
