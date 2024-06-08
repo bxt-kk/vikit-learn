@@ -126,7 +126,7 @@ class CocoDetection(VisionDataset):
 
         labels = target['labels']
         boxes = target['boxes']
-        for i, label_id in labels:
+        for i, label_id in enumerate(labels):
             class_name = self.classes[label_id]
             if class_name != 'other': continue
             x1, y1, x2, y2 = boxes[i]
