@@ -134,5 +134,7 @@ class CocoDetection(VisionDataset):
             boxes[i, 1] = y1 // 16 * 16
             boxes[i, 2] = min(math.ceil(x2 / 16) * 16, image.size[0])
             boxes[i, 3] = min(math.ceil(y2 / 16) * 16, image.size[1])
+        target['labels'] = labels
+        target['boxes'] = boxes
 
         return image, target
