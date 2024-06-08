@@ -98,30 +98,14 @@ class CocoDetection(VisionDataset):
         ) -> dict[str, Any]:
         xywh2xyxy  = lambda x, y, w, h: (x, y, x + w, y + h)
         validation = lambda ann: ann['iscrowd'] == 0
-        # boxes = tv_tensors.BoundingBoxes(
-        #     [xywh2xyxy(*ann['bbox']) for ann in anns if validation(ann)],
-        #     format='XYXY',
-        #     canvas_size=(image_size[1], image_size[0]),
-        # )
-        # labels = torch.LongTensor([
-        #     self.classes.index(self.coid2class[ann['category_id']])
-        #     for ann in anns if validation(ann)])
-        box_list = []
-        label_list = []
-        for ann in anns:
-            if not validation(ann): continue
-            x1, y1, x2, y2 = xywh2xyxy(*ann['bbox'])
-            class_name = self.coid2class[ann['category_id']]
-            if class_name == 'other':
-                x1 = x1 // 16 * 16
-                y1 = y1 // 16 * 16
-                x2 = min(math.ceil(x2 / 16) * 16, image_size[0])
-                y2 = min(math.ceil(y2 / 16) * 16, image_size[1])
-            box_list.append((x1, y1, x2, y2))
-            label_list.append(self.classes.index(class_name))
         boxes = tv_tensors.BoundingBoxes(
-            box_list, format='XYXY', canvas_size=(image_size[1], image_size[0]))
-        labels = torch.LongTensor(label_list)
+            [xywh2xyxy(*ann['bbox']) for ann in anns if validation(ann)],
+            format='XYXY',
+            canvas_size=(image_size[1], image_size[0]),
+        )
+        labels = torch.LongTensor([
+            self.classes.index(self.coid2class[ann['category_id']])
+            for ann in anns if validation(ann)])
         return dict(boxes=boxes, labels=labels)
 
     def __getitem__(self, index:int) -> Tuple[Any, Any]:
@@ -139,5 +123,16 @@ class CocoDetection(VisionDataset):
 
         if self.transforms is not None:
             image, target = self.transforms(image, target)
+
+        labels = target['labels']
+        boxes = target['boxes']
+        for i, label_id in labels:
+            class_name = self.classes[label_id]
+            if class_name != 'other': continue
+            x1, y1, x2, y2 = boxes[i]
+            boxes[i, 0] = x1 // 16 * 16
+            boxes[i, 1] = y1 // 16 * 16
+            boxes[i, 2] = min(math.ceil(x2 / 16) * 16, image.size[0])
+            boxes[i, 3] = min(math.ceil(y2 / 16) * 16, image.size[1])
 
         return image, target
