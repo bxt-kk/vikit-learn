@@ -30,6 +30,7 @@ class CocoDetection(VisionDataset):
         root:             str,
         annFile:          str,
         category_type:    str='name',
+        sub_categories:   List[str] | None=None,
         max_datas_size:   int=0,
         transform:        Callable | None=None,
         target_transform: Callable | None=None,
@@ -39,6 +40,8 @@ class CocoDetection(VisionDataset):
         from pycocotools.coco import COCO
 
         assert category_type in ('name', 'supercategory')
+
+        if sub_categories is None: sub_categories = []
 
         self.coco = COCO(annFile)
         self.ids = list(sorted(self.coco.imgs.keys()))
@@ -51,6 +54,9 @@ class CocoDetection(VisionDataset):
         self.coid2supercategory = {
             clss['id']: clss['supercategory']
             for clss in self.coco.dataset['categories']}
+        self.coid2subcategory = {
+            clss['id']: (clss['name'] if clss['name'] in sub_categories else 'other')
+            for clss in self.coco.dataset['categories']}
 
         idxs = sorted(self.coid2name.keys())
         self.names = [self.coid2name[i] for i in idxs]
@@ -59,6 +65,7 @@ class CocoDetection(VisionDataset):
             category = self.coid2supercategory[i]
             if category in self.supercategories: continue
             self.supercategories.append(category)
+        self.subcategories = list(sub_categories)
 
         if category_type == 'name':
             self.classes = self.names
@@ -66,6 +73,9 @@ class CocoDetection(VisionDataset):
         elif category_type == 'supercategory':
             self.classes = self.supercategories
             self.coid2class = self.coid2supercategory
+        elif len(sub_categories) > 0:
+            self.classes = self.subcategories
+            self.coid2class = self.coid2subcategory
 
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
