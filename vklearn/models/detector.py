@@ -42,7 +42,10 @@ class Detector(Basic):
         self.bbox_dim    = 2 + (self.regions.shape[1] + 1) * 2
 
         self.m_ap_metric = MeanAveragePrecision(
-            iou_type='bbox', backend='faster_coco_eval')
+            iou_type='bbox',
+            backend='faster_coco_eval',
+            max_detection_thresholds=[1, 10, 300],
+        )
 
     def pred2boxes(
             self,

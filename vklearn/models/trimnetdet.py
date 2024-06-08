@@ -214,6 +214,22 @@ class TrimNetDet(Detector):
             backbone       = self.backbone,
         )
 
+    def load_state_dict(
+            self,
+            state_dict: Mapping[str, Any],
+            strict:     bool=True,
+            assign:     bool=False,
+        ):
+        CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.4.weight'
+        CLSS_BIAS_KEY = 'predict_objs.predict_clss.4.bias'
+
+        clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
+        clss_bias = state_dict.pop(CLSS_BIAS_KEY)
+        if clss_bias.shape[0] == self.num_anchors * self.num_classes:
+            state_dict[CLSS_WEIGHT_KEY] = clss_weight
+            state_dict[CLSS_BIAS_KEY] = clss_bias
+        super().load_state_dict(state_dict, strict, assign)
+
     def detect(
             self,
             image:       Image.Image,
