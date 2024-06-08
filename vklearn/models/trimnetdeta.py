@@ -119,7 +119,7 @@ class TrimNetDet(Detector):
             modules.append(nn.Hardswish(inplace=True))
             self.cluster.append(nn.Sequential(*modules))
             self.csenets.append(CSENet(
-                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
+                merged_dim * 3, merged_dim, kernel_size=3, shrink_factor=6))
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
@@ -168,8 +168,9 @@ class TrimNetDet(Detector):
             fc,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
+        m = x
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
-            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+            x = x + csenet_i(torch.cat([m, x, cluster_i(x)], dim=1))
         return x
 
     def forward(self, x:Tensor) -> Tensor:
