@@ -115,8 +115,8 @@ class CocoDetection(VisionDataset):
             if class_name == 'other':
                 x1 = x1 // 16 * 16
                 y1 = y1 // 16 * 16
-                x2 = math.ceil(x2 / 16) * 16
-                y2 = math.ceil(y2 / 16) * 16
+                x2 = min(math.ceil(x2 / 16) * 16, image_size[0])
+                y2 = min(math.ceil(y2 / 16) * 16, image_size[1])
             box_list.append((x1, y1, x2, y2))
             label_list.append(self.classes.index(class_name))
         boxes = tv_tensors.BoundingBoxes(
