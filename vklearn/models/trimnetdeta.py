@@ -11,7 +11,6 @@ from torchvision.ops import (
     sigmoid_focal_loss,
     generalized_box_iou_loss,
     boxes as box_ops,
-    box_convert,
 )
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
@@ -21,7 +20,7 @@ from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 from PIL import Image
 
 from .component import LinearBasicConvBD, CSENet, BasicConvBD #, LocalSqueezeExcitation
-from .component import DetPredictor
+# from .component import DetPredictor
 from .detector import Detector
 
 
@@ -46,7 +45,7 @@ class TrimNetDet(Detector):
             categories:          List[str],
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
-            dilation_depth:      int=4,
+            dilation_depth:      int=3,
             dilation_range:      int=4,
             num_tries:           int=3,
             swap_size:           int=16,
@@ -57,7 +56,6 @@ class TrimNetDet(Detector):
 
         super().__init__(
             categories, bbox_limit=bbox_limit, anchors=anchors)
-        self.bbox_dim = 12 + (self.regions.shape[1] + 1) * 2
 
         self.dilation_depth = dilation_depth
         self.dilation_range = dilation_range
@@ -72,22 +70,11 @@ class TrimNetDet(Detector):
                 if backbone_pretrained else None,
             ).features
 
-            # for m in features:
-            #     if not isinstance(m, InvertedResidual): continue
-            #     block:nn.Sequential = m.block
-            #     _ids = []
-            #     for idx, child in block.named_children():
-            #         if not isinstance(child, SqueezeExcitation): continue
-            #         _ids.append(int(idx))
-            #     for idx in _ids:
-            #         block[idx] = LocalSqueezeExcitation.load_from_se_module(block[idx])
-
-            features_dim = 24 * 4 + 48 + 96
+            features_dim = 48 + 96
             merged_dim   = 160
             expanded_dim = 320
 
-            self.features_d = features[:4] # 24, 64, 64
-            self.features_c = features[4:9] # 48, 32, 32
+            self.features_d = features[:9] # 48, 32, 32
             self.features_u = features[9:-1] # 96, 16, 16
 
         elif backbone == 'mobilenet_v2':
@@ -96,12 +83,11 @@ class TrimNetDet(Detector):
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 32 * 4 + 96 + 320
+            features_dim = 96 + 320
             merged_dim   = 320
             expanded_dim = 640
 
-            self.features_d = features[:7] # 32, 64, 64
-            self.features_c = features[7:14] # 96, 32, 32
+            self.features_d = features[:14] # 96, 32, 32
             self.features_u = features[14:-1] # 320, 16, 16
 
         self.merge = nn.Sequential(
@@ -109,17 +95,47 @@ class TrimNetDet(Detector):
             nn.BatchNorm2d(merged_dim),
         )
 
-        self.cluster = nn.ModuleList()
-        self.csenets = nn.ModuleList()
+        cluster = nn.ModuleList()
+        csenets = nn.ModuleList()
         for _ in range(dilation_depth):
             modules = []
             for r in range(dilation_range):
                 modules.append(
                     LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
             modules.append(nn.Hardswish(inplace=True))
-            self.cluster.append(nn.Sequential(*modules))
-            self.csenets.append(CSENet(
-                merged_dim * 3, merged_dim, kernel_size=3, shrink_factor=6))
+            cluster.append(nn.Sequential(*modules))
+            csenets.append(CSENet(
+                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
+        self.cluster_conf = cluster
+        self.csenets_conf = csenets
+
+        cluster = nn.ModuleList()
+        csenets = nn.ModuleList()
+        for _ in range(dilation_depth):
+            modules = []
+            for r in range(dilation_range):
+                modules.append(
+                    LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
+            modules.append(nn.Hardswish(inplace=True))
+            cluster.append(nn.Sequential(*modules))
+            csenets.append(CSENet(
+                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
+        self.cluster_bbox = cluster
+        self.csenets_bbox = csenets
+
+        cluster = nn.ModuleList()
+        csenets = nn.ModuleList()
+        for _ in range(dilation_depth):
+            modules = []
+            for r in range(dilation_range):
+                modules.append(
+                    LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
+            modules.append(nn.Hardswish(inplace=True))
+            cluster.append(nn.Sequential(*modules))
+            csenets.append(CSENet(
+                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
+        self.cluster_clss = cluster
+        self.csenets_clss = csenets
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
@@ -135,55 +151,61 @@ class TrimNetDet(Detector):
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        # object_dim = self.bbox_dim + self.num_classes
-        # self.predict_objs = nn.Sequential(
-        #     nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
-        #     nn.BatchNorm2d(expanded_dim),
-        #     nn.Hardswish(inplace=True),
-        #     nn.Dropout(p=dropout, inplace=True),
-        #     nn.Conv2d(expanded_dim, self.num_anchors * object_dim, kernel_size=1),
-        # )
-        self.predict_objs = DetPredictor(
-            merged_dim + ex_anchor_dim,
-            expanded_dim,
-            num_anchors=self.num_anchors,
-            bbox_dim=self.bbox_dim,
-            num_classes=self.num_classes,
-            dropout=dropout,
+        self.predict_bbox = nn.Sequential(
+            nn.Conv2d(merged_dim, expanded_dim, kernel_size=1, bias=False),
+            nn.BatchNorm2d(expanded_dim),
+            nn.Hardswish(inplace=True),
+            nn.Dropout(p=dropout, inplace=True),
+            nn.Conv2d(expanded_dim, self.num_anchors * self.bbox_dim, kernel_size=1),
+        )
+
+        self.predict_clss = nn.Sequential(
+            nn.Conv2d(merged_dim, expanded_dim, kernel_size=1, bias=False),
+            nn.BatchNorm2d(expanded_dim),
+            nn.Hardswish(inplace=True),
+            nn.Dropout(p=dropout, inplace=True),
+            nn.Conv2d(expanded_dim, self.num_anchors * self.num_classes, kernel_size=1),
         )
 
     def forward_features(self, x:Tensor) -> Tensor:
         if not self._keep_features:
             fd = self.features_d(x)
-            fc = self.features_c(fd)
-            fu = self.features_u(fc)
+            fu = self.features_u(fd)
         else:
             with torch.no_grad():
                 fd = self.features_d(x)
-                fc = self.features_c(fd)
-                fu = self.features_u(fc)
+                fu = self.features_u(fd)
 
         x = self.merge(torch.cat([
-            F.pixel_unshuffle(fd, 2),
-            fc,
+            fd,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
-        m = x
-        for csenet_i, cluster_i in zip(self.csenets, self.cluster):
-            x = x + csenet_i(torch.cat([m, x, cluster_i(x)], dim=1))
-        return x
+        x_conf = x
+        for csenet_i, cluster_i in zip(self.csenets_conf, self.cluster_conf):
+            x_conf = x_conf + csenet_i(torch.cat([x_conf, cluster_i(x_conf)], dim=1))
+        x_bbox = x
+        for csenet_i, cluster_i in zip(self.csenets_bbox, self.cluster_bbox):
+            x_bbox = x_bbox + csenet_i(torch.cat([x_bbox, cluster_i(x_bbox)], dim=1))
+        x_clss = x
+        for csenet_i, cluster_i in zip(self.csenets_clss, self.cluster_clss):
+            x_clss = x_clss + csenet_i(torch.cat([x_clss, cluster_i(x_clss)], dim=1))
+        return x_conf, x_bbox, x_clss
 
     def forward(self, x:Tensor) -> Tensor:
-        x = self.forward_features(x)
-        confs = [self.predict_conf_tries[0](x)]
+        x_conf, x_bbox, x_clss = self.forward_features(x)
+        confs = [self.predict_conf_tries[0](x_conf)]
         for layer in self.predict_conf_tries[1:]:
-            confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
-        p_objs = self.predict_objs(torch.cat([x, confs[-1]], dim=1))
-        bs, _, ny, nx = p_objs.shape
+            confs.append(layer(torch.cat([x_conf, confs[-1]], dim=1)))
+        p_bbox = self.predict_bbox(x_bbox)
+        p_clss = self.predict_clss(x_clss)
+        bs, _, ny, nx = x_conf.shape
         p_tryx = torch.cat([
             conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
             for conf in confs], dim=2)
-        p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
+        p_objs = torch.cat([
+            p_bbox.view(bs, self.num_anchors, -1, ny, nx),
+            p_clss.view(bs, self.num_anchors, -1, ny, nx),
+        ], dim=2)
         return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
 
     @classmethod
@@ -554,39 +576,3 @@ class TrimNetDet(Detector):
                 labels=target_labels[target_ids],
             ))
         self.m_ap_metric.update(preds, target)
-
-    def pred2boxes(
-            self,
-            cxcywh: Tensor,
-            index:  List[Tensor],
-            fmt:    str='xyxy',
-        ) -> Tensor:
-
-        marks = torch.tensor([[-0.3, 0.1, 0.5, 0.9, 1.3]]).type_as(cxcywh)
-        regions = self.regions.type_as(cxcywh)
-        boxes_x = (
-            torch.tanh(cxcywh[:, 0]) * 0.2 +
-            (cxcywh[:, 1:1 + 5].softmax(dim=-1) * marks).sum(dim=-1) +
-            index[3].type_as(cxcywh)
-        ) * self.cell_size
-        boxes_y = (
-            torch.tanh(cxcywh[:, 6]) * 0.2 +
-            (cxcywh[:, 7:7 + 5].softmax(dim=-1) * marks).sum(dim=-1) +
-            index[2].type_as(cxcywh)
-        ) * self.cell_size
-        size_ix = 12
-        boxes_w = (
-            torch.tanh(cxcywh[:, size_ix + 0]) +
-            (cxcywh[:, size_ix + 1:size_ix + 7].softmax(dim=-1) * regions).sum(dim=-1)
-        ) * self.region_scale
-        boxes_h = (
-            torch.tanh(cxcywh[:, size_ix + 7]) +
-            (cxcywh[:, size_ix + 8:size_ix + 14].softmax(dim=-1) * regions).sum(dim=-1)
-        ) * self.region_scale
-        bboxes = torch.cat([
-            boxes_x.unsqueeze(-1),
-            boxes_y.unsqueeze(-1),
-            boxes_w.unsqueeze(-1),
-            boxes_h.unsqueeze(-1),
-            ], dim=-1)
-        return box_convert(bboxes, 'cxcywh', fmt)
