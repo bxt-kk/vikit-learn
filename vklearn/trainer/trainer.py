@@ -25,7 +25,7 @@ class Trainer:
     checkpoint:   str=None
     drop_optim:   bool=False
     lr:           float=1e-3
-    eta_min:      float=1e-5
+    lrf:          float=1.
     T_num:        int=1
     weight_decay: float=0.
     epochs:       int=1
@@ -73,11 +73,11 @@ class Trainer:
             if not self.drop_optim:
                 self.optimizer.load_state_dict(state_dict['optim'])
 
-        lrf = self.eta_min / self.lr
+        assert self.lrf <= 1.
         self.lr_scheduler = LambdaLR(self.optimizer, lr_lambda=
             lambda epoch:
             (1 + math.cos(epoch / (self.epochs / self.T_num) * math.pi)) *
-            0.5 * (1 - lrf) + lrf)
+            0.5 * (1 - self.lrf) + self.lrf)
 
     def fit(
             self,
