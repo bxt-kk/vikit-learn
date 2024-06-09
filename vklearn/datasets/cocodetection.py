@@ -17,6 +17,8 @@ class CocoDetection(VisionDataset):
     Args:
         root: Root directory where images are downloaded to.
         annFile: Path to json annotation file.
+        category_type: The type of category, can be ``name`` or ``supercategory``.
+        sub_categories: Select some target categories as a List of subcategories.
         max_datas_size: For large amounts of data, it is used to limit the number of samples,
             and the default is 0, which means no limit.
         transform: A function/transform that takes in a PIL image

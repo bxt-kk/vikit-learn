@@ -28,7 +28,7 @@ class Detection(Task):
             weight_decay: float,
         ) -> Optimizer:
 
-        return torch.optim.NAdam(
+        return torch.optim.Adam(
             self.model.parameters(),
             lr=lr,
             weight_decay=weight_decay,
