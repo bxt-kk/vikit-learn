@@ -19,7 +19,7 @@ from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 from PIL import Image
 
-from .component import LinearBasicConvDBD, CSENet, BasicConvDB, BasicConvBD #, LocalSqueezeExcitation
+from .component import LinearBasicConvBD, CSENet, BasicConvDB, BasicConvBD #, LocalSqueezeExcitation
 from .component import DetPredictor
 from .detector import Detector
 
@@ -96,10 +96,20 @@ class TrimNetDet(Detector):
         self.csenets = nn.ModuleList()
         for _ in range(dilation_depth):
             modules = []
+            dilation_hidden = merged_dim * 2
+            modules.append(nn.Sequential(
+                nn.Conv2d(merged_dim, dilation_hidden, kernel_size=1, bias=False),
+                nn.BatchNorm2d(dilation_hidden),
+                nn.Hardswish(inplace=True),
+            ))
             for r in range(dilation_range):
                 modules.append(
-                    LinearBasicConvDBD(merged_dim, 2, dilation=2**r))
-            modules.append(nn.Hardswish(inplace=True))
+                    LinearBasicConvBD(dilation_hidden, dilation_hidden, dilation=2**r))
+            modules.append(nn.Sequential(
+                nn.Conv2d(dilation_hidden, merged_dim, kernel_size=1, bias=False),
+                nn.BatchNorm2d(merged_dim),
+                nn.Hardswish(inplace=True),
+            ))
             self.cluster.append(nn.Sequential(*modules))
             self.csenets.append(CSENet(
                 merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
