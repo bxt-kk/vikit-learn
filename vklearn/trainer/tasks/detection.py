@@ -8,7 +8,7 @@ from ...models.detector import Detector as Model
 @dataclass
 class Detection(Task):
     model:       Model
-    key_metrics: Tuple[str]=['map', 'map_50', 'map_75']
+    key_metrics: Tuple[str]=('map', 'map_50', 'map_75')
 
     def sample_convert(self, sample: Any) -> Tuple[Any, Any]:
         inputs, target_labels, target_bboxes = [
