@@ -18,8 +18,8 @@ class Task:
     loss_options:       Dict[str, Any]=field(default_factory=dict)
     score_options:      Dict[str, Any]=field(default_factory=dict)
     metric_options:     Dict[str, Any]=field(default_factory=dict)
-    best_metric:        float=0
     key_metrics:        Tuple[str]=field(default_factory=tuple)
+    best_metric:        float=0
 
     def sample_convert(self, sample: Any) -> Tuple[Any, Any]:
 
