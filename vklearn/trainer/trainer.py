@@ -1,9 +1,10 @@
 #! /usr/bin/env python3
 from pprint import pprint
+from typing import Callable
 from dataclasses import dataclass
 import math
 
-from torch.optim import Optimizer
+from torch.optim import Optimizer, Adam
 from torch.optim.lr_scheduler import LambdaLR
 
 import torch
@@ -24,10 +25,11 @@ class Trainer:
     test_loader:  DataLoader=None
     checkpoint:   str=None
     drop_optim:   bool=False
+    optim_method: Callable[..., Optimizer]=Adam
     lr:           float=1e-3
+    weight_decay: float=0.
     lrf:          float=1.
     T_num:        int=1
-    weight_decay: float=0.
     epochs:       int=1
     show_step:    int=50
     save_epoch:   int=1
@@ -51,7 +53,7 @@ class Trainer:
 
         self.model:nn.Module = self.task.model.to(self.device)
 
-        self.optimizer:Optimizer = self.task.setting_optimizer(
+        self.optimizer:Optimizer = self.optim_method(
             self.lr, self.weight_decay)
         print('optimizer:', self.optimizer)
 

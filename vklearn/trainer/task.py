@@ -1,5 +1,6 @@
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 from dataclasses import dataclass, field
+import os.path
 
 from torch.optim import Optimizer
 import torch
@@ -18,12 +19,9 @@ class Task:
     score_options:      Dict[str, Any]=field(default_factory=dict)
     metric_options:     Dict[str, Any]=field(default_factory=dict)
     best_metric:        float=0
+    key_metrics:        Tuple[str]=field(default_factory=tuple)
 
-    def setting_optimizer(
-            self,
-            lr:           float,
-            weight_decay: float,
-        ) -> Optimizer:
+    def sample_convert(self, sample: Any) -> Tuple[Any, Any]:
 
         assert not 'this is an empty func'
 
@@ -36,7 +34,26 @@ class Task:
             logger:    Logger,
         ):
 
-        assert not 'this is an empty func'
+        inputs, target = self.sample_convert(sample)
+
+        model = self.model
+        model.train_features(
+            epoch >= self.fit_features_start)
+
+        outputs = model(inputs)
+        losses = model.calc_loss(
+            outputs, *target, **self.loss_options)
+        loss = losses['loss']
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        with torch.no_grad():
+            scores = model.calc_score(
+                outputs, *target, **self.score_options)
+
+        logger.update('train', losses, scores)
 
     def valid_on_step(
             self,
@@ -46,7 +63,18 @@ class Task:
             logger: Logger,
         ):
 
-        assert not 'this is an empty func'
+        inputs, target = self.sample_convert(sample)
+
+        model = self.model
+
+        with torch.no_grad():
+            outputs = model(inputs)
+            losses = model.calc_loss(
+                outputs, *target, **self.loss_options)
+            scores = model.calc_score(
+                outputs, *target, **self.score_options)
+
+        logger.update('valid', losses, scores)
 
     def test_on_step(
             self,
@@ -56,7 +84,21 @@ class Task:
             logger: Logger,
         ):
 
-        assert not 'this is an empty func'
+        inputs, target = self.sample_convert(sample)
+
+        model = self.model
+
+        with torch.no_grad():
+            outputs = model(inputs)
+            losses = model.calc_loss(
+                outputs, *target, **self.loss_options)
+            scores = model.calc_score(
+                outputs, *target, **self.score_options)
+            if epoch >= self.metric_start_epoch:
+                model.update_metric(
+                    outputs, *target, **self.metric_options)
+
+        logger.update('test', losses, scores)
 
     def end_on_epoch(
             self,
@@ -64,7 +106,13 @@ class Task:
             logger: Logger,
         ):
 
-        assert not 'this is an empty func'
+        model = self.model
+        metric = dict(zip(self.key_metrics, [0.] * len(self.key_metrics)))
+        if epoch >= self.metric_start_epoch:
+            metric = {k: v
+                for k, v in model.compute_metric().items()
+                if k in metric}
+        logger.update('metric', metric)
 
     def save_checkpoint(
             self,
@@ -73,7 +121,13 @@ class Task:
             optimizer: Optimizer,
         ) -> str:
 
-        assert not 'this is an empty func'
+        out_path = os.path.splitext(output)[0]
+        filename = f'{out_path}-{epoch}.pt'
+        torch.save({
+            'model': self.model.state_dict(),
+            'hyperparameters': self.model.hyperparameters(),
+            'optim': optimizer.state_dict()}, filename)
+        return filename
 
     def choose_best_model(
             self,
@@ -82,4 +136,14 @@ class Task:
             logger:    Logger,
         ) -> bool:
 
-        assert not 'this is an empty func'
+        metric = logger.compute('metric')[self.key_metrics[0]]
+        if self.best_metric >= metric: return False
+
+        self.best_metric = metric
+        out_path = os.path.splitext(output)[0]
+        filename = f'{out_path}-best.pt'
+        torch.save({
+            'model': self.model.state_dict(),
+            'hyperparameters': self.model.hyperparameters(),
+            'optim': optimizer.state_dict()}, filename)
+        return True
