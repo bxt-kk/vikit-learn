@@ -30,6 +30,7 @@ class Trainer:
     weight_decay: float=0.
     lrf:          float=1.
     T_num:        int=1
+    grad_steps:   int=1
     epochs:       int=1
     show_step:    int=50
     save_epoch:   int=1
@@ -96,6 +97,7 @@ class Trainer:
         print('Training ...')
         for epoch in range(self.epochs):
             self.model.train()
+            optimizer.zero_grad()
             logger.reset()
 
             train_loader = self.train_loader
@@ -107,7 +109,7 @@ class Trainer:
             print('train mode:', self.model.training)
             print(f'lr={self.lr_scheduler.get_last_lr()}')
             for step, sample in enumerate(train_loader):
-                task.train_on_step(epoch, step, sample, optimizer, logger)
+                task.train_on_step(epoch, step, sample, logger)
 
                 if (step + 1) % self.show_step == 0:
                     print(self._dump_progress(epoch, step, train_loader))
@@ -123,6 +125,10 @@ class Trainer:
 
                     if (step + 1) % self.show_step == 0:
                         print('valid:', logger.dumps('valid'))
+
+                if (step + 1) % self.grad_steps == 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
 
                 if (max_train_step > 0) and (step >= max_train_step):
                     break

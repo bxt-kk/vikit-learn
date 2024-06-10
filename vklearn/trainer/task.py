@@ -27,11 +27,10 @@ class Task:
 
     def train_on_step(
             self,
-            epoch:     int,
-            step:      int,
-            sample:    Any,
-            optimizer: Optimizer,
-            logger:    Logger,
+            epoch:  int,
+            step:   int,
+            sample: Any,
+            logger: Logger,
         ):
 
         inputs, target = self.sample_convert(sample)
@@ -45,9 +44,7 @@ class Task:
             outputs, *target, **self.loss_options)
         loss = losses['loss']
 
-        optimizer.zero_grad()
         loss.backward()
-        optimizer.step()
 
         with torch.no_grad():
             scores = model.calc_score(
