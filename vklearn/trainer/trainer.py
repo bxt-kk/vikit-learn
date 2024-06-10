@@ -54,7 +54,9 @@ class Trainer:
         self.model:nn.Module = self.task.model.to(self.device)
 
         self.optimizer:Optimizer = self.optim_method(
-            self.lr, self.weight_decay)
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.weight_decay)
         print('optimizer:', self.optimizer)
 
         for kind, loader in zip(
