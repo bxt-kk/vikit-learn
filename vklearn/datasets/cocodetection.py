@@ -8,6 +8,8 @@ import torch
 from torchvision.datasets.vision import VisionDataset
 from torchvision import tv_tensors
 
+from tqdm import tqdm
+
 
 class CocoDetection(VisionDataset):
     '''`MS Coco Detection <https://cocodataset.org/#detection-2016>`_ Dataset.
@@ -28,6 +30,9 @@ class CocoDetection(VisionDataset):
         transforms: A function/transform that takes input sample and its target as entry
             and returns a transformed version.
     '''
+
+    NAME_OTHER = 'other'
+
     def __init__(
         self,
         root:             str,
@@ -49,7 +54,6 @@ class CocoDetection(VisionDataset):
         self.coco = COCO(annFile)
         self.ids = list(sorted(self.coco.imgs.keys()))
         self.category_type = category_type
-        self.max_datas_size = max_datas_size if max_datas_size > 0 else len(self.ids)
 
         self.coid2name = {
             clss['id']: clss['name']
@@ -58,7 +62,7 @@ class CocoDetection(VisionDataset):
             clss['id']: clss['supercategory']
             for clss in self.coco.dataset['categories']}
         self.coid2subcategory = {
-            clss['id']: (clss['name'] if clss['name'] in sub_categories else 'other')
+            clss['id']: (clss[category_type] if clss[category_type] in sub_categories else self.NAME_OTHER)
             for clss in self.coco.dataset['categories']}
 
         idxs = sorted(self.coid2name.keys())
@@ -68,11 +72,12 @@ class CocoDetection(VisionDataset):
             category = self.coid2supercategory[i]
             if category in self.supercategories: continue
             self.supercategories.append(category)
-        self.subcategories = sub_categories + ['other']
+        self.subcategories = sub_categories + [self.NAME_OTHER]
 
         if len(sub_categories) > 0:
             self.classes = self.subcategories
             self.coid2class = self.coid2subcategory
+            self.ids = self._drop_others(self.ids)
         elif category_type == 'name':
             self.classes = self.names
             self.coid2class = self.coid2name
@@ -80,8 +85,21 @@ class CocoDetection(VisionDataset):
             self.classes = self.supercategories
             self.coid2class = self.coid2supercategory
 
+        self.max_datas_size = max_datas_size if max_datas_size > 0 else len(self.ids)
+
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
+
+    def _drop_others(self, ids:List[int]) -> List[int]:
+        new_ids = []
+        for _id in tqdm(ids, ncols=80):
+            anns = self._load_anns(_id)
+            for ann in anns:
+                class_name = self.coid2class[ann['category_id']]
+                if class_name != self.NAME_OTHER:
+                    new_ids.append(_id)
+                    break
+        return new_ids
 
     def _load_image(self, id:int) -> Image.Image:
         path = self.coco.loadImgs(id)[0]["file_name"]
@@ -130,7 +148,7 @@ class CocoDetection(VisionDataset):
         boxes = target['boxes']
         for i, label_id in enumerate(labels):
             class_name = self.classes[label_id]
-            if class_name != 'other': continue
+            if class_name != self.NAME_OTHER: continue
             x1, y1, x2, y2 = boxes[i]
             boxes[i, 0] = x1 // 16 * 16
             boxes[i, 1] = y1 // 16 * 16
