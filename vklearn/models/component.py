@@ -55,6 +55,35 @@ class LinearBasicConvBD(nn.Module):
         return result
 
 
+class LinearBasicConvDBD(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:   int,
+            expand_rate: int,
+            kernel_size: int=3,
+            dilation:    int=1,
+            stride:      int | tuple[int, int]=1
+        ):
+
+        super().__init__()
+
+        padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
+        expanded_dim = in_planes * expand_rate
+        self.layers = nn.Sequential(
+            nn.Conv2d(in_planes, expanded_dim, 1, bias=False),
+            nn.BatchNorm2d(expanded_dim),
+            nn.Conv2d(
+                expanded_dim, expanded_dim, kernel_size, stride, padding,
+                dilation=dilation, groups=expanded_dim, bias=False),
+            nn.BatchNorm2d(expanded_dim),
+            nn.Conv2d(expanded_dim, in_planes, 1, bias=False),
+            nn.BatchNorm2d(in_planes),
+        )
+
+    def forward(self, x:Tensor) -> Tensor:
+        return x + self.layers(x)
+
 
 class BasicConvDB(nn.Sequential):
 

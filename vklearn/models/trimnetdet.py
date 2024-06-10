@@ -13,7 +13,7 @@ from torchvision.ops import (
     boxes as box_ops,
 )
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
-from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
+from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 # from torchvision.ops.misc import SqueezeExcitation
 # from torchvision.models.mobilenetv3 import InvertedResidual
 
@@ -70,16 +70,6 @@ class TrimNetDet(Detector):
                 if backbone_pretrained else None,
             ).features
 
-            # for m in features:
-            #     if not isinstance(m, InvertedResidual): continue
-            #     block:nn.Sequential = m.block
-            #     _ids = []
-            #     for idx, child in block.named_children():
-            #         if not isinstance(child, SqueezeExcitation): continue
-            #         _ids.append(int(idx))
-            #     for idx in _ids:
-            #         block[idx] = LocalSqueezeExcitation.load_from_se_module(block[idx])
-
             features_dim = 24 * 4 + 48 + 96
             merged_dim   = 160
             expanded_dim = 320
@@ -88,19 +78,19 @@ class TrimNetDet(Detector):
             self.features_c = features[4:9] # 48, 32, 32
             self.features_u = features[9:-1] # 96, 16, 16
 
-        elif backbone == 'mobilenet_v2':
-            features = mobilenet_v2(
-                weights=MobileNet_V2_Weights.DEFAULT
+        elif backbone == 'mobilenet_v3_large':
+            features = mobilenet_v3_large(
+                weights=MobileNet_V3_Large_Weights.DEFAULT
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 32 * 4 + 96 + 320
+            features_dim = 40 * 4 + 112 + 160
             merged_dim   = 320
             expanded_dim = 640
 
-            self.features_d = features[:7] # 32, 64, 64
-            self.features_c = features[7:14] # 96, 32, 32
-            self.features_u = features[14:-1] # 320, 16, 16
+            self.features_d = features[:7] # 40, 64, 64
+            self.features_c = features[7:13] # 112, 32, 32
+            self.features_u = features[13:-1] # 160, 16, 16
 
         self.merge = nn.Sequential(
             nn.Conv2d(features_dim, merged_dim, 1, bias=False),

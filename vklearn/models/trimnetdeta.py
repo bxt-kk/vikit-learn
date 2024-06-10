@@ -13,14 +13,14 @@ from torchvision.ops import (
     boxes as box_ops,
 )
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
-from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
+from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 # from torchvision.ops.misc import SqueezeExcitation
 # from torchvision.models.mobilenetv3 import InvertedResidual
 
 from PIL import Image
 
-from .component import LinearBasicConvBD, CSENet, BasicConvBD #, LocalSqueezeExcitation
-# from .component import DetPredictor
+from .component import LinearBasicConvDBD, CSENet, BasicConvDB, BasicConvBD #, LocalSqueezeExcitation
+from .component import DetPredictor
 from .detector import Detector
 
 
@@ -45,7 +45,7 @@ class TrimNetDet(Detector):
             categories:          List[str],
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
-            dilation_depth:      int=3,
+            dilation_depth:      int=4,
             dilation_range:      int=4,
             num_tries:           int=3,
             swap_size:           int=16,
@@ -71,71 +71,38 @@ class TrimNetDet(Detector):
             ).features
 
             features_dim = 48 + 96
-            merged_dim   = 160
-            expanded_dim = 320
+            merged_dim   = 96
+            expanded_dim = 96 * 4
 
             self.features_d = features[:9] # 48, 32, 32
             self.features_u = features[9:-1] # 96, 16, 16
 
-        elif backbone == 'mobilenet_v2':
-            features = mobilenet_v2(
-                weights=MobileNet_V2_Weights.DEFAULT
+        elif backbone == 'mobilenet_v3_large':
+            features = mobilenet_v3_large(
+                weights=MobileNet_V3_Large_Weights.DEFAULT
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 96 + 320
-            merged_dim   = 320
-            expanded_dim = 640
+            features_dim = 112 + 160
+            merged_dim   = 160
+            expanded_dim = 160 * 4
 
-            self.features_d = features[:14] # 96, 32, 32
-            self.features_u = features[14:-1] # 320, 16, 16
+            self.features_d = features[:13] # 112, 32, 32
+            self.features_u = features[13:-1] # 160, 16, 16
 
-        self.merge = nn.Sequential(
-            nn.Conv2d(features_dim, merged_dim, 1, bias=False),
-            nn.BatchNorm2d(merged_dim),
-        )
+        self.merge = BasicConvDB(features_dim, merged_dim)
 
-        cluster = nn.ModuleList()
-        csenets = nn.ModuleList()
+        self.cluster = nn.ModuleList()
+        self.csenets = nn.ModuleList()
         for _ in range(dilation_depth):
             modules = []
             for r in range(dilation_range):
                 modules.append(
-                    LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
+                    LinearBasicConvDBD(merged_dim, 2, dilation=2**r))
             modules.append(nn.Hardswish(inplace=True))
-            cluster.append(nn.Sequential(*modules))
-            csenets.append(CSENet(
+            self.cluster.append(nn.Sequential(*modules))
+            self.csenets.append(CSENet(
                 merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
-        self.cluster_conf = cluster
-        self.csenets_conf = csenets
-
-        cluster = nn.ModuleList()
-        csenets = nn.ModuleList()
-        for _ in range(dilation_depth):
-            modules = []
-            for r in range(dilation_range):
-                modules.append(
-                    LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
-            modules.append(nn.Hardswish(inplace=True))
-            cluster.append(nn.Sequential(*modules))
-            csenets.append(CSENet(
-                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
-        self.cluster_bbox = cluster
-        self.csenets_bbox = csenets
-
-        cluster = nn.ModuleList()
-        csenets = nn.ModuleList()
-        for _ in range(dilation_depth):
-            modules = []
-            for r in range(dilation_range):
-                modules.append(
-                    LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
-            modules.append(nn.Hardswish(inplace=True))
-            cluster.append(nn.Sequential(*modules))
-            csenets.append(CSENet(
-                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
-        self.cluster_clss = cluster
-        self.csenets_clss = csenets
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
@@ -151,20 +118,13 @@ class TrimNetDet(Detector):
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        self.predict_bbox = nn.Sequential(
-            nn.Conv2d(merged_dim, expanded_dim, kernel_size=1, bias=False),
-            nn.BatchNorm2d(expanded_dim),
-            nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(expanded_dim, self.num_anchors * self.bbox_dim, kernel_size=1),
-        )
-
-        self.predict_clss = nn.Sequential(
-            nn.Conv2d(merged_dim, expanded_dim, kernel_size=1, bias=False),
-            nn.BatchNorm2d(expanded_dim),
-            nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(expanded_dim, self.num_anchors * self.num_classes, kernel_size=1),
+        self.predict_objs = DetPredictor(
+            merged_dim + ex_anchor_dim,
+            expanded_dim,
+            num_anchors=self.num_anchors,
+            bbox_dim=self.bbox_dim,
+            num_classes=self.num_classes,
+            dropout=dropout,
         )
 
     def forward_features(self, x:Tensor) -> Tensor:
@@ -180,32 +140,21 @@ class TrimNetDet(Detector):
             fd,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
-        x_conf = x
-        for csenet_i, cluster_i in zip(self.csenets_conf, self.cluster_conf):
-            x_conf = x_conf + csenet_i(torch.cat([x_conf, cluster_i(x_conf)], dim=1))
-        x_bbox = x
-        for csenet_i, cluster_i in zip(self.csenets_bbox, self.cluster_bbox):
-            x_bbox = x_bbox + csenet_i(torch.cat([x_bbox, cluster_i(x_bbox)], dim=1))
-        x_clss = x
-        for csenet_i, cluster_i in zip(self.csenets_clss, self.cluster_clss):
-            x_clss = x_clss + csenet_i(torch.cat([x_clss, cluster_i(x_clss)], dim=1))
-        return x_conf, x_bbox, x_clss
+        for csenet_i, cluster_i in zip(self.csenets, self.cluster):
+            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+        return x
 
     def forward(self, x:Tensor) -> Tensor:
-        x_conf, x_bbox, x_clss = self.forward_features(x)
-        confs = [self.predict_conf_tries[0](x_conf)]
+        x = self.forward_features(x)
+        confs = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
-            confs.append(layer(torch.cat([x_conf, confs[-1]], dim=1)))
-        p_bbox = self.predict_bbox(x_bbox)
-        p_clss = self.predict_clss(x_clss)
-        bs, _, ny, nx = x_conf.shape
+            confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
+        p_objs = self.predict_objs(torch.cat([x, confs[-1]], dim=1))
+        bs, _, ny, nx = p_objs.shape
         p_tryx = torch.cat([
             conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
             for conf in confs], dim=2)
-        p_objs = torch.cat([
-            p_bbox.view(bs, self.num_anchors, -1, ny, nx),
-            p_clss.view(bs, self.num_anchors, -1, ny, nx),
-        ], dim=2)
+        p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
         return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
 
     @classmethod
