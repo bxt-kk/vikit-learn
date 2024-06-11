@@ -19,7 +19,7 @@ from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 from PIL import Image
 
-from .component import LinearBasicConvBD, CSENet, BasicConvDB, BasicConvBD #, LocalSqueezeExcitation
+from .component import LinearBasicConvBD, CSENet, BasicConvBD #, LocalSqueezeExcitation
 from .component import DetPredictor
 from .detector import Detector
 
@@ -71,8 +71,8 @@ class TrimNetDet(Detector):
             ).features
 
             features_dim = 48 + 96
-            merged_dim   = 96
-            expanded_dim = 96 * 4
+            merged_dim   = 160
+            expanded_dim = merged_dim * 2
 
             self.features_d = features[:9] # 48, 32, 32
             self.features_u = features[9:-1] # 96, 16, 16
@@ -84,29 +84,26 @@ class TrimNetDet(Detector):
             ).features
 
             features_dim = 112 + 160
-            merged_dim   = 160
-            expanded_dim = 160 * 4
+            merged_dim   = 320
+            expanded_dim = merged_dim * 2
 
             self.features_d = features[:13] # 112, 32, 32
             self.features_u = features[13:-1] # 160, 16, 16
 
-        self.merge = BasicConvDB(features_dim, merged_dim)
+        self.merge = nn.Sequential(
+            nn.Conv2d(features_dim, merged_dim, 1, bias=False),
+            nn.BatchNorm2d(merged_dim),
+        )
 
         self.cluster = nn.ModuleList()
         self.csenets = nn.ModuleList()
         for _ in range(dilation_depth):
             modules = []
-            dilation_hidden = merged_dim * 2
-            modules.append(nn.Sequential(
-                nn.Conv2d(merged_dim, dilation_hidden, kernel_size=1, bias=False),
-                nn.BatchNorm2d(dilation_hidden),
-                nn.Hardswish(inplace=True),
-            ))
             for r in range(dilation_range):
                 modules.append(
-                    LinearBasicConvBD(dilation_hidden, dilation_hidden, dilation=2**r))
+                    LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
             modules.append(nn.Sequential(
-                nn.Conv2d(dilation_hidden, merged_dim, kernel_size=1, bias=False),
+                nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
                 nn.BatchNorm2d(merged_dim),
                 nn.Hardswish(inplace=True),
             ))

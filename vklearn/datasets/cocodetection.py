@@ -39,6 +39,7 @@ class CocoDetection(VisionDataset):
         annFile:          str,
         category_type:    str='name',
         sub_categories:   List[str] | None=None,
+        lowpoly_size:     int=0,
         max_datas_size:   int=0,
         transform:        Callable | None=None,
         target_transform: Callable | None=None,
@@ -48,12 +49,14 @@ class CocoDetection(VisionDataset):
         from pycocotools.coco import COCO
 
         assert category_type in ('name', 'supercategory')
+        assert lowpoly_size in (0, 8, 16, 24, 32)
 
         if sub_categories is None: sub_categories = []
 
         self.coco = COCO(annFile)
         self.ids = list(sorted(self.coco.imgs.keys()))
         self.category_type = category_type
+        self.lowpoly_size = lowpoly_size
 
         self.coid2name = {
             clss['id']: clss['name']
@@ -77,7 +80,7 @@ class CocoDetection(VisionDataset):
         if len(sub_categories) > 0:
             self.classes = self.subcategories
             self.coid2class = self.coid2subcategory
-            self.ids = self._drop_others(self.ids)
+            self.ids = self._drop_other_images(self.ids)
         elif category_type == 'name':
             self.classes = self.names
             self.coid2class = self.coid2name
@@ -90,7 +93,7 @@ class CocoDetection(VisionDataset):
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
 
-    def _drop_others(self, ids:List[int]) -> List[int]:
+    def _drop_other_images(self, ids:List[int]) -> List[int]:
         new_ids = []
         for _id in tqdm(ids, ncols=80):
             anns = self._load_anns(_id)
@@ -116,22 +119,37 @@ class CocoDetection(VisionDataset):
             anns:       List[Any],
             image_size: Tuple[int, int],
         ) -> dict[str, Any]:
+
         xywh2xyxy  = lambda x, y, w, h: (x, y, x + w, y + h)
         validation = lambda ann: ann['iscrowd'] == 0
+        # boxes = tv_tensors.BoundingBoxes(
+        #     [xywh2xyxy(*ann['bbox']) for ann in anns if validation(ann)],
+        #     format='XYXY',
+        #     canvas_size=(image_size[1], image_size[0]),
+        # )
+        # labels = torch.LongTensor([
+        #     self.classes.index(self.coid2class[ann['category_id']])
+        #     for ann in anns if validation(ann)])
+        box_list = []
+        label_list = []
+        for ann in anns:
+            if not validation(ann): continue
+            class_name = self.coid2class[ann['category_id']]
+            if class_name == self.NAME_OTHER: continue
+            box_list.append(xywh2xyxy(*ann['bbox']))
+            label_list.append(self.classes.index(class_name))
         boxes = tv_tensors.BoundingBoxes(
-            [xywh2xyxy(*ann['bbox']) for ann in anns if validation(ann)],
+            box_list,
             format='XYXY',
             canvas_size=(image_size[1], image_size[0]),
         )
-        labels = torch.LongTensor([
-            self.classes.index(self.coid2class[ann['category_id']])
-            for ann in anns if validation(ann)])
+        labels = torch.LongTensor(label_list)
         return dict(boxes=boxes, labels=labels)
 
     def __getitem__(self, index:int) -> Tuple[Any, Any]:
-
         if not isinstance(index, int):
-            raise ValueError(f'Index must be of type integer, got {type(index)} instead.')
+            raise ValueError(
+                f'Index must be of type integer, got {type(index)} instead.')
 
         id = self.ids[index]
         anns = self._load_anns(id)
@@ -144,17 +162,17 @@ class CocoDetection(VisionDataset):
         if self.transforms is not None:
             image, target = self.transforms(image, target)
 
-        labels = target['labels']
-        boxes = target['boxes']
-        for i, label_id in enumerate(labels):
-            class_name = self.classes[label_id]
-            if class_name != self.NAME_OTHER: continue
-            x1, y1, x2, y2 = boxes[i]
-            boxes[i, 0] = x1 // 16 * 16
-            boxes[i, 1] = y1 // 16 * 16
-            boxes[i, 2] = min(math.ceil(x2 / 16) * 16, image.shape[2])
-            boxes[i, 3] = min(math.ceil(y2 / 16) * 16, image.shape[1])
-        target['labels'] = labels
-        target['boxes'] = boxes
+        if self.lowpoly_size > 0:
+            labels = target['labels']
+            boxes = target['boxes']
+            sl = self.lowpoly_size
+            for i, label_id in enumerate(labels):
+                x1, y1, x2, y2 = boxes[i]
+                boxes[i, 0] = x1 // sl * sl
+                boxes[i, 1] = y1 // sl * sl
+                boxes[i, 2] = min(math.ceil(x2 / sl) * sl, image.shape[2])
+                boxes[i, 3] = min(math.ceil(y2 / sl) * sl, image.shape[1])
+            target['labels'] = labels
+            target['boxes'] = boxes
 
         return image, target
