@@ -148,7 +148,8 @@ class TrimNetDet(Detector):
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
-            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+            # x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+            x = csenet_i(torch.cat([x, cluster_i(x)], dim=1))
         return x
 
     def forward(self, x:Tensor) -> Tensor:
