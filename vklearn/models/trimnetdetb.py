@@ -111,7 +111,11 @@ class TrimNetDet(Detector):
             self.samples.insert(0, PixelShuffleSample(merged_dim))
             self.csenets.insert(0, nn.Sequential(
                 CSENet(merged_dim // 4 + merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4),
-                BasicConvBD(merged_dim, merged_dim, 3, stride=1),
+                nn.Conv2d(merged_dim, merged_dim, 3, padding=1, groups=merged_dim, bias=False),
+                nn.BatchNorm2d(merged_dim),
+                nn.Hardswish(inplace=True),
+                nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
+                nn.BatchNorm2d(merged_dim),
             ))
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
