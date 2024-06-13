@@ -70,7 +70,7 @@ class TrimNetDet(Detector):
 
             features_d_dim = 48
             features_u_dim = 96
-            merged_dim     = features_d_dim + features_u_dim
+            merged_dim     = 160
             expanded_dim   = merged_dim * 2
 
             self.features_d = features[:9] # 48, 32, 32
@@ -84,7 +84,7 @@ class TrimNetDet(Detector):
 
             features_d_dim = 112
             features_u_dim = 160
-            merged_dim     = features_d_dim + features_u_dim
+            merged_dim     = 320
             expanded_dim   = merged_dim * 2
 
             self.features_d = features[:13] # 112, 32, 32
