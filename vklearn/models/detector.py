@@ -239,6 +239,41 @@ class Detector(Basic):
                 )
             ])
 
+        elif task_name == 'cocox512':
+            train_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.ScaleJitter(
+                    target_size=(512, 512),
+                    scale_range=(0.8, 1.25),
+                    antialias=True),
+                v2.RandomPhotometricDistort(p=1),
+                v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomCrop(
+                    size=(512, 512),
+                    pad_if_needed=True,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+                v2.SanitizeBoundingBoxes(min_size=7),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+            test_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=511,
+                    max_size=512,
+                    antialias=True),
+                v2.CenterCrop(512),
+                v2.SanitizeBoundingBoxes(min_size=7),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+
         elif task_name == 'cocox640':
             train_transforms = v2.Compose([
                 v2.ToImage(),

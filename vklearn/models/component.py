@@ -1,6 +1,7 @@
 from torch import Tensor
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.ops.misc import SqueezeExcitation
 
 
@@ -140,20 +141,27 @@ class UpSample(nn.Sequential):
         )
 
 
-class PixelShuffleSample(nn.Sequential):
+class PixelShuffleSample(nn.Module):
 
     def __init__(
             self,
             in_planes:  int,
-            out_planes: int,
         ):
 
-        super().__init__(
-            nn.Conv2d(in_planes, in_planes * 2, 1, bias=False),
+        super().__init__()
+
+        assert in_planes % 4 == 0
+        self.block = nn.Sequential(
+            nn.Conv2d(in_planes, in_planes, 1, bias=False),
             nn.PixelShuffle(2),
-            nn.BatchNorm2d(in_planes // 2),
-            BasicConvBD(in_planes // 2, out_planes, 3),
+            nn.BatchNorm2d(in_planes // 4),
         )
+
+    def forward(self, x:Tensor) -> Tensor:
+        return torch.cat([
+            self.block(x),
+            F.interpolate(x, scale_factor=2, mode='nearest')
+            ], dim=1)
 
 
 class CSENet(nn.Module):
