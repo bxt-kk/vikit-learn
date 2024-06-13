@@ -152,8 +152,11 @@ class TrimNetDet(Detector):
             x = cluster_i(x)
             outs.insert(0, x)
         for idx in range(len(outs) - 1):
-            outs[idx + 1] = self.csenets[idx](
+            x = self.csenets[idx](
                 torch.cat([outs[idx + 1], self.samples[idx](outs[idx])], dim=1))
+            if idx < len(outs) - 2:
+                x = outs[idx + 1] + x
+            outs[idx + 1] = x
         return outs.pop()
 
     def forward(self, x:Tensor) -> Tensor:
