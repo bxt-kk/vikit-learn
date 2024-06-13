@@ -99,17 +99,20 @@ class TrimNetDet(Detector):
         self.samples = nn.ModuleList()
         self.csenets = nn.ModuleList()
         self.samples.append(PixelShuffleSample(merged_dim))
-        self.csenets.append(CSENet(
-            merged_dim // 4 + merged_dim + features_d_dim, merged_dim, kernel_size=3, shrink_factor=4))
+        self.csenets.append(nn.Sequential(
+            CSENet(merged_dim // 4 + merged_dim + features_d_dim, merged_dim, kernel_size=3, shrink_factor=4),
+            BasicConvBD(merged_dim, merged_dim, 3, stride=1),
+        ))
         for cid in range(dilation_depth):
-            in_planes = merged_dim
             self.cluster.append(nn.Sequential(
-                BasicConvDB(in_planes, in_planes * 4, 5, stride=2),
-                BasicConvBD(in_planes * 4, in_planes, 5, stride=1),
+                BasicConvDB(merged_dim, merged_dim * 4, 5, stride=2),
+                BasicConvBD(merged_dim * 4, merged_dim, 5, stride=1),
             ))
-            self.samples.insert(0, PixelShuffleSample(in_planes))
-            self.csenets.insert(0, CSENet(
-                in_planes // 4 + in_planes * 2, in_planes, kernel_size=3, shrink_factor=4))
+            self.samples.insert(0, PixelShuffleSample(merged_dim))
+            self.csenets.insert(0, nn.Sequential(
+                CSENet(merged_dim // 4 + merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4),
+                BasicConvBD(merged_dim, merged_dim, 3, stride=1),
+            ))
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
