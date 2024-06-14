@@ -14,12 +14,10 @@ from torchvision.ops import (
 )
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
-# from torchvision.ops.misc import SqueezeExcitation
-# from torchvision.models.mobilenetv3 import InvertedResidual
 
 from PIL import Image
 
-from .component import LinearBasicConvBD, CSENet, BasicConvBD #, LocalSqueezeExcitation
+from .component import LinearBasicConvBD, CSENet, BasicConvBD
 from .component import DetPredictor
 from .detector import Detector
 
@@ -45,7 +43,7 @@ class TrimNetDet(Detector):
             categories:          List[str],
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
-            dilation_depth:      int=4,
+            dilation_depth:      int=2,
             dilation_range:      int=4,
             num_tries:           int=3,
             swap_size:           int=16,
@@ -70,12 +68,11 @@ class TrimNetDet(Detector):
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 24 * 4 + 48 + 96
+            features_dim = 48 + 96
             merged_dim   = 160
-            expanded_dim = 320
+            expanded_dim = merged_dim * 2
 
-            self.features_d = features[:4] # 24, 64, 64
-            self.features_c = features[4:9] # 48, 32, 32
+            self.features_d = features[:9] # 48, 32, 32
             self.features_u = features[9:-1] # 96, 16, 16
 
         elif backbone == 'mobilenet_v3_large':
@@ -84,12 +81,11 @@ class TrimNetDet(Detector):
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 40 * 4 + 112 + 160
+            features_dim = 112 + 160
             merged_dim   = 320
-            expanded_dim = 640
+            expanded_dim = merged_dim * 2
 
-            self.features_d = features[:7] # 40, 64, 64
-            self.features_c = features[7:13] # 112, 32, 32
+            self.features_d = features[:13] # 112, 32, 32
             self.features_u = features[13:-1] # 160, 16, 16
 
         self.merge = nn.Sequential(
@@ -104,7 +100,11 @@ class TrimNetDet(Detector):
             for r in range(dilation_range):
                 modules.append(
                     LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
-            modules.append(nn.Hardswish(inplace=True))
+            modules.append(nn.Sequential(
+                nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
+                nn.BatchNorm2d(merged_dim),
+                nn.Hardswish(inplace=True),
+            ))
             self.cluster.append(nn.Sequential(*modules))
             self.csenets.append(CSENet(
                 merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
@@ -123,14 +123,6 @@ class TrimNetDet(Detector):
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        # object_dim = self.bbox_dim + self.num_classes
-        # self.predict_objs = nn.Sequential(
-        #     nn.Conv2d(merged_dim + ex_anchor_dim, expanded_dim, kernel_size=1, bias=False),
-        #     nn.BatchNorm2d(expanded_dim),
-        #     nn.Hardswish(inplace=True),
-        #     nn.Dropout(p=dropout, inplace=True),
-        #     nn.Conv2d(expanded_dim, self.num_anchors * object_dim, kernel_size=1),
-        # )
         self.predict_objs = DetPredictor(
             merged_dim + ex_anchor_dim,
             expanded_dim,
@@ -143,17 +135,14 @@ class TrimNetDet(Detector):
     def forward_features(self, x:Tensor) -> Tensor:
         if not self._keep_features:
             fd = self.features_d(x)
-            fc = self.features_c(fd)
-            fu = self.features_u(fc)
+            fu = self.features_u(fd)
         else:
             with torch.no_grad():
                 fd = self.features_d(x)
-                fc = self.features_c(fd)
-                fu = self.features_u(fc)
+                fu = self.features_u(fd)
 
         x = self.merge(torch.cat([
-            F.pixel_unshuffle(fd, 2),
-            fc,
+            fd,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
