@@ -44,7 +44,7 @@ class TrimNetDet(Detector):
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
             dilation_depth:      int=2,
-            dilation_range:      int=4,
+            dilation_range:      int=3,
             num_tries:           int=3,
             swap_size:           int=16,
             dropout:             float=0.1,

@@ -160,7 +160,7 @@ class PixelShuffleSample(nn.Module):
     def forward(self, x:Tensor) -> Tensor:
         return torch.cat([
             self.block(x),
-            F.interpolate(x, scale_factor=2, mode='nearest')
+            F.interpolate(x, scale_factor=2, mode='bilinear')
             ], dim=1)
 
 
