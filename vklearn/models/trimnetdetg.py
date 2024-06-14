@@ -17,7 +17,7 @@ from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 from PIL import Image
 
-from .component import CSENet, BasicConvDB, BasicConvBD, PixelShuffleSample
+from .component import LinearBasicConvBD, CSENet, BasicConvBD, PixelShuffleSample
 from .component import DetPredictor
 from .detector import Detector
 
@@ -68,10 +68,9 @@ class TrimNetDet(Detector):
                 if backbone_pretrained else None,
             ).features
 
-            features_d_dim = 48
-            features_u_dim = 96
-            merged_dim     = 160
-            expanded_dim   = merged_dim * 2
+            features_dim = 48 + 96
+            merged_dim   = 160
+            expanded_dim = merged_dim * 2
 
             self.features_d = features[:9] # 48, 32, 32
             self.features_u = features[9:-1] # 96, 16, 16
@@ -82,41 +81,36 @@ class TrimNetDet(Detector):
                 if backbone_pretrained else None,
             ).features
 
-            features_d_dim = 112
-            features_u_dim = 160
-            merged_dim     = 320
-            expanded_dim   = merged_dim * 2
+            features_dim = 112 + 160
+            merged_dim   = 320
+            expanded_dim = merged_dim * 2
 
             self.features_d = features[:13] # 112, 32, 32
             self.features_u = features[13:-1] # 160, 16, 16
 
         self.merge = nn.Sequential(
-            nn.Conv2d(features_u_dim, merged_dim, 1, bias=False),
+            nn.Conv2d(features_dim, merged_dim, 1, bias=False),
             nn.BatchNorm2d(merged_dim),
         )
 
         self.cluster = nn.ModuleList()
-        self.samples = nn.ModuleList()
         self.csenets = nn.ModuleList()
-        self.samples.append(PixelShuffleSample(merged_dim))
-        self.csenets.append(nn.Sequential(
-            CSENet(merged_dim // 4 + merged_dim + features_d_dim, merged_dim, kernel_size=3, shrink_factor=4),
-            BasicConvBD(merged_dim, merged_dim, 3, stride=1),
-        ))
-        for cid in range(dilation_depth):
-            self.cluster.append(nn.Sequential(
-                BasicConvDB(merged_dim, merged_dim * 4, 5, stride=2),
-                BasicConvBD(merged_dim * 4, merged_dim, 5, stride=1),
-            ))
-            self.samples.insert(0, PixelShuffleSample(merged_dim))
-            self.csenets.insert(0, nn.Sequential(
-                CSENet(merged_dim // 4 + merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4),
-                nn.Conv2d(merged_dim, merged_dim, 3, padding=1, groups=merged_dim, bias=False),
+        for _ in range(dilation_depth):
+            modules = []
+            dilation_hidden = merged_dim * 2
+            modules.append(BasicConvBD(merged_dim, dilation_hidden, stride=2))
+            for r in range(dilation_range):
+                modules.append(
+                    LinearBasicConvBD(dilation_hidden, dilation_hidden, dilation=2**r))
+            modules.append(nn.Sequential(
+                PixelShuffleSample(dilation_hidden),
+                nn.Conv2d(dilation_hidden + dilation_hidden // 4, merged_dim, 1, bias=False),
                 nn.BatchNorm2d(merged_dim),
                 nn.Hardswish(inplace=True),
-                nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
-                nn.BatchNorm2d(merged_dim),
             ))
+            self.cluster.append(nn.Sequential(*modules))
+            self.csenets.append(CSENet(
+                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
@@ -150,18 +144,13 @@ class TrimNetDet(Detector):
                 fd = self.features_d(x)
                 fu = self.features_u(fd)
 
-        x = self.merge(fu)
-        outs = [x, fd]
-        for cluster_i in self.cluster:
-            x = cluster_i(x)
-            outs.insert(0, x)
-        for idx in range(len(outs) - 1):
-            x = self.csenets[idx](
-                torch.cat([outs[idx + 1], self.samples[idx](outs[idx])], dim=1))
-            if idx < len(outs) - 2:
-                x = outs[idx + 1] + x
-            outs[idx + 1] = x
-        return outs.pop()
+        x = self.merge(torch.cat([
+            fd,
+            F.interpolate(fu, scale_factor=2, mode='bilinear'),
+        ], dim=1))
+        for csenet_i, cluster_i in zip(self.csenets, self.cluster):
+            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+        return x
 
     def forward(self, x:Tensor) -> Tensor:
         x = self.forward_features(x)
