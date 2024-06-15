@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, List, Tuple, Dict
 import os.path
 import math
 
@@ -105,8 +105,8 @@ class CocoDetection(VisionDataset):
         return new_ids
 
     def _load_image(self, id:int) -> Image.Image:
-        path = self.coco.loadImgs(id)[0]["file_name"]
-        return Image.open(os.path.join(self.root, path)).convert("RGB")
+        path = self.coco.loadImgs(id)[0]['file_name']
+        return Image.open(os.path.join(self.root, path)).convert('RGB')
 
     def _load_anns(self, id:int) -> List[Any]:
         # return self.coco.loadAnns(self.coco.getAnnIds(id))
@@ -118,7 +118,7 @@ class CocoDetection(VisionDataset):
             self,
             anns:       List[Any],
             image_size: Tuple[int, int],
-        ) -> dict[str, Any]:
+        ) -> Dict[str, Any]:
 
         xywh2xyxy  = lambda x, y, w, h: (x, y, x + w, y + h)
         validation = lambda ann: ann['iscrowd'] == 0
