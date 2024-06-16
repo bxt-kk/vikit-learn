@@ -37,7 +37,7 @@ class Detector(Basic):
             for k in range(3):
                 anchor_base = self.region_scale * 3**k
                 anchors.append((anchor_base, anchor_base))
-                for aspect_ratio in (1.5, 2.):
+                for aspect_ratio in (2., 3.):
                     ratio_f = aspect_ratio**0.5
                     anchors.append((anchor_base / ratio_f, anchor_base * ratio_f))
                     anchors.append((anchor_base * ratio_f, anchor_base / ratio_f))
