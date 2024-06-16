@@ -42,8 +42,7 @@ class Detector(Basic):
                     anchors.append((anchor_base / ratio_f, anchor_base * ratio_f))
                     anchors.append((anchor_base * ratio_f, anchor_base / ratio_f))
         anchors = anchors if isinstance(anchors, Tensor) else torch.tensor(
-            anchors, dtype=torch.float32)
-        anchors = anchors.reshape(3, -1, 2)
+            anchors, dtype=torch.float32).reshape(3, -1, 2)
 
         self.anchors     = anchors
         self.num_anchors = len(anchors)
@@ -137,17 +136,18 @@ class Detector(Basic):
         return self.m_ap_metric.compute()
 
     def _select_anchor(self, boxes:Tensor) -> Tensor:
-        anchors = self.anchors.reshape(-1, 2)
+        derived_anchors = self.anchors.reshape(-1, 2)
         sizes = boxes[:, 2:] - boxes[:, :2]
-        inter_size = torch.minimum(sizes[:, None, ...], anchors)
+        inter_size = torch.minimum(sizes[:, None, ...], derived_anchors)
         inter_area = inter_size[..., 0] * inter_size[..., 1]
         boxes_area = sizes[..., 0] * sizes[..., 1]
         union_area = (
             boxes_area[:, None] +
-            anchors[..., 0] * anchors[..., 1] -
+            derived_anchors[..., 0] * derived_anchors[..., 1] -
             inter_area)
         ious = inter_area / union_area
-        anchor_ids = torch.argmax(ious, dim=1) // (len(anchors) // 3)
+        derive_rate = len(derived_anchors) // self.num_anchors
+        anchor_ids = torch.argmax(ious, dim=1) // derive_rate
         return anchor_ids
 
     def _select_row(self, boxes:Tensor) -> Tensor:
