@@ -30,13 +30,14 @@ class Detector(Basic):
         self.bbox_limit   = bbox_limit
         self.region_scale = bbox_limit / 32
 
-        anchors = anchors if anchors is not None else [
-            (self.region_scale * 3**k, ) * 2 for k in range(0, 3)]
+        # anchors = anchors if anchors is not None else [
+        #     (self.region_scale * 3**k, ) * 2 for k in range(0, 3)]
         if anchors is None:
             anchors = []
             for k in range(3):
                 anchor_base = self.region_scale * 3**k
-                for aspect_ratio in (1., 1.5, 2.):
+                anchors.append((anchor_base, anchor_base))
+                for aspect_ratio in (1.5, 2.):
                     ratio_f = aspect_ratio**0.5
                     anchors.append((anchor_base / ratio_f, anchor_base * ratio_f))
                     anchors.append((anchor_base * ratio_f, anchor_base / ratio_f))
