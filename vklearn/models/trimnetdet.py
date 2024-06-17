@@ -1,5 +1,5 @@
 from typing import List, Any, Dict, Tuple, Mapping
-import math
+# import math
 
 from torch import Tensor
 
@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torchvision.ops import (
-    sigmoid_focal_loss,
+    # sigmoid_focal_loss,
     generalized_box_iou_loss,
     boxes as box_ops,
 )
@@ -20,6 +20,7 @@ from PIL import Image
 from .component import LinearBasicConvBD, CSENet, BasicConvBD
 from .component import DetPredictor
 from .detector import Detector
+from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
 class TrimNetDet(Detector):
@@ -300,57 +301,57 @@ class TrimNetDet(Detector):
             ))
         return result
 
-    def focal_boost(
-            self,
-            inputs:       Tensor,
-            target_index: List[Tensor],
-            sample_mask:  Tensor | None,
-            conf_id:      int,
-            num_confs:    int,
-            alpha:        float,
-            gamma:        float,
-        ) -> Tuple[Tensor, Tensor, Tensor]:
-        # RV-240605
-
-        reduction = 'mean'
-
-        pred_conf = inputs[..., conf_id]
-        targ_conf = torch.zeros_like(pred_conf)
-        targ_conf[target_index] = 1.
-
-        if sample_mask is None:
-            sample_mask = targ_conf >= -1
-
-        sampled_pred = torch.masked_select(pred_conf, sample_mask)
-        sampled_targ = torch.masked_select(targ_conf, sample_mask)
-        sampled_loss = sigmoid_focal_loss(
-            inputs=sampled_pred,
-            targets=sampled_targ,
-            alpha=alpha,
-            gamma=gamma,
-            reduction=reduction,
-        )
-
-        obj_loss = 0.
-        # obj_mask = torch.logical_and(sample_mask, targ_conf > 0.5)
-        obj_mask = targ_conf > 0.5
-        if obj_mask.sum() > 0:
-            obj_pred = torch.masked_select(pred_conf, obj_mask)
-            obj_targ = torch.masked_select(targ_conf, obj_mask)
-            obj_loss = F.binary_cross_entropy_with_logits(
-                obj_pred, obj_targ, reduction=reduction)
-
-            obj_pred_min = obj_pred.detach().min()
-            sample_mask = pred_conf.detach() >= obj_pred_min
-
-        alpha = (math.cos(math.pi / num_confs * conf_id) + 1) / 2
-        num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).numel()
-
-        conf_loss = (
-            obj_loss * alpha / max(1, num_foreground_per_img) +
-            sampled_loss) / num_confs
-
-        return conf_loss, sampled_loss, sample_mask
+    # def focal_boost(
+    #         self,
+    #         inputs:       Tensor,
+    #         target_index: List[Tensor],
+    #         sample_mask:  Tensor | None,
+    #         conf_id:      int,
+    #         num_confs:    int,
+    #         alpha:        float,
+    #         gamma:        float,
+    #     ) -> Tuple[Tensor, Tensor, Tensor]:
+    #     # RV-240605
+    #
+    #     reduction = 'mean'
+    #
+    #     pred_conf = inputs[..., conf_id]
+    #     targ_conf = torch.zeros_like(pred_conf)
+    #     targ_conf[target_index] = 1.
+    #
+    #     if sample_mask is None:
+    #         sample_mask = targ_conf >= -1
+    #
+    #     sampled_pred = torch.masked_select(pred_conf, sample_mask)
+    #     sampled_targ = torch.masked_select(targ_conf, sample_mask)
+    #     sampled_loss = sigmoid_focal_loss(
+    #         inputs=sampled_pred,
+    #         targets=sampled_targ,
+    #         alpha=alpha,
+    #         gamma=gamma,
+    #         reduction=reduction,
+    #     )
+    #
+    #     obj_loss = 0.
+    #     # obj_mask = torch.logical_and(sample_mask, targ_conf > 0.5)
+    #     obj_mask = targ_conf > 0.5
+    #     if obj_mask.sum() > 0:
+    #         obj_pred = torch.masked_select(pred_conf, obj_mask)
+    #         obj_targ = torch.masked_select(targ_conf, obj_mask)
+    #         obj_loss = F.binary_cross_entropy_with_logits(
+    #             obj_pred, obj_targ, reduction=reduction)
+    #
+    #         obj_pred_min = obj_pred.detach().min()
+    #         sample_mask = pred_conf.detach() >= obj_pred_min
+    #
+    #     alpha = (math.cos(math.pi / num_confs * conf_id) + 1) / 2
+    #     num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).numel()
+    #
+    #     conf_loss = (
+    #         obj_loss * alpha / max(1, num_foreground_per_img) +
+    #         sampled_loss) / num_confs
+    #
+    #     return conf_loss, sampled_loss, sample_mask
 
     def calc_loss(
             self,
@@ -366,12 +367,14 @@ class TrimNetDet(Detector):
         reduction = 'mean'
         num_confs = len(self.predict_conf_tries)
 
-        conf_loss, sampled_loss, sample_mask = self.focal_boost(
-            inputs, target_index, None, 0, num_confs, alpha, gamma)
-        for conf_id in range(1, num_confs):
-            conf_loss_i, sampled_loss, sample_mask = self.focal_boost(
-                inputs, target_index, sample_mask, conf_id, num_confs, alpha, gamma)
-            conf_loss += conf_loss_i
+        # conf_loss, sampled_loss, sample_mask = self.focal_boost(
+        #     inputs, target_index, None, 0, num_confs, alpha, gamma)
+        # for conf_id in range(1, num_confs):
+        #     conf_loss_i, sampled_loss, sample_mask = self.focal_boost(
+        #         inputs, target_index, sample_mask, conf_id, num_confs, alpha, gamma)
+        #     conf_loss += conf_loss_i
+        conf_loss, sampled_loss = focal_boost_loss(
+            inputs, target_index, num_confs, alpha, gamma)
 
         pred_conf = inputs[..., 0]
         targ_conf = torch.zeros_like(pred_conf)
@@ -422,17 +425,19 @@ class TrimNetDet(Detector):
         targ_conf = torch.zeros_like(inputs[..., 0])
         targ_conf[target_index] = 1.
 
-        pred_obj = targ_conf > -1
-        for conf_id in range(num_confs):
-            pred_conf = torch.sigmoid(inputs[..., conf_id])
-            thresh = 0.5 if conf_id < num_confs - 1 else conf_thresh
-            pred_obj = torch.logical_and(pred_obj, pred_conf > thresh)
+        # pred_obj = targ_conf > -1
+        # for conf_id in range(num_confs):
+        #     pred_conf = torch.sigmoid(inputs[..., conf_id])
+        #     thresh = 0.5 if conf_id < num_confs - 1 else conf_thresh
+        #     pred_obj = torch.logical_and(pred_obj, pred_conf > thresh)
+        pred_obj = focal_boost_positive(inputs, num_confs, conf_thresh)
 
         pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
         conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
         conf_recall = pred_obj_true / torch.clamp_min(targ_conf.sum(), eps)
         conf_f1 = 2 * conf_precision * conf_recall / torch.clamp_min(conf_precision + conf_recall, eps)
-        proposals = pred_obj.sum() / pred_conf.shape[0]
+        # proposals = pred_obj.sum() / pred_conf.shape[0]
+        proposals = pred_obj.sum() / pred_obj.shape[0]
 
         objects = inputs[target_index]
 
@@ -491,14 +496,15 @@ class TrimNetDet(Detector):
             iou_thresh:    float=0.5,
         ):
 
-        preds_mask = None
+        # preds_mask = None
         num_confs = len(self.predict_conf_tries)
 
-        preds_mask = torch.sigmoid(inputs[..., 0]) > 0.5
-        for conf_id in range(1, num_confs):
-            thresh = 0.5 if conf_id < num_confs - 1 else conf_thresh
-            preds_mask = torch.logical_and(
-                preds_mask, torch.sigmoid(inputs[..., conf_id]) > thresh)
+        # preds_mask = torch.sigmoid(inputs[..., 0]) > 0.5
+        # for conf_id in range(1, num_confs):
+        #     thresh = 0.5 if conf_id < num_confs - 1 else conf_thresh
+        #     preds_mask = torch.logical_and(
+        #         preds_mask, torch.sigmoid(inputs[..., conf_id]) > thresh)
+        preds_mask = focal_boost_positive(inputs, num_confs, conf_thresh)
         preds_index = torch.nonzero(preds_mask, as_tuple=True)
 
         objects = inputs[preds_index]
