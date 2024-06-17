@@ -1,5 +1,4 @@
 from typing import List, Any, Dict, Tuple, Mapping
-# import math
 
 from torch import Tensor
 
@@ -8,16 +7,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torchvision.ops import (
-    # sigmoid_focal_loss,
     generalized_box_iou_loss,
     boxes as box_ops,
 )
-from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
-from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
+# from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+# from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 from PIL import Image
 
-from .component import LinearBasicConvBD, CSENet, BasicConvBD
+# from .component import LinearBasicConvBD, CSENet, BasicConvBD
+from .trimnetx import TrimNetX
+from .component import BasicConvBD
 from .component import DetPredictor
 from .detector import Detector
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
@@ -63,52 +63,57 @@ class TrimNetDet(Detector):
         self.dropout        = dropout
         self.backbone       = backbone
 
-        if backbone == 'mobilenet_v3_small':
-            features = mobilenet_v3_small(
-                weights=MobileNet_V3_Small_Weights.DEFAULT
-                if backbone_pretrained else None,
-            ).features
+        # if backbone == 'mobilenet_v3_small':
+        #     features = mobilenet_v3_small(
+        #         weights=MobileNet_V3_Small_Weights.DEFAULT
+        #         if backbone_pretrained else None,
+        #     ).features
+        #
+        #     features_dim = 48 + 96
+        #     merged_dim   = 160
+        #     expanded_dim = merged_dim * 4
+        #
+        #     self.features_d = features[:9] # 48, 32, 32
+        #     self.features_u = features[9:-1] # 96, 16, 16
+        #
+        # elif backbone == 'mobilenet_v3_large':
+        #     features = mobilenet_v3_large(
+        #         weights=MobileNet_V3_Large_Weights.DEFAULT
+        #         if backbone_pretrained else None,
+        #     ).features
+        #
+        #     features_dim = 112 + 160
+        #     merged_dim   = 320
+        #     expanded_dim = merged_dim * 4
+        #
+        #     self.features_d = features[:13] # 112, 32, 32
+        #     self.features_u = features[13:-1] # 160, 16, 16
+        #
+        # self.merge = nn.Sequential(
+        #     nn.Conv2d(features_dim, merged_dim, 1, bias=False),
+        #     nn.BatchNorm2d(merged_dim),
+        # )
+        #
+        # self.cluster = nn.ModuleList()
+        # self.csenets = nn.ModuleList()
+        # for _ in range(dilation_depth):
+        #     modules = []
+        #     for r in range(dilation_range):
+        #         modules.append(
+        #             LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
+        #     modules.append(nn.Sequential(
+        #         nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
+        #         nn.BatchNorm2d(merged_dim),
+        #         nn.Hardswish(inplace=True),
+        #     ))
+        #     self.cluster.append(nn.Sequential(*modules))
+        #     self.csenets.append(CSENet(
+        #         merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
+        self.trimnetx = TrimNetX(
+            dilation_depth, dilation_range, backbone, backbone_pretrained)
 
-            features_dim = 48 + 96
-            merged_dim   = 160
-            expanded_dim = merged_dim * 4
-
-            self.features_d = features[:9] # 48, 32, 32
-            self.features_u = features[9:-1] # 96, 16, 16
-
-        elif backbone == 'mobilenet_v3_large':
-            features = mobilenet_v3_large(
-                weights=MobileNet_V3_Large_Weights.DEFAULT
-                if backbone_pretrained else None,
-            ).features
-
-            features_dim = 112 + 160
-            merged_dim   = 320
-            expanded_dim = merged_dim * 4
-
-            self.features_d = features[:13] # 112, 32, 32
-            self.features_u = features[13:-1] # 160, 16, 16
-
-        self.merge = nn.Sequential(
-            nn.Conv2d(features_dim, merged_dim, 1, bias=False),
-            nn.BatchNorm2d(merged_dim),
-        )
-
-        self.cluster = nn.ModuleList()
-        self.csenets = nn.ModuleList()
-        for _ in range(dilation_depth):
-            modules = []
-            for r in range(dilation_range):
-                modules.append(
-                    LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
-            modules.append(nn.Sequential(
-                nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
-                nn.BatchNorm2d(merged_dim),
-                nn.Hardswish(inplace=True),
-            ))
-            self.cluster.append(nn.Sequential(*modules))
-            self.csenets.append(CSENet(
-                merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
+        merged_dim = self.trimnetx.merged_dim
+        expanded_dim = merged_dim * 4
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
@@ -133,25 +138,29 @@ class TrimNetDet(Detector):
             dropout=dropout,
         )
 
-    def forward_features(self, x:Tensor) -> Tensor:
-        if not self._keep_features:
-            fd = self.features_d(x)
-            fu = self.features_u(fd)
-        else:
-            with torch.no_grad():
-                fd = self.features_d(x)
-                fu = self.features_u(fd)
+    def train_features(self, flag:bool):
+        self.trimnetx.train_features(flag)
 
-        x = self.merge(torch.cat([
-            fd,
-            F.interpolate(fu, scale_factor=2, mode='bilinear'),
-        ], dim=1))
-        for csenet_i, cluster_i in zip(self.csenets, self.cluster):
-            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
-        return x
+    # def forward_features(self, x:Tensor) -> Tensor:
+    #     if not self._keep_features:
+    #         fd = self.features_d(x)
+    #         fu = self.features_u(fd)
+    #     else:
+    #         with torch.no_grad():
+    #             fd = self.features_d(x)
+    #             fu = self.features_u(fd)
+    #
+    #     x = self.merge(torch.cat([
+    #         fd,
+    #         F.interpolate(fu, scale_factor=2, mode='bilinear'),
+    #     ], dim=1))
+    #     for csenet_i, cluster_i in zip(self.csenets, self.cluster):
+    #         x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+    #     return x
 
     def forward(self, x:Tensor) -> Tensor:
-        x = self.forward_features(x)
+        # x = self.forward_features(x)
+        x = self.trimnetx(x)
         confs = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
             confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
@@ -224,7 +233,8 @@ class TrimNetDet(Detector):
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
-        x = self.forward_features(x)
+        # x = self.forward_features(x)
+        x = self.trimnetx(x)
 
         confs = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
@@ -301,58 +311,6 @@ class TrimNetDet(Detector):
             ))
         return result
 
-    # def focal_boost(
-    #         self,
-    #         inputs:       Tensor,
-    #         target_index: List[Tensor],
-    #         sample_mask:  Tensor | None,
-    #         conf_id:      int,
-    #         num_confs:    int,
-    #         alpha:        float,
-    #         gamma:        float,
-    #     ) -> Tuple[Tensor, Tensor, Tensor]:
-    #     # RV-240605
-    #
-    #     reduction = 'mean'
-    #
-    #     pred_conf = inputs[..., conf_id]
-    #     targ_conf = torch.zeros_like(pred_conf)
-    #     targ_conf[target_index] = 1.
-    #
-    #     if sample_mask is None:
-    #         sample_mask = targ_conf >= -1
-    #
-    #     sampled_pred = torch.masked_select(pred_conf, sample_mask)
-    #     sampled_targ = torch.masked_select(targ_conf, sample_mask)
-    #     sampled_loss = sigmoid_focal_loss(
-    #         inputs=sampled_pred,
-    #         targets=sampled_targ,
-    #         alpha=alpha,
-    #         gamma=gamma,
-    #         reduction=reduction,
-    #     )
-    #
-    #     obj_loss = 0.
-    #     # obj_mask = torch.logical_and(sample_mask, targ_conf > 0.5)
-    #     obj_mask = targ_conf > 0.5
-    #     if obj_mask.sum() > 0:
-    #         obj_pred = torch.masked_select(pred_conf, obj_mask)
-    #         obj_targ = torch.masked_select(targ_conf, obj_mask)
-    #         obj_loss = F.binary_cross_entropy_with_logits(
-    #             obj_pred, obj_targ, reduction=reduction)
-    #
-    #         obj_pred_min = obj_pred.detach().min()
-    #         sample_mask = pred_conf.detach() >= obj_pred_min
-    #
-    #     alpha = (math.cos(math.pi / num_confs * conf_id) + 1) / 2
-    #     num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).numel()
-    #
-    #     conf_loss = (
-    #         obj_loss * alpha / max(1, num_foreground_per_img) +
-    #         sampled_loss) / num_confs
-    #
-    #     return conf_loss, sampled_loss, sample_mask
-
     def calc_loss(
             self,
             inputs:        Tensor,
@@ -367,12 +325,6 @@ class TrimNetDet(Detector):
         reduction = 'mean'
         num_confs = len(self.predict_conf_tries)
 
-        # conf_loss, sampled_loss, sample_mask = self.focal_boost(
-        #     inputs, target_index, None, 0, num_confs, alpha, gamma)
-        # for conf_id in range(1, num_confs):
-        #     conf_loss_i, sampled_loss, sample_mask = self.focal_boost(
-        #         inputs, target_index, sample_mask, conf_id, num_confs, alpha, gamma)
-        #     conf_loss += conf_loss_i
         conf_loss, sampled_loss = focal_boost_loss(
             inputs, target_index, num_confs, alpha, gamma)
 
@@ -425,18 +377,12 @@ class TrimNetDet(Detector):
         targ_conf = torch.zeros_like(inputs[..., 0])
         targ_conf[target_index] = 1.
 
-        # pred_obj = targ_conf > -1
-        # for conf_id in range(num_confs):
-        #     pred_conf = torch.sigmoid(inputs[..., conf_id])
-        #     thresh = 0.5 if conf_id < num_confs - 1 else conf_thresh
-        #     pred_obj = torch.logical_and(pred_obj, pred_conf > thresh)
         pred_obj = focal_boost_positive(inputs, num_confs, conf_thresh)
 
         pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
         conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
         conf_recall = pred_obj_true / torch.clamp_min(targ_conf.sum(), eps)
         conf_f1 = 2 * conf_precision * conf_recall / torch.clamp_min(conf_precision + conf_recall, eps)
-        # proposals = pred_obj.sum() / pred_conf.shape[0]
         proposals = pred_obj.sum() / pred_obj.shape[0]
 
         objects = inputs[target_index]
@@ -496,14 +442,8 @@ class TrimNetDet(Detector):
             iou_thresh:    float=0.5,
         ):
 
-        # preds_mask = None
         num_confs = len(self.predict_conf_tries)
 
-        # preds_mask = torch.sigmoid(inputs[..., 0]) > 0.5
-        # for conf_id in range(1, num_confs):
-        #     thresh = 0.5 if conf_id < num_confs - 1 else conf_thresh
-        #     preds_mask = torch.logical_and(
-        #         preds_mask, torch.sigmoid(inputs[..., conf_id]) > thresh)
         preds_mask = focal_boost_positive(inputs, num_confs, conf_thresh)
         preds_index = torch.nonzero(preds_mask, as_tuple=True)
 

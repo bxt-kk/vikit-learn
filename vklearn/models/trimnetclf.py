@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
-from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
+from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 from PIL import Image
 
@@ -32,7 +32,7 @@ class TrimNetClf(Classifier):
     def __init__(
             self,
             categories:          List[str],
-            dilation_depth:      int=4,
+            dilation_depth:      int=2,
             dilation_range:      int=4,
             dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
@@ -51,27 +51,25 @@ class TrimNetClf(Classifier):
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 24 * 4 + 48 + 96
+            features_dim = 48 + 96
             merged_dim   = 160
-            expanded_dim = 320
+            expanded_dim = merged_dim * 4
 
-            self.features_d = features[:4] # 24, 64, 64
-            self.features_c = features[4:9] # 48, 32, 32
+            self.features_d = features[:9] # 48, 32, 32
             self.features_u = features[9:-1] # 96, 16, 16
 
-        elif backbone == 'mobilenet_v2':
-            features = mobilenet_v2(
-                weights=MobileNet_V2_Weights.DEFAULT
+        elif backbone == 'mobilenet_v3_large':
+            features = mobilenet_v3_large(
+                weights=MobileNet_V3_Large_Weights.DEFAULT
                 if backbone_pretrained else None,
             ).features
 
-            features_dim = 32 * 4 + 96 + 320
+            features_dim = 112 + 160
             merged_dim   = 320
-            expanded_dim = 640
+            expanded_dim = merged_dim * 4
 
-            self.features_d = features[:7] # 32, 64, 64
-            self.features_c = features[7:14] # 96, 32, 32
-            self.features_u = features[14:-1] # 320, 16, 16
+            self.features_d = features[:13] # 112, 32, 32
+            self.features_u = features[13:-1] # 160, 16, 16
 
         self.merge = nn.Sequential(
             nn.Conv2d(features_dim, merged_dim, 1, bias=False),
@@ -85,7 +83,11 @@ class TrimNetClf(Classifier):
             for r in range(dilation_range):
                 modules.append(
                     LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
-            modules.append(nn.Hardswish(inplace=True))
+            modules.append(nn.Sequential(
+                nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
+                nn.BatchNorm2d(merged_dim),
+                nn.Hardswish(inplace=True),
+            ))
             self.cluster.append(nn.Sequential(*modules))
             self.csenets.append(CSENet(
                 merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
@@ -103,17 +105,14 @@ class TrimNetClf(Classifier):
     def forward_features(self, x:Tensor) -> Tensor:
         if not self._keep_features:
             fd = self.features_d(x)
-            fc = self.features_c(fd)
-            fu = self.features_u(fc)
+            fu = self.features_u(fd)
         else:
             with torch.no_grad():
                 fd = self.features_d(x)
-                fc = self.features_c(fd)
-                fu = self.features_u(fc)
+                fu = self.features_u(fd)
 
         x = self.merge(torch.cat([
-            F.pixel_unshuffle(fd, 2),
-            fc,
+            fd,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
