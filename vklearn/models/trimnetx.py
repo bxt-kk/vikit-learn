@@ -6,10 +6,8 @@ import torch.nn.functional as F
 
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
-from torchvision.models.mobilenetv3 import InvertedResidual
-from torchvision.ops.misc import SqueezeExcitation
 
-from .component import LinearBasicConvBD, CSENet, LocalSqueezeExcitation
+from .component import LinearBasicConvBD, CSENet
 from .basic import Basic
 
 
