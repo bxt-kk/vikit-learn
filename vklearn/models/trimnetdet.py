@@ -10,15 +10,11 @@ from torchvision.ops import (
     generalized_box_iou_loss,
     boxes as box_ops,
 )
-# from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
-# from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 from PIL import Image
 
-# from .component import LinearBasicConvBD, CSENet, BasicConvBD
 from .trimnetx import TrimNetX
-from .component import BasicConvBD
-from .component import DetPredictor
+from .component import BasicConvBD, DetPredictor
 from .detector import Detector
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
@@ -63,52 +59,6 @@ class TrimNetDet(Detector):
         self.dropout        = dropout
         self.backbone       = backbone
 
-        # if backbone == 'mobilenet_v3_small':
-        #     features = mobilenet_v3_small(
-        #         weights=MobileNet_V3_Small_Weights.DEFAULT
-        #         if backbone_pretrained else None,
-        #     ).features
-        #
-        #     features_dim = 48 + 96
-        #     merged_dim   = 160
-        #     expanded_dim = merged_dim * 4
-        #
-        #     self.features_d = features[:9] # 48, 32, 32
-        #     self.features_u = features[9:-1] # 96, 16, 16
-        #
-        # elif backbone == 'mobilenet_v3_large':
-        #     features = mobilenet_v3_large(
-        #         weights=MobileNet_V3_Large_Weights.DEFAULT
-        #         if backbone_pretrained else None,
-        #     ).features
-        #
-        #     features_dim = 112 + 160
-        #     merged_dim   = 320
-        #     expanded_dim = merged_dim * 4
-        #
-        #     self.features_d = features[:13] # 112, 32, 32
-        #     self.features_u = features[13:-1] # 160, 16, 16
-        #
-        # self.merge = nn.Sequential(
-        #     nn.Conv2d(features_dim, merged_dim, 1, bias=False),
-        #     nn.BatchNorm2d(merged_dim),
-        # )
-        #
-        # self.cluster = nn.ModuleList()
-        # self.csenets = nn.ModuleList()
-        # for _ in range(dilation_depth):
-        #     modules = []
-        #     for r in range(dilation_range):
-        #         modules.append(
-        #             LinearBasicConvBD(merged_dim, merged_dim, dilation=2**r))
-        #     modules.append(nn.Sequential(
-        #         nn.Conv2d(merged_dim, merged_dim, 1, bias=False),
-        #         nn.BatchNorm2d(merged_dim),
-        #         nn.Hardswish(inplace=True),
-        #     ))
-        #     self.cluster.append(nn.Sequential(*modules))
-        #     self.csenets.append(CSENet(
-        #         merged_dim * 2, merged_dim, kernel_size=3, shrink_factor=4))
         self.trimnetx = TrimNetX(
             dilation_depth, dilation_range, backbone, backbone_pretrained)
 
@@ -141,25 +91,7 @@ class TrimNetDet(Detector):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    # def forward_features(self, x:Tensor) -> Tensor:
-    #     if not self._keep_features:
-    #         fd = self.features_d(x)
-    #         fu = self.features_u(fd)
-    #     else:
-    #         with torch.no_grad():
-    #             fd = self.features_d(x)
-    #             fu = self.features_u(fd)
-    #
-    #     x = self.merge(torch.cat([
-    #         fd,
-    #         F.interpolate(fu, scale_factor=2, mode='bilinear'),
-    #     ], dim=1))
-    #     for csenet_i, cluster_i in zip(self.csenets, self.cluster):
-    #         x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
-    #     return x
-
     def forward(self, x:Tensor) -> Tensor:
-        # x = self.forward_features(x)
         x = self.trimnetx(x)
         confs = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
@@ -233,7 +165,6 @@ class TrimNetDet(Detector):
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
-        # x = self.forward_features(x)
         x = self.trimnetx(x)
 
         confs = [self.predict_conf_tries[0](x)]

@@ -6,6 +6,8 @@ import torch.nn.functional as F
 
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
+from torchvision.models.mobilenetv3 import InvertedResidual
+from torchvision.ops.misc import SqueezeExcitation
 
 from .component import LinearBasicConvBD, CSENet
 from .basic import Basic
@@ -27,6 +29,7 @@ class TrimNetX(Basic):
             dilation_range:      int=4,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
+            pop_features_se:     bool=True,
         ):
 
         super().__init__()
@@ -40,6 +43,8 @@ class TrimNetX(Basic):
                 weights=MobileNet_V3_Small_Weights.DEFAULT
                 if backbone_pretrained else None,
             ).features
+            if pop_features_se:
+                features = self._pop_se_blocks(features)
 
             self.features_dim = 48 + 96
             self.merged_dim   = 160
@@ -52,6 +57,8 @@ class TrimNetX(Basic):
                 weights=MobileNet_V3_Large_Weights.DEFAULT
                 if backbone_pretrained else None,
             ).features
+            if pop_features_se:
+                features = self._pop_se_blocks(features)
 
             self.features_dim = 112 + 160
             self.merged_dim   = 320
@@ -96,3 +103,15 @@ class TrimNetX(Basic):
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
             x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
         return x
+
+    def _pop_se_blocks(self, features:nn.Module) -> nn.Module:
+        for m in features:
+            if not isinstance(m, InvertedResidual): continue
+            block:nn.Sequential = m.block
+            remove_ids = []
+            for idx, child in block.named_children():
+                if not isinstance(child, SqueezeExcitation): continue
+                remove_ids.append(int(idx))
+            for idx in remove_ids[::-1]:
+                block.pop(idx)
+        return features
