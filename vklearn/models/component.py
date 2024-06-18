@@ -197,9 +197,12 @@ class LocalSqueezeExcitation(nn.Module):
             self,
             input_channels:   int,
             squeeze_channels: int,
+            kernel_size:      int=3,
         ):
 
         super().__init__()
+        padding = (kernel_size - 1) // 2
+        self.avgpool = nn.AvgPool2d(kernel_size, 1, padding=padding)
         self.fc1 = nn.Conv2d(input_channels, squeeze_channels, 1)
         self.fc2 = nn.Conv2d(squeeze_channels, input_channels, 1)
         self.activation = nn.ReLU(inplace=True)
@@ -209,10 +212,11 @@ class LocalSqueezeExcitation(nn.Module):
     def load_from_se_module(
             cls,
             se_module:   SqueezeExcitation,
+            kernel_size: int=3,
         ) -> 'LocalSqueezeExcitation':
 
         squeeze_channels, input_channels, _, _ = se_module.fc1.weight.shape
-        lse_module = cls(input_channels, squeeze_channels)
+        lse_module = cls(input_channels, squeeze_channels, kernel_size)
         lse_module.fc1.load_state_dict(se_module.fc1.state_dict())
         lse_module.fc2.load_state_dict(se_module.fc2.state_dict())
         return lse_module

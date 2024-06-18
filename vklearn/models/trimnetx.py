@@ -9,7 +9,7 @@ from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 from torchvision.models.mobilenetv3 import InvertedResidual
 from torchvision.ops.misc import SqueezeExcitation
 
-from .component import LinearBasicConvBD, CSENet
+from .component import LinearBasicConvBD, CSENet, LocalSqueezeExcitation
 from .basic import Basic
 
 
@@ -113,5 +113,7 @@ class TrimNetX(Basic):
                 if not isinstance(child, SqueezeExcitation): continue
                 remove_ids.append(int(idx))
             for idx in remove_ids[::-1]:
-                block.pop(idx)
+                # block.pop(idx)
+                block[idx] = LocalSqueezeExcitation.load_from_se_module(
+                    block[idx], kernel_size=5)
         return features
