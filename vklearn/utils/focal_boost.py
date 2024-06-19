@@ -79,9 +79,11 @@ def focal_boost_loss(
 
 def focal_boost_predict(inputs:Tensor, num_confs:int) -> Tensor:
     predict = torch.ones_like(inputs[..., 0])
-    for conf_id in range(num_confs - 1):
-        predict[inputs[..., conf_id] < 0] = 0.
-    predict = predict * torch.sigmoid(inputs[..., num_confs - 1])
+    # for conf_id in range(num_confs - 1):
+    #     predict[inputs[..., conf_id] < 0] = 0.
+    # predict = predict * torch.sigmoid(inputs[..., num_confs - 1])
+    for conf_id in range(num_confs):
+        predict = predict * torch.sigmoid(inputs[..., conf_id])
     return predict
 
 
