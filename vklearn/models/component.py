@@ -236,12 +236,13 @@ class DetPredictor(nn.Module):
 
     def __init__(
             self,
-            in_planes:      int,
-            hidden_planes:  int,
-            num_anchors:    int,
-            bbox_dim:       int,
-            num_classes:    int,
-            dropout:   float,
+            in_planes:     int,
+            hidden_planes: int,
+            num_anchors:   int,
+            bbox_dim:      int,
+            num_classes:   int,
+            dropout:       float,
+            dropout_bbox:  float=0.,
         ):
 
         super().__init__()
@@ -250,7 +251,7 @@ class DetPredictor(nn.Module):
             nn.Conv2d(in_planes, in_planes, kernel_size=1, bias=False),
             nn.BatchNorm2d(in_planes),
             nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout, inplace=True),
+            nn.Dropout(p=dropout_bbox, inplace=True),
             nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
         )
 
