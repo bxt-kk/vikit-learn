@@ -130,7 +130,7 @@ class Trainer:
                     optimizer.step()
                     optimizer.zero_grad()
 
-                if (max_train_step > 0) and (step >= max_train_step):
+                if (max_train_step > 0) and ((step + 1) >= max_train_step):
                     break
 
             self.lr_scheduler.step()
@@ -147,7 +147,7 @@ class Trainer:
                         print(self._dump_progress(epoch, step, test_loader))
                         print(logger.dumps('test'))
 
-                    if (max_test_step > 0) and (step >= max_test_step):
+                    if (max_test_step > 0) and ((step + 1) >= max_test_step):
                         break
 
             task.end_on_epoch(epoch, logger)
