@@ -128,6 +128,39 @@ class Classifier(Basic):
                 )
             ])
 
+        elif task_name == 'imagenetx256':
+            train_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.ScaleJitter(
+                    target_size=(256, 256),
+                    scale_range=(0.9, 1.1),
+                    antialias=True),
+                v2.RandomPhotometricDistort(p=1),
+                v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomCrop(
+                    size=(256, 256),
+                    pad_if_needed=True,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+            test_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=255,
+                    max_size=256,
+                    antialias=True),
+                v2.CenterCrop(256),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+
         elif task_name == 'imagenetx448':
             train_transforms = v2.Compose([
                 v2.ToImage(),

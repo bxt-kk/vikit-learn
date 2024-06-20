@@ -270,3 +270,42 @@ class DetPredictor(nn.Module):
         p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
         p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
         return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)
+
+
+class WaveBase(nn.Module):
+
+    def forward(self, x:Tensor) -> Tensor:
+        # x: n, c, h, w
+        x_00 = x[:, :, ::2, ::2]
+        x_01 = x[:, :, ::2, 1::2]
+        x_10 = x[:, :, 1::2, ::2]
+        x_11 = x[:, :, 1::2, 1::2]
+        return torch.cat([
+            x_00,
+            x_01 - x_00,
+            x_10 - x_00,
+            x_11 - x_00], dim=1)
+
+
+class InvWaveBase(nn.Module):
+
+    def forward(self, x:Tensor) -> Tensor:
+        # x: n, c, h, w
+        n, c, h, w = x.shape
+        csize = c // 4
+        x_00 = x[:, :1 * csize]
+        x_01 = x[:, 1 * csize:2 * csize] + x_00
+        x_10 = x[:, 2 * csize:3 * csize] + x_00
+        x_11 = x[:, 3 * csize:] + x_00
+        # return torch.pixel_shuffle(torch.cat([
+        #     x_00.unsqueeze(2),
+        #     x_01.unsqueeze(2),
+        #     x_10.unsqueeze(2),
+        #     x_11.unsqueeze(2),
+        #     ], dim=2).reshape(n, -1, h, w), 2)
+        x = torch.zeros((n, csize, h * 2, w * 2)).type_as(x)
+        x[:, :, ::2, ::2] += x_00
+        x[:, :, ::2, 1::2] += x_01
+        x[:, :, 1::2, ::2] += x_10
+        x[:, :, 1::2, 1::2] += x_11
+        return x
