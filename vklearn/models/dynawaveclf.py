@@ -22,8 +22,9 @@ class DynawaveClf(Classifier):
 
     def __init__(
             self,
-            categories:          List[str],
-            dropout:             float=0.2,
+            categories: List[str],
+            num_global: int=3,
+            dropout:    float=0.2,
         ):
         super().__init__(categories)
 
@@ -59,7 +60,7 @@ class DynawaveClf(Classifier):
                 nn.Conv2d(192, 192, 1),
                 nn.BatchNorm2d(192),
                 nn.Hardswish(inplace=False),
-            ) for _ in range(2)])
+            ) for _ in range(num_global)])
 
         expanded_dim = features_dim * 4
 
