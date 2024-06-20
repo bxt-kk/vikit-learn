@@ -42,7 +42,7 @@ class DynawaveClf(Classifier):
 
         features_dim = 192
 
-        self.global_wave = nn.Sequential(*[
+        self.global_wave = nn.ModuleList([
             nn.Sequential(
                 WaveBase(), # c1, 8, 8
                 nn.Conv2d(192 * 4, 192 * 2, 1, groups=192),
@@ -87,7 +87,8 @@ class DynawaveClf(Classifier):
 
     def forward_features(self, x:Tensor) -> Tensor:
         x = self.features(x)
-        x = self.global_wave(x)
+        for layer in self.global_wave:
+            x = x + layer(x)
         return x
 
     def forward(self, x:Tensor) -> Tensor:
