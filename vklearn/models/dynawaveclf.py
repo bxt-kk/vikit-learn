@@ -42,20 +42,31 @@ class DynawaveClf(Classifier):
 
         features_dim = 192
 
-        k = 64
         self.global_wave = nn.Sequential(*[
             nn.Sequential(
                 WaveBase(), # c1, 8, 8
-                WaveBase(), # c2, 4, 4
-                WaveBase(), # c3, 2, 2
-                nn.Conv2d(192 * k, 192 * k, 3, padding=1, groups=192 * k),
-                nn.BatchNorm2d(192 * k),
+                nn.Conv2d(192 * 4, 192 * 2, 1, groups=192),
+                nn.BatchNorm2d(192 * 2),
                 nn.Hardswish(inplace=False),
-                nn.Conv2d(192 * k, 192 * k, 1, groups=192),
-                nn.BatchNorm2d(192 * k),
+                WaveBase(), # c2, 4, 4
+                nn.Conv2d(192 * 8, 192 * 4, 1, groups=192),
+                nn.BatchNorm2d(192 * 4),
+                nn.Hardswish(inplace=False),
+                WaveBase(), # c3, 2, 2
+                nn.Conv2d(192 * 16, 192 * 16, 3, padding=1, groups=192 * 16),
+                nn.BatchNorm2d(192 * 16),
+                nn.Hardswish(inplace=False),
+                nn.Conv2d(192 * 16, 192 * 16, 1, groups=192),
+                nn.BatchNorm2d(192 * 16),
                 nn.Hardswish(inplace=False),
                 InvWaveBase(), # c3, 2, 2
+                nn.Conv2d(192 * 4, 192 * 8, 1, groups=192),
+                nn.BatchNorm2d(192 * 8),
+                nn.Hardswish(inplace=False),
                 InvWaveBase(), # c2, 4, 4
+                nn.Conv2d(192 * 2, 192 * 4, 1, groups=192),
+                nn.BatchNorm2d(192 * 4),
+                nn.Hardswish(inplace=False),
                 InvWaveBase(), # c1, 8, 8
                 nn.Conv2d(192, 192, 1),
                 nn.BatchNorm2d(192),
