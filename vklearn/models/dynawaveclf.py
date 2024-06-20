@@ -70,7 +70,7 @@ class DynawaveClf(Classifier):
                 InvWaveBase(), # c1, 8, 8
                 nn.Conv2d(192, 192, 1),
                 nn.BatchNorm2d(192),
-                nn.Hardswish(inplace=False),
+                # nn.Hardswish(inplace=False),
             ) for _ in range(num_global)])
 
         expanded_dim = features_dim * 4
