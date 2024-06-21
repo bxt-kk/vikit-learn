@@ -133,6 +133,8 @@ class TrimNetClf(Classifier):
             eps:    float=1e-5,
         ) -> Dict[str, Any]:
 
+        if len(target.shape) == 2: # Note!
+            target = torch.argmax(target, dim=-1)
         predict = torch.argmax(inputs, dim=-1)
         accuracy = (predict == target).sum() / len(predict)
 
