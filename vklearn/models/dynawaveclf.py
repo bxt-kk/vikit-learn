@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from PIL import Image
 
-from .component import WaveBase, InvWaveBase
+from .component import WaveBase
 from .classifier import Classifier
 
 
@@ -102,7 +102,11 @@ class DynawaveClf(Classifier):
 
                 nn.Sequential(
                     nn.Conv2d(192, 192, 1),
-                    nn.BatchNorm2d(192)),
+                    nn.BatchNorm2d(192),
+                    nn.Hardswish(),
+                    nn.Conv2d(192, 192, 1),
+                    nn.BatchNorm2d(192),
+                ),
             ]) for _ in range(num_global)])
 
         expanded_dim = features_dim * 4
@@ -120,6 +124,7 @@ class DynawaveClf(Classifier):
     def forward_features(self, x:Tensor) -> Tensor:
         x = self.features(x)
         for block in self.global_wave:
+            x0 = x
             vs = [x]
             for n, layer in enumerate(block[:-1]):
                 x = layer(x)
@@ -127,7 +132,7 @@ class DynawaveClf(Classifier):
                     vs.append(x)
                 else:
                     x = x + vs.pop()
-            x = block[-1](x)
+            x = x0 + block[-1](x)
         return x
 
     def forward(self, x:Tensor) -> Tensor:
