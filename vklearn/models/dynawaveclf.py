@@ -8,7 +8,6 @@ import torch.nn.functional as F
 
 from PIL import Image
 
-from .component import WaveBase
 from .classifier import Classifier
 
 
@@ -23,7 +22,7 @@ class DynawaveClf(Classifier):
     def __init__(
             self,
             categories: List[str],
-            num_global: int=3,
+            num_global: int=4,
             dropout:    float=0.2,
         ):
         super().__init__(categories)
@@ -31,49 +30,16 @@ class DynawaveClf(Classifier):
         self.dropout = dropout
 
         self.features = nn.Sequential(
-            WaveBase(),
-            WaveBase(),
-            WaveBase(),
-            nn.Conv2d(192, 96, 1),
-            WaveBase(),
-            nn.Conv2d(384, 192, 1),
+            nn.PixelUnshuffle(4),
+            nn.Conv2d(48, 96, 3, padding=1, stride=2),
+            nn.BatchNorm2d(96),
+            nn.ReLU(),
+            nn.Conv2d(96, 192, 3, padding=1, stride=2),
             nn.BatchNorm2d(192),
         ) # 192, 16, 16
 
         features_dim = 192
 
-        # self.global_wave = nn.ModuleList([
-        #     nn.Sequential(
-        #         WaveBase(), # c1, 8, 8
-        #         nn.Conv2d(192 * 4, 192 * 2, 1, groups=192),
-        #         nn.BatchNorm2d(192 * 2),
-        #         nn.Hardswish(inplace=False),
-        #         WaveBase(), # c2, 4, 4
-        #         nn.Conv2d(192 * 8, 192 * 4, 1, groups=192),
-        #         nn.BatchNorm2d(192 * 4),
-        #         nn.Hardswish(inplace=False),
-        #         WaveBase(), # c3, 2, 2
-        #         nn.Conv2d(192 * 16, 192 * 16, 3, padding=1, groups=192 * 16),
-        #         nn.BatchNorm2d(192 * 16),
-        #         nn.Hardswish(inplace=False),
-        #         nn.Conv2d(192 * 16, 192 * 16, 1, groups=192),
-        #         nn.BatchNorm2d(192 * 16),
-        #         nn.Hardswish(inplace=False),
-        #         InvWaveBase(), # c3, 2, 2
-        #         nn.Conv2d(192 * 4, 192 * 8, 1, groups=192),
-        #         nn.BatchNorm2d(192 * 8),
-        #         nn.Hardswish(inplace=False),
-        #         InvWaveBase(), # c2, 4, 4
-        #         nn.Conv2d(192 * 2, 192 * 4, 1, groups=192),
-        #         nn.BatchNorm2d(192 * 4),
-        #         nn.Hardswish(inplace=False),
-        #         InvWaveBase(), # c1, 8, 8
-        #         nn.Conv2d(192, 192, 1),
-        #         nn.BatchNorm2d(192),
-        #         nn.Hardswish(inplace=False),
-        #         nn.Conv2d(192, 192, 1),
-        #         nn.BatchNorm2d(192),
-        #     ) for _ in range(num_global)])
         self.global_wave = nn.ModuleList([
             nn.ModuleList([
                 nn.Sequential(
@@ -103,11 +69,14 @@ class DynawaveClf(Classifier):
                 nn.Sequential(
                     nn.Conv2d(192, 192, 1),
                     nn.BatchNorm2d(192),
-                    nn.Hardswish(),
+                    nn.ReLU(),
                     nn.Conv2d(192, 192, 1),
                     nn.BatchNorm2d(192),
                 ),
+
+                nn.BatchNorm2d(192),
             ]) for _ in range(num_global)])
+
 
         expanded_dim = features_dim * 4
 
@@ -126,13 +95,13 @@ class DynawaveClf(Classifier):
         for block in self.global_wave:
             x0 = x
             vs = [x]
-            for n, layer in enumerate(block[:-1]):
+            for n, layer in enumerate(block[:-2]):
                 x = layer(x)
                 if n < 3:
                     vs.append(x)
                 else:
                     x = x + vs.pop()
-            x = x0 + block[-1](x)
+            x = block[-1](x0 + block[-2](x))
         return x
 
     def forward(self, x:Tensor) -> Tensor:
