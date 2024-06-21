@@ -149,7 +149,7 @@ class CocoPretrain(VisionDataset):
         if self.transforms is not None:
             image, target = self.transforms(image, target)
 
-        multilabel = torch.tensor(len(self.classes))
+        multilabel = torch.zeros(len(self.classes))
         for label_idx in target['labels']:
             multilabel[label_idx] = 1.
         multilabel /= max(len(target['labels']), 1)
