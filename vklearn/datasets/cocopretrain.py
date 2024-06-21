@@ -10,7 +10,7 @@ from torchvision import tv_tensors
 from tqdm import tqdm
 
 
-class CocoDetection(VisionDataset):
+class CocoPretrain(VisionDataset):
     '''`MS Coco Detection <https://cocodataset.org/#detection-2016>`_ Dataset.
 
     It requires the `COCO API to be installed <https://github.com/pdollar/coco/tree/master/PythonAPI>`_.
