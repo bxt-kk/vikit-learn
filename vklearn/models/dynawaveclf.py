@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from PIL import Image
 
 from .classifier import Classifier
+from .dynawavenet import DynawaveNet
 
 
 class DynawaveClf(Classifier):
@@ -16,116 +17,60 @@ class DynawaveClf(Classifier):
 
     Args:
         categories: Target categories.
+        num_waves: Number of the global wave blocks.
+        wave_depth: Depth of the wave block.
         dropout: Dropout parameters in the classifier.
     '''
 
     def __init__(
             self,
             categories: List[str],
-            num_global: int=3,
+            num_waves:  int=3,
+            wave_depth: int=3,
             dropout:    float=0.2,
         ):
         super().__init__(categories)
 
-        self.dropout = dropout
+        self.num_waves  = num_waves
+        self.wave_depth = wave_depth
+        self.dropout    = dropout
 
-        self.features = nn.Sequential(
-            nn.PixelUnshuffle(2),
-            nn.Conv2d(12, 48, 3, padding=1, stride=2),
-            nn.BatchNorm2d(48),
-            nn.ReLU(),
-            nn.Conv2d(48, 96, 3, padding=1, stride=2),
-            nn.BatchNorm2d(96),
-            nn.ReLU(),
-            nn.Conv2d(96, 192, 3, padding=1, stride=2),
-            nn.BatchNorm2d(192),
-        ) # 192, 32, 32
+        self.dynawavenet = DynawaveNet(num_waves, wave_depth)
 
-        features_dim = 192
-
-        self.global_wave = nn.ModuleList([
-            nn.ModuleList([
-                nn.Sequential(
-                    nn.Conv2d(192, 192 * 2, 3, padding=1, stride=2, groups=192),
-                    nn.BatchNorm2d(192 * 2)), # 16
-                nn.Sequential(
-                    nn.Conv2d(192 * 2, 192 * 4, 3, padding=1, stride=2, groups=192),
-                    nn.BatchNorm2d(192 * 4)), # 8
-                nn.Sequential(
-                    nn.Conv2d(192 * 4, 192 * 8, 3, padding=1, stride=2, groups=192),
-                    nn.BatchNorm2d(192 * 8)), # 4
-
-                nn.Sequential(
-                    nn.Conv2d(192 * 8, 192 * 8, 3, padding=1, stride=1, groups=192),
-                    nn.BatchNorm2d(192 * 8),
-                ), # 2
-
-                nn.Sequential(
-                    nn.ConvTranspose2d(192 * 8, 192 * 4, 3, 2, 1, output_padding=1, groups=192),
-                    nn.BatchNorm2d(192 * 4)),
-                nn.Sequential(
-                    nn.ConvTranspose2d(192 * 4, 192 * 2, 3, 2, 1, output_padding=1, groups=192),
-                    nn.BatchNorm2d(192 * 2)),
-                nn.Sequential(
-                    nn.ConvTranspose2d(192 * 2, 192 * 1, 3, 2, 1, output_padding=1, groups=192),
-                    nn.BatchNorm2d(192 * 1)),
-
-                nn.Sequential(
-                    nn.Conv2d(192, 192, 1),
-                    nn.BatchNorm2d(192),
-                    nn.ReLU(),
-                    nn.Conv2d(192, 192, 1),
-                    nn.BatchNorm2d(192),
-                ),
-
-                nn.BatchNorm2d(192),
-            ]) for _ in range(num_global)])
-
-
+        features_dim = self.dynawavenet.features_dim
         expanded_dim = features_dim * 4
 
         self.predict_clss = nn.Sequential(
-            # nn.BatchNorm2d(merged_dim),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(start_dim=1),
             nn.Linear(features_dim, expanded_dim),
-            nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout, inplace=True),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
             nn.Linear(expanded_dim, self.num_classes)
         )
 
-    def forward_features(self, x:Tensor) -> Tensor:
-        x = self.features(x)
-        for block in self.global_wave:
-            x0 = x
-            vs = [x]
-            for n, layer in enumerate(block[:-2]):
-                x = layer(x)
-                if n < 3:
-                    vs.append(x)
-                else:
-                    x = x + vs.pop()
-            x = block[-1](x0 + block[-2](x))
-        return x
-
     def forward(self, x:Tensor) -> Tensor:
-        x = self.forward_features(x)
+        x = self.dynawavenet(x)
         return self.predict_clss(x)
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'DynawaveClf':
         hyps = state['hyperparameters']
         model = cls(
-            categories     = hyps['categories'],
-            dropout        = hyps['dropout'],
+            categories = hyps['categories'],
+            num_waves  = hyps['num_waves'],
+            wave_depth = hyps['wave_depth'],
+            dropout    = hyps['dropout'],
         )
         model.load_state_dict(state['model'])
         return model
 
     def hyperparameters(self) -> Dict[str, Any]:
         return dict(
-            categories     = self.categories,
-            dropout        = self.dropout,
+            categories = self.categories,
+            num_waves  = self.num_waves,
+            wave_depth = self.wave_depth,
+            dropout    = self.dropout,
         )
 
     def classify(
