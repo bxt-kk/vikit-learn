@@ -46,56 +46,28 @@ class DynawaveClf(Classifier):
         self.global_wave = nn.ModuleList([
             nn.ModuleList([
                 nn.Sequential(
-                    # nn.Conv2d(192, 192 * 2, 3, padding=1, stride=2, groups=192),
-                    nn.Conv2d(192, 192 * 2, 1, groups=192),
-                    nn.BatchNorm2d(192 * 2),
-                    nn.ReLU(),
-                    nn.Conv2d(192 * 2, 192 * 2, 3, padding=1, stride=2, groups=192 * 2),
+                    nn.Conv2d(192, 192 * 2, 3, padding=1, stride=2, groups=192),
                     nn.BatchNorm2d(192 * 2)), # 16
                 nn.Sequential(
-                    # nn.Conv2d(192 * 2, 192 * 4, 3, padding=1, stride=2, groups=192),
-                    nn.Conv2d(192 * 2, 192 * 4, 1, groups=192),
-                    nn.BatchNorm2d(192 * 4),
-                    nn.ReLU(),
-                    nn.Conv2d(192 * 4, 192 * 4, 3, padding=1, stride=2, groups=192 * 4),
+                    nn.Conv2d(192 * 2, 192 * 4, 3, padding=1, stride=2, groups=192),
                     nn.BatchNorm2d(192 * 4)), # 8
                 nn.Sequential(
-                    # nn.Conv2d(192 * 4, 192 * 8, 3, padding=1, stride=2, groups=192),
-                    nn.Conv2d(192 * 4, 192 * 8, 1, groups=192),
-                    nn.BatchNorm2d(192 * 8),
-                    nn.ReLU(),
-                    nn.Conv2d(192 * 8, 192 * 8, 3, padding=1, stride=2, groups=192 * 8),
+                    nn.Conv2d(192 * 4, 192 * 8, 3, padding=1, stride=2, groups=192),
                     nn.BatchNorm2d(192 * 8)), # 4
 
                 nn.Sequential(
-                    # nn.Conv2d(192 * 8, 192 * 8, 3, padding=1, stride=1, groups=192),
-                    nn.Conv2d(192 * 8, 192 * 8, 3, padding=1, stride=1, groups=192 * 8),
-                    nn.BatchNorm2d(192 * 8),
-                    nn.ReLU(),
-                    nn.Conv2d(192 * 8, 192 * 8, 1, groups=192),
+                    nn.Conv2d(192 * 8, 192 * 8, 3, padding=1, stride=1, groups=192),
                     nn.BatchNorm2d(192 * 8),
                 ), # 2
 
                 nn.Sequential(
-                    # nn.ConvTranspose2d(192 * 8, 192 * 4, 3, 2, 1, output_padding=1, groups=192),
-                    nn.ConvTranspose2d(192 * 8, 192 * 8, 3, 2, 1, output_padding=1, groups=192 * 8),
-                    nn.BatchNorm2d(192 * 8),
-                    nn.ReLU(),
-                    nn.Conv2d(192 * 8, 192 * 4, 1, groups=192),
+                    nn.ConvTranspose2d(192 * 8, 192 * 4, 3, 2, 1, output_padding=1, groups=192),
                     nn.BatchNorm2d(192 * 4)),
                 nn.Sequential(
-                    # nn.ConvTranspose2d(192 * 4, 192 * 2, 3, 2, 1, output_padding=1, groups=192),
-                    nn.ConvTranspose2d(192 * 4, 192 * 4, 3, 2, 1, output_padding=1, groups=192 * 4),
-                    nn.BatchNorm2d(192 * 4),
-                    nn.ReLU(),
-                    nn.Conv2d(192 * 4, 192 * 2, 1, groups=192),
+                    nn.ConvTranspose2d(192 * 4, 192 * 2, 3, 2, 1, output_padding=1, groups=192),
                     nn.BatchNorm2d(192 * 2)),
                 nn.Sequential(
-                    # nn.ConvTranspose2d(192 * 2, 192 * 1, 3, 2, 1, output_padding=1, groups=192),
-                    nn.ConvTranspose2d(192 * 2, 192 * 2, 3, 2, 1, output_padding=1, groups=192 * 2),
-                    nn.BatchNorm2d(192 * 2),
-                    nn.ReLU(),
-                    nn.Conv2d(192 * 2, 192 * 1, 1, groups=192),
+                    nn.ConvTranspose2d(192 * 2, 192 * 1, 3, 2, 1, output_padding=1, groups=192),
                     nn.BatchNorm2d(192 * 1)),
 
                 nn.Sequential(
