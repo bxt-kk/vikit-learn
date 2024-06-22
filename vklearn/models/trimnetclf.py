@@ -135,7 +135,7 @@ class TrimNetClf(Classifier):
 
         if len(target.shape) == 2:
             predict = torch.softmax(inputs, dim=-1)
-            accuracy = 1 - 0.5 * torch.abs(predict - target).sum(dim=-1)
+            accuracy = (1 - 0.5 * torch.abs(predict - target).sum(dim=-1)).mean()
         else:
             predict = torch.argmax(inputs, dim=-1)
             accuracy = (predict == target).sum() / len(predict)
