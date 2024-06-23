@@ -3,6 +3,9 @@ from typing import List
 from torch import Tensor
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 
 from .basic import Basic
 from .component import ConvNormActive, InvertedResidual, LSENet
@@ -27,35 +30,71 @@ class DynawaveNet(Basic):
         self.num_waves  = num_waves
         self.wave_depth = wave_depth
 
-        self.features = nn.Sequential(
-            nn.PixelUnshuffle(2),
-            ConvNormActive(12, 24, stride=2),
-            InvertedResidual(24, 24, 4),
-            ConvNormActive(24, 48, stride=2),
-            InvertedResidual(48, 48, 4),
-            ConvNormActive(48, 96, stride=2),
-            InvertedResidual(96, 96, 4),
-            InvertedResidual(96, 192, 4),
-        ) # 192, 32, 32
+        # self.features = nn.Sequential(
+        #     nn.PixelUnshuffle(2),
+        #     ConvNormActive(12, 24, stride=2),
+        #     InvertedResidual(24, 24, 4),
+        #     ConvNormActive(24, 48, stride=2),
+        #     InvertedResidual(48, 48, 4),
+        #     ConvNormActive(48, 96, stride=2),
+        #     InvertedResidual(96, 96, 4),
+        #     InvertedResidual(96, 192, 4),
+        # ) # 192, 32, 32
 
-        self.features_dim = 192
+        features = mobilenet_v3_small(
+            weights=MobileNet_V3_Small_Weights.DEFAULT
+        ).features
+
+        self.features_d = features[:9] # 48, 32, 32
+        self.features_u = features[9:-1] # 96, 16, 16
+
+        features_ddim = 48
+        features_udim = 96
+
+        self.features_dim = 160
+
+        self.merge = nn.Sequential(
+            nn.Conv2d(features_ddim + features_udim, self.features_dim, 1, bias=False),
+            nn.BatchNorm2d(self.features_dim),
+        )
+
+        expand_ratio = 2
+        expanded_dim = self.features_dim * expand_ratio
 
         self.cluster = nn.ModuleList()
         self.csenets = nn.ModuleList()
         for _ in range(num_waves):
             modules = []
+            modules.append(InvertedResidual(
+                self.features_dim, expanded_dim, expand_ratio, stride=2))
             for r in range(wave_depth):
                 modules.append(
                     InvertedResidual(
-                        self.features_dim, self.features_dim, 1, dilation=2**r, heads=4, activation=None))
-            modules.append(ConvNormActive(self.features_dim, self.features_dim, 1))
+                        expanded_dim, expanded_dim, 1, dilation=2**r, activation=None))
+            modules.append(nn.Sequential(
+                nn.ConvTranspose2d(expanded_dim, expanded_dim, 3, 2, 1, output_padding=1, groups=expanded_dim, bias=False),
+                nn.BatchNorm2d(expanded_dim),
+                nn.ReLU(),
+                ConvNormActive(expanded_dim, self.features_dim, 1),
+            ))
             self.cluster.append(nn.Sequential(*modules))
             self.csenets.append(LSENet(
                 self.features_dim * 2, self.features_dim, kernel_size=3, shrink_factor=4))
 
     def forward(self, x:Tensor) -> List[Tensor]:
-        x = self.features(x)
-        fs = []
+        # x = self.features(x)
+        if not self._keep_features:
+            fd = self.features_d(x)
+            fu = self.features_u(fd)
+        else:
+            with torch.no_grad():
+                fd = self.features_d(x)
+                fu = self.features_u(fd)
+        x = self.merge(torch.cat([
+            fd,
+            F.interpolate(fu, scale_factor=2, mode='bilinear'),
+        ], dim=1))
+        fs = [x]
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
             x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
             fs.append(x)

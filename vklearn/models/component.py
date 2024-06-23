@@ -352,7 +352,9 @@ class LSENet(nn.Module):
         shrink_dim = in_planes // shrink_factor
         self.fusion = nn.Sequential(
             ConvNormActive(
-                in_planes, shrink_dim, kernel_size, norm_layer=None, activation=nn.ReLU),
+                in_planes, shrink_dim, 1, norm_layer=None, activation=None),
+            ConvNormActive(
+                shrink_dim, shrink_dim, kernel_size, groups=shrink_dim, norm_layer=None, activation=None),
             ConvNormActive(
                 shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Hardsigmoid),
         )
