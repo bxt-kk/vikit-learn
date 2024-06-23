@@ -45,7 +45,7 @@ class DynawaveNet(Basic):
             for r in range(wave_depth):
                 modules.append(
                     InvertedResidual(
-                        self.features_dim, self.features_dim, 2, dilation=2**r, heads=8, activation=None))
+                        self.features_dim, self.features_dim, 1, dilation=2**r, heads=4, activation=None))
             modules.append(ConvNormActive(self.features_dim, self.features_dim, 1))
             self.cluster.append(nn.Sequential(*modules))
             self.csenets.append(LSENet(
