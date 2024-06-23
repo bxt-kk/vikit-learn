@@ -54,5 +54,5 @@ class DynawaveNet(Basic):
     def forward(self, x:Tensor) -> Tensor:
         x = self.features(x)
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
-            x += csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
         return x

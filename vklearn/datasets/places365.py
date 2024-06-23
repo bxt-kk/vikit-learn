@@ -6,7 +6,7 @@ from torchvision.datasets.vision import VisionDataset
 
 
 class Places365(VisionDataset):
-    '''`Plain bbox annotated format common dataset.
+    '''`Places365 <http://places2.csail.mit.edu/index.html>`_ classification dataset.
 
     Args:
         root: Root directory where images are downloaded to.
