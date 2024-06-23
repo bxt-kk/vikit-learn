@@ -62,7 +62,7 @@ class TrimNetClf(Classifier):
         self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tensor:
-        x = self.trimnetx(x)
+        x = self.trimnetx(x)[-1]
         return self.predict_clss(x)
 
     @classmethod

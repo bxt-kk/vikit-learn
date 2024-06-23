@@ -1,3 +1,5 @@
+from typing import List
+
 from torch import Tensor
 
 import torch
@@ -80,7 +82,7 @@ class TrimNetX(Basic):
             self.csenets.append(CSENet(
                 self.merged_dim * 2, self.merged_dim, kernel_size=3, shrink_factor=4))
 
-    def forward(self, x:Tensor) -> Tensor:
+    def forward(self, x:Tensor) -> List[Tensor]:
         if not self._keep_features:
             fd = self.features_d(x)
             fu = self.features_u(fd)
@@ -93,6 +95,8 @@ class TrimNetX(Basic):
             fd,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
+        fs = []
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
             x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
-        return x
+            fs.append(x)
+        return fs
