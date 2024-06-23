@@ -82,12 +82,26 @@ class DynawaveDet(Detector):
             dropout=dropout,
         )
 
+    # def forward(self, x:Tensor) -> Tensor:
+    #     x = self.dynawavenet(x)
+    #     confs = [self.predict_conf_tries[0](x)]
+    #     for layer in self.predict_conf_tries[1:]:
+    #         confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
+    #     p_objs = self.predict_objs(torch.cat([x, confs[-1]], dim=1))
+    #     bs, _, ny, nx = p_objs.shape
+    #     p_tryx = torch.cat([
+    #         conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
+    #         for conf in confs], dim=2)
+    #     p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
+    #     return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
+
     def forward(self, x:Tensor) -> Tensor:
-        x = self.dynawavenet(x)
-        confs = [self.predict_conf_tries[0](x)]
-        for layer in self.predict_conf_tries[1:]:
-            confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
-        p_objs = self.predict_objs(torch.cat([x, confs[-1]], dim=1))
+        fs = self.dynawavenet(x)
+        confs = [self.predict_conf_tries[0](fs[0])]
+        for k, layer in enumerate(self.predict_conf_tries[1:]):
+            fs_ix = min(k + 1, len(fs) - 1)
+            confs.append(layer(torch.cat([fs[fs_ix], confs[-1]], dim=1)))
+        p_objs = self.predict_objs(torch.cat([fs[-1], confs[-1]], dim=1))
         bs, _, ny, nx = p_objs.shape
         p_tryx = torch.cat([
             conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
@@ -121,7 +135,6 @@ class DynawaveDet(Detector):
             num_tries  = self.num_tries,
             swap_size  = self.swap_size,
             dropout    = self.dropout,
-            backbone   = self.backbone,
         )
 
     def load_state_dict(

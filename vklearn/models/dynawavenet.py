@@ -1,3 +1,5 @@
+from typing import List
+
 from torch import Tensor
 import torch
 import torch.nn as nn
@@ -51,8 +53,10 @@ class DynawaveNet(Basic):
             self.csenets.append(LSENet(
                 self.features_dim * 2, self.features_dim, kernel_size=3, shrink_factor=4))
 
-    def forward(self, x:Tensor) -> Tensor:
+    def forward(self, x:Tensor) -> List[Tensor]:
         x = self.features(x)
+        fs = []
         for csenet_i, cluster_i in zip(self.csenets, self.cluster):
             x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
-        return x
+            fs.append(x)
+        return fs
