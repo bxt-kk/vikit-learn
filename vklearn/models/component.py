@@ -1,3 +1,5 @@
+from typing import Callable
+
 from torch import Tensor
 import torch
 import torch.nn as nn
@@ -272,40 +274,90 @@ class DetPredictor(nn.Module):
         return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)
 
 
-class WaveBase(nn.Module):
+class ConvNormActive(nn.Sequential):
+
+    def __init__(
+            self,
+            in_planes:   int,
+            out_planes:  int,
+            kernel_size: int=3,
+            stride:      int | tuple[int, int]=1,
+            dilation:    int=1,
+            groups:      int=1,
+            norm_layer:  Callable[..., nn.Module] | None=nn.BatchNorm2d,
+            activation:  Callable[..., nn.Module] | None=nn.ReLU,
+        ):
+
+        padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
+        layers = [nn.Conv2d(
+            in_planes, out_planes, kernel_size, stride, padding, dilation, groups=groups),
+        ]
+        if norm_layer is not None:
+            layers.append(norm_layer(out_planes))
+        if activation is not None:
+            layers.append(activation())
+        super().__init__(*layers)
+
+
+class InvertedResidual(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:    int,
+            out_planes:   int,
+            expand_ratio: int,
+            kernel_size:  int=3,
+            stride:       int | tuple[int, int]=1,
+            dilation:     int=1,
+            heads:        int=1,
+            activation:   Callable[..., nn.Module] | None=nn.ReLU,
+        ):
+
+        super().__init__()
+
+        layers = []
+        expanded_dim = in_planes * expand_ratio
+        if expanded_dim != 1:
+            layers.append(ConvNormActive(
+                in_planes, expanded_dim, kernel_size=1, groups=heads, activation=activation))
+        layers.extend([
+            ConvNormActive(
+                expanded_dim, expanded_dim,
+                stride=stride, dilation=dilation, groups=expanded_dim, activation=activation),
+            ConvNormActive(
+                expanded_dim, out_planes, kernel_size=1, groups=heads, activation=None),
+        ])
+        self.blocks = nn.Sequential(*layers)
+        self.use_res_connect = in_planes == out_planes
 
     def forward(self, x:Tensor) -> Tensor:
-        # x: n, c, h, w
-        x_00 = x[:, :, ::2, ::2]
-        x_01 = x[:, :, ::2, 1::2]
-        x_10 = x[:, :, 1::2, ::2]
-        x_11 = x[:, :, 1::2, 1::2]
-        return torch.cat([
-            x_00,
-            x_01 - x_00,
-            x_10 - x_00,
-            x_11 - x_00], dim=1)
+        out = self.blocks(x)
+        if self.use_res_connect:
+            out += x
+        return out
 
 
-class InvWaveBase(nn.Module):
+class LSENet(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            out_planes:    int,
+            kernel_size:   int=3,
+            shrink_factor: int=4,
+        ):
+
+        super().__init__()
+
+        shrink_dim = in_planes // shrink_factor
+        self.fusion = nn.Sequential(
+            ConvNormActive(
+                in_planes, shrink_dim, kernel_size, norm_layer=None, activation=nn.ReLU),
+            ConvNormActive(
+                shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Hardsigmoid),
+        )
+        self.project = ConvNormActive(
+            in_planes, out_planes, 1, norm_layer=nn.BatchNorm2d, activation=None)
 
     def forward(self, x:Tensor) -> Tensor:
-        # x: n, c, h, w
-        n, c, h, w = x.shape
-        csize = c // 4
-        x_00 = x[:, :1 * csize]
-        x_01 = x[:, 1 * csize:2 * csize] + x_00
-        x_10 = x[:, 2 * csize:3 * csize] + x_00
-        x_11 = x[:, 3 * csize:] + x_00
-        # return torch.pixel_shuffle(torch.cat([
-        #     x_00.unsqueeze(2),
-        #     x_01.unsqueeze(2),
-        #     x_10.unsqueeze(2),
-        #     x_11.unsqueeze(2),
-        #     ], dim=2).reshape(n, -1, h, w), 2)
-        x = torch.zeros((n, csize, h * 2, w * 2)).type_as(x)
-        x[:, :, ::2, ::2] += x_00
-        x[:, :, ::2, 1::2] += x_01
-        x[:, :, 1::2, ::2] += x_10
-        x[:, :, 1::2, 1::2] += x_11
-        return x
+        return self.project(x * self.fusion(x))
