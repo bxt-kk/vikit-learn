@@ -69,12 +69,14 @@ class TrimNetDet(Detector):
 
         self.predict_conf_tries = nn.ModuleList([nn.Sequential(
             InvertedResidual(merged_dim, merged_dim, 1, use_res_connect=False),
+            nn.GELU(),
             nn.Dropout(p=dropout, inplace=True),
             nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
         )])
         for _ in range(1, num_tries):
             self.predict_conf_tries.append(nn.Sequential(
                 InvertedResidual(merged_dim + ex_anchor_dim, merged_dim, 1, use_res_connect=False),
+                nn.GELU(),
                 nn.Dropout(p=dropout, inplace=True),
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))

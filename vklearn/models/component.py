@@ -289,9 +289,10 @@ class CSENet(nn.Module):
 
         shrink_dim = in_planes // shrink_factor
         self.fusion = nn.Sequential(
-            nn.Conv2d(in_planes, shrink_dim, 1),
-            nn.Conv2d(shrink_dim, shrink_dim, 3, padding=1, groups=shrink_dim),
-            nn.ReLU(),
+            ConvNormActive(
+                in_planes, shrink_dim, 1),
+            ConvNormActive(
+                shrink_dim, shrink_dim, 3, groups=shrink_dim),
             ConvNormActive(
                 shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Sigmoid),
         )
