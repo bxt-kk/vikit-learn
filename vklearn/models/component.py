@@ -264,7 +264,6 @@ class UpSample(nn.Sequential):
     def __init__(
             self,
             in_planes:  int,
-            out_planes: int,
             activation: Callable[..., nn.Module] | None=nn.GELU,
         ):
 

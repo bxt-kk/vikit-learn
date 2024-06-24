@@ -144,8 +144,8 @@ class TrimNetDet(Detector):
             strict:     bool=True,
             assign:     bool=False,
         ):
-        CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.4.weight'
-        CLSS_BIAS_KEY = 'predict_objs.predict_clss.4.bias'
+        CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.2.weight'
+        CLSS_BIAS_KEY = 'predict_objs.predict_clss.2.bias'
 
         clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
         clss_bias = state_dict.pop(CLSS_BIAS_KEY)

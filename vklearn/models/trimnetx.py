@@ -79,7 +79,7 @@ class TrimNetX(Basic):
                     InvertedResidual(
                         expanded_dim, expanded_dim, 1, dilation=2**r, activation=None))
             modules.append(nn.Sequential(
-                UpSample(expanded_dim, expanded_dim),
+                UpSample(expanded_dim),
                 ConvNormActive(expanded_dim, self.merged_dim, 1),
             ))
             self.cluster.append(nn.Sequential(*modules))
