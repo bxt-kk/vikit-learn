@@ -285,7 +285,7 @@ class ConvNormActive(nn.Sequential):
             dilation:    int=1,
             groups:      int=1,
             norm_layer:  Callable[..., nn.Module] | None=nn.BatchNorm2d,
-            activation:  Callable[..., nn.Module] | None=nn.ReLU,
+            activation:  Callable[..., nn.Module] | None=nn.GELU,
         ):
 
         padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
@@ -310,14 +310,14 @@ class InvertedResidual(nn.Module):
             stride:       int | tuple[int, int]=1,
             dilation:     int=1,
             heads:        int=1,
-            activation:   Callable[..., nn.Module] | None=nn.ReLU,
+            activation:   Callable[..., nn.Module] | None=nn.GELU,
         ):
 
         super().__init__()
 
         layers = []
         expanded_dim = in_planes * expand_ratio
-        if expanded_dim != 1:
+        if expand_ratio != 1:
             layers.append(ConvNormActive(
                 in_planes, expanded_dim, kernel_size=1, groups=heads, activation=activation))
         layers.extend([
@@ -328,7 +328,7 @@ class InvertedResidual(nn.Module):
                 expanded_dim, out_planes, kernel_size=1, groups=heads, activation=None),
         ])
         self.blocks = nn.Sequential(*layers)
-        self.use_res_connect = in_planes == out_planes
+        self.use_res_connect = (in_planes == out_planes) and (stride == 1)
 
     def forward(self, x:Tensor) -> Tensor:
         out = self.blocks(x)
@@ -356,7 +356,7 @@ class LSENet(nn.Module):
             ConvNormActive(
                 shrink_dim, shrink_dim, kernel_size, groups=shrink_dim, norm_layer=None, activation=None),
             ConvNormActive(
-                shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Hardsigmoid),
+                shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Sigmoid),
         )
         self.project = ConvNormActive(
             in_planes, out_planes, 1, norm_layer=nn.BatchNorm2d, activation=None)

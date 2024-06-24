@@ -21,7 +21,7 @@ class DynawaveNet(Basic):
 
     def __init__(
             self,
-            num_waves:  int=3,
+            num_waves:  int=2,
             wave_depth: int=4,
         ):
 
@@ -63,6 +63,7 @@ class DynawaveNet(Basic):
 
         self.cluster = nn.ModuleList()
         self.csenets = nn.ModuleList()
+        self.normals = nn.ModuleList()
         for _ in range(num_waves):
             modules = []
             modules.append(InvertedResidual(
@@ -74,12 +75,13 @@ class DynawaveNet(Basic):
             modules.append(nn.Sequential(
                 nn.ConvTranspose2d(expanded_dim, expanded_dim, 3, 2, 1, output_padding=1, groups=expanded_dim, bias=False),
                 nn.BatchNorm2d(expanded_dim),
-                nn.ReLU(),
+                nn.GELU(),
                 ConvNormActive(expanded_dim, self.features_dim, 1),
             ))
             self.cluster.append(nn.Sequential(*modules))
             self.csenets.append(LSENet(
                 self.features_dim * 2, self.features_dim, kernel_size=3, shrink_factor=4))
+            self.normals.append(nn.BatchNorm2d(self.features_dim))
 
     def forward(self, x:Tensor) -> List[Tensor]:
         # x = self.features(x)
@@ -95,7 +97,7 @@ class DynawaveNet(Basic):
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
         fs = [x]
-        for csenet_i, cluster_i in zip(self.csenets, self.cluster):
-            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+        for normal_i, csenet_i, cluster_i in zip(self.normals, self.csenets, self.cluster):
+            x = normal_i(x + csenet_i(torch.cat([x, cluster_i(x)], dim=1)))
             fs.append(x)
         return fs
