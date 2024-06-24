@@ -6,30 +6,6 @@ import torch.nn as nn
 from torchvision.ops.misc import SqueezeExcitation
 
 
-class QuickGELU(nn.Module):
-    def forward(self, x:Tensor) -> Tensor:
-        return x * torch.sigmoid(1.702 * x)
-
-
-class LayerNorm2d(nn.Module):
-    def __init__(
-            self,
-            num_channels: int,
-            eps: float=1e-6,
-        ):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(num_channels))
-        self.bias = nn.Parameter(torch.zeros(num_channels))
-        self.eps = eps
-
-    def forward(self, x:Tensor) -> Tensor:
-        u = x.mean(1, keepdim=True)
-        s = (x - u).pow(2).mean(1, keepdim=True)
-        x = (x - u) / torch.sqrt(s + self.eps)
-        x = self.weight[:, None, None] * x + self.bias[:, None, None]
-        return x
-
-
 class LocalSqueezeExcitation(nn.Module):
 
     def __init__(
@@ -81,8 +57,8 @@ class ConvNormActive(nn.Sequential):
             stride:      int | tuple[int, int]=1,
             dilation:    int=1,
             groups:      int=1,
-            norm_layer:  Callable[..., nn.Module] | None=LayerNorm2d, #nn.BatchNorm2d,
-            activation:  Callable[..., nn.Module] | None=QuickGELU, # nn.Hardswish,
+            norm_layer:  Callable[..., nn.Module] | None=nn.BatchNorm2d,
+            activation:  Callable[..., nn.Module] | None=nn.GELU,
         ):
 
         padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
@@ -107,7 +83,7 @@ class InvertedResidual(nn.Module):
             stride:          int | tuple[int, int]=1,
             dilation:        int=1,
             heads:           int=1,
-            activation:      Callable[..., nn.Module] | None=QuickGELU, # nn.Hardswish,
+            activation:      Callable[..., nn.Module] | None=nn.GELU,
             use_res_connect: bool=True,
         ):
 
@@ -143,8 +119,8 @@ class UpSample(nn.Sequential):
     def __init__(
             self,
             in_planes:  int,
-            norm_layer: Callable[..., nn.Module] | None=LayerNorm2d, #nn.BatchNorm2d,
-            activation: Callable[..., nn.Module] | None=QuickGELU, # nn.Hardswish,
+            norm_layer: Callable[..., nn.Module] | None=nn.BatchNorm2d,
+            activation: Callable[..., nn.Module] | None=nn.GELU,
         ):
 
         super().__init__(
@@ -173,7 +149,7 @@ class CSENet(nn.Module):
             ConvNormActive(
                 shrink_dim, shrink_dim, 3, groups=shrink_dim),
             ConvNormActive(
-                shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Sigmoid), # nn.Hardsigmoid
+                shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Sigmoid),
         )
         self.project = ConvNormActive(
             in_planes, out_planes, 1, activation=None)

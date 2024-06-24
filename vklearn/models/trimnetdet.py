@@ -14,7 +14,7 @@ from torchvision.ops import (
 from PIL import Image
 
 from .trimnetx import TrimNetX
-from .component import InvertedResidual, DetPredictor, QuickGELU
+from .component import InvertedResidual, DetPredictor
 from .detector import Detector
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
@@ -69,16 +69,14 @@ class TrimNetDet(Detector):
 
         self.predict_conf_tries = nn.ModuleList([nn.Sequential(
             InvertedResidual(merged_dim, merged_dim, 1, use_res_connect=False),
-            # nn.Hardswish(),
-            QuickGELU(),
+            nn.GELU(),
             nn.Dropout(p=dropout, inplace=True),
             nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
         )])
         for _ in range(1, num_tries):
             self.predict_conf_tries.append(nn.Sequential(
                 InvertedResidual(merged_dim + ex_anchor_dim, merged_dim, 1, use_res_connect=False),
-                # nn.Hardswish(),
-                QuickGELU(),
+                nn.GELU(),
                 nn.Dropout(p=dropout, inplace=True),
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
