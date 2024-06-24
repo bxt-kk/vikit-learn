@@ -52,7 +52,7 @@ class TrimNetClf(Classifier):
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(start_dim=1),
             nn.Linear(merged_dim, expanded_dim),
-            nn.GELU(),
+            nn.Hardswish(),
             nn.Dropout(p=dropout, inplace=True),
             nn.Linear(expanded_dim, self.num_classes)
         )
