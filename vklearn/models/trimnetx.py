@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
-from .component import LinearBasicConvBD, CSENet
+from .component import ConvNormActive, InvertedResidual, UpSample, CSENet
 from .basic import Basic
 
 
@@ -17,25 +17,25 @@ class TrimNetX(Basic):
     '''A light-weight and easy-to-train model base the mobilenetv3
 
     Args:
-        dilation_depth: Depth of dilation module.
-        dilation_range: The impact region of dilation convolution.
+        num_waves: Number of the global wave blocks.
+        wave_depth: Depth of the wave block.
         backbone: Specify a basic model as a feature extraction module.
         backbone_pretrained: Whether to load backbone pretrained weights.
     '''
 
     def __init__(
             self,
-            dilation_depth:      int=2,
-            dilation_range:      int=4,
+            num_waves:           int=2,
+            wave_depth:          int=4,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
         ):
 
         super().__init__()
 
-        self.dilation_depth = dilation_depth
-        self.dilation_range = dilation_range
-        self.backbone       = backbone
+        self.num_waves  = num_waves
+        self.wave_depth = wave_depth
+        self.backbone   = backbone
 
         if backbone == 'mobilenet_v3_small':
             features = mobilenet_v3_small(
@@ -61,26 +61,31 @@ class TrimNetX(Basic):
             self.features_d = features[:13] # 112, 32, 32
             self.features_u = features[13:-1] # 160, 16, 16
 
-        self.merge = nn.Sequential(
-            nn.Conv2d(self.features_dim, self.merged_dim, 1, bias=False),
-            nn.BatchNorm2d(self.merged_dim),
-        )
+        self.merge = ConvNormActive(
+            self.features_dim, self.merged_dim, 1, activation=None)
+
+        expand_ratio = 2
+        expanded_dim = self.merged_dim * expand_ratio
 
         self.cluster = nn.ModuleList()
         self.csenets = nn.ModuleList()
-        for _ in range(dilation_depth):
+        self.normals = nn.ModuleList()
+        for _ in range(num_waves):
             modules = []
-            for r in range(dilation_range):
+            modules.append(InvertedResidual(
+                self.merged_dim, expanded_dim, expand_ratio, stride=2))
+            for r in range(wave_depth):
                 modules.append(
-                    LinearBasicConvBD(self.merged_dim, self.merged_dim, dilation=2**r))
+                    InvertedResidual(
+                        expanded_dim, expanded_dim, 1, dilation=2**r, activation=None))
             modules.append(nn.Sequential(
-                nn.Conv2d(self.merged_dim, self.merged_dim, 1, bias=False),
-                nn.BatchNorm2d(self.merged_dim),
-                nn.Hardswish(inplace=True),
+                UpSample(expanded_dim, expanded_dim),
+                ConvNormActive(expanded_dim, self.merged_dim, 1),
             ))
             self.cluster.append(nn.Sequential(*modules))
             self.csenets.append(CSENet(
                 self.merged_dim * 2, self.merged_dim, kernel_size=3, shrink_factor=4))
+            self.normals.append(nn.BatchNorm2d(self.merged_dim))
 
     def forward(self, x:Tensor) -> List[Tensor]:
         if not self._keep_features:
@@ -95,8 +100,9 @@ class TrimNetX(Basic):
             fd,
             F.interpolate(fu, scale_factor=2, mode='bilinear'),
         ], dim=1))
-        fs = []
-        for csenet_i, cluster_i in zip(self.csenets, self.cluster):
-            x = x + csenet_i(torch.cat([x, cluster_i(x)], dim=1))
+        fs = [x]
+        for i, cluster_i in enumerate(self.cluster):
+            x = x + self.csenets[i](torch.cat([x, cluster_i(x)], dim=1))
+            x = self.normals[i](x)
             fs.append(x)
         return fs

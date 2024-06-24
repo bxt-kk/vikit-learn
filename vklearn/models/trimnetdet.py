@@ -14,7 +14,7 @@ from torchvision.ops import (
 from PIL import Image
 
 from .trimnetx import TrimNetX
-from .component import BasicConvBD, DetPredictor
+from .component import InvertedResidual, DetPredictor
 from .detector import Detector
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
@@ -26,8 +26,8 @@ class TrimNetDet(Detector):
         categories: Target categories.
         bbox_limit: Maximum size limit of bounding box.
         anchors: Preset anchor boxes.
-        dilation_depth: Depth of dilation module.
-        dilation_range: The impact region of dilation convolution.
+        num_waves: Number of the global wave blocks.
+        wave_depth: Depth of the wave block.
         num_tries: Number of attempts to guess.
         swap_size: Dimensions of the exchanged data.
         dropout: Dropout parameters in the classifier.
@@ -40,8 +40,8 @@ class TrimNetDet(Detector):
             categories:          List[str],
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
-            dilation_depth:      int=2,
-            dilation_range:      int=4,
+            num_waves:           int=2,
+            wave_depth:          int=4,
             num_tries:           int=3,
             swap_size:           int=16,
             dropout:             float=0.1,
@@ -52,15 +52,15 @@ class TrimNetDet(Detector):
         super().__init__(
             categories, bbox_limit=bbox_limit, anchors=anchors)
 
-        self.dilation_depth = dilation_depth
-        self.dilation_range = dilation_range
-        self.num_tries      = num_tries
-        self.swap_size      = swap_size
-        self.dropout        = dropout
-        self.backbone       = backbone
+        self.num_waves  = num_waves
+        self.wave_depth = wave_depth
+        self.num_tries  = num_tries
+        self.swap_size  = swap_size
+        self.dropout    = dropout
+        self.backbone   = backbone
 
         self.trimnetx = TrimNetX(
-            dilation_depth, dilation_range, backbone, backbone_pretrained)
+            num_waves, wave_depth, backbone, backbone_pretrained)
 
         merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
@@ -68,13 +68,13 @@ class TrimNetDet(Detector):
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
         self.predict_conf_tries = nn.ModuleList([nn.Sequential(
-            BasicConvBD(merged_dim, merged_dim, kernel_size=3),
+            InvertedResidual(merged_dim, merged_dim, 1, use_res_connect=False),
             nn.Dropout(p=dropout, inplace=True),
             nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
         )])
         for _ in range(1, num_tries):
             self.predict_conf_tries.append(nn.Sequential(
-                BasicConvBD(merged_dim + ex_anchor_dim, merged_dim, kernel_size=3),
+                InvertedResidual(merged_dim + ex_anchor_dim, merged_dim, 1, use_res_connect=False),
                 nn.Dropout(p=dropout, inplace=True),
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
@@ -91,21 +91,8 @@ class TrimNetDet(Detector):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    # def forward(self, x:Tensor) -> Tensor:
-    #     x = self.trimnetx(x)
-    #     confs = [self.predict_conf_tries[0](x)]
-    #     for layer in self.predict_conf_tries[1:]:
-    #         confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
-    #     p_objs = self.predict_objs(torch.cat([x, confs[-1]], dim=1))
-    #     bs, _, ny, nx = p_objs.shape
-    #     p_tryx = torch.cat([
-    #         conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-    #         for conf in confs], dim=2)
-    #     p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
-    #     return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
-
     def forward(self, x:Tensor) -> Tensor:
-        fs = self.trimnetx(x)
+        fs = self.trimnetx(x)[-self.num_tries:]
         confs = [self.predict_conf_tries[0](fs[0])]
         for k, layer in enumerate(self.predict_conf_tries[1:]):
             fs_ix = min(k + 1, len(fs) - 1)
@@ -125,8 +112,8 @@ class TrimNetDet(Detector):
             categories          = hyps['categories'],
             bbox_limit          = hyps['bbox_limit'],
             anchors             = hyps['anchors'],
-            dilation_depth      = hyps['dilation_depth'],
-            dilation_range      = hyps['dilation_range'],
+            num_waves           = hyps['num_waves'],
+            wave_depth          = hyps['wave_depth'],
             num_tries           = hyps['num_tries'],
             swap_size           = hyps['swap_size'],
             dropout             = hyps['dropout'],
@@ -138,15 +125,15 @@ class TrimNetDet(Detector):
 
     def hyperparameters(self) -> Dict[str, Any]:
         return dict(
-            categories     = self.categories,
-            bbox_limit     = self.bbox_limit,
-            anchors        = self.anchors,
-            dilation_depth = self.dilation_depth,
-            dilation_range = self.dilation_range,
-            num_tries      = self.num_tries,
-            swap_size      = self.swap_size,
-            dropout        = self.dropout,
-            backbone       = self.backbone,
+            categories = self.categories,
+            bbox_limit = self.bbox_limit,
+            anchors    = self.anchors,
+            num_waves  = self.num_waves,
+            wave_depth = self.wave_depth,
+            num_tries  = self.num_tries,
+            swap_size  = self.swap_size,
+            dropout    = self.dropout,
+            backbone   = self.backbone,
         )
 
     def load_state_dict(

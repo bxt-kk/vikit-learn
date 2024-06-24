@@ -17,8 +17,8 @@ class TrimNetClf(Classifier):
 
     Args:
         categories: Target categories.
-        dilation_depth: Depth of dilation module.
-        dilation_range: The impact region of dilation convolution.
+        num_waves: Number of the global wave blocks.
+        wave_depth: Depth of the wave block.
         num_tries: Number of attempts to guess.
         swap_size: Dimensions of the exchanged data.
         dropout: Dropout parameters in the classifier.
@@ -29,31 +29,30 @@ class TrimNetClf(Classifier):
     def __init__(
             self,
             categories:          List[str],
-            dilation_depth:      int=2,
-            dilation_range:      int=4,
+            num_waves:           int=2,
+            wave_depth:          int=4,
             dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
         ):
         super().__init__(categories)
 
-        self.dilation_depth = dilation_depth
-        self.dilation_range = dilation_range
-        self.dropout        = dropout
-        self.backbone       = backbone
+        self.num_waves  = num_waves
+        self.wave_depth = wave_depth
+        self.dropout    = dropout
+        self.backbone   = backbone
 
         self.trimnetx = TrimNetX(
-            dilation_depth, dilation_range, backbone, backbone_pretrained)
+            num_waves, wave_depth, backbone, backbone_pretrained)
 
         merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
 
         self.predict_clss = nn.Sequential(
-            # nn.BatchNorm2d(merged_dim),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(start_dim=1),
             nn.Linear(merged_dim, expanded_dim),
-            nn.Hardswish(inplace=True),
+            nn.GELU(),
             nn.Dropout(p=dropout, inplace=True),
             nn.Linear(expanded_dim, self.num_classes)
         )
@@ -70,8 +69,8 @@ class TrimNetClf(Classifier):
         hyps = state['hyperparameters']
         model = cls(
             categories          = hyps['categories'],
-            dilation_depth      = hyps['dilation_depth'],
-            dilation_range      = hyps['dilation_range'],
+            num_waves           = hyps['num_waves'],
+            wave_depth          = hyps['wave_depth'],
             dropout             = hyps['dropout'],
             backbone            = hyps['backbone'],
             backbone_pretrained = False,
@@ -81,11 +80,11 @@ class TrimNetClf(Classifier):
 
     def hyperparameters(self) -> Dict[str, Any]:
         return dict(
-            categories     = self.categories,
-            dilation_depth = self.dilation_depth,
-            dilation_range = self.dilation_range,
-            dropout        = self.dropout,
-            backbone       = self.backbone,
+            categories = self.categories,
+            num_waves  = self.num_waves,
+            wave_depth = self.wave_depth,
+            dropout    = self.dropout,
+            backbone   = self.backbone,
         )
 
     def classify(

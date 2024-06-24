@@ -3,194 +3,152 @@ from typing import Callable
 from torch import Tensor
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn.functional as F
 from torchvision.ops.misc import SqueezeExcitation
 
 
-class BasicConvBD(nn.Sequential):
-
-    def __init__(
-            self,
-            in_planes:   int,
-            out_planes:  int,
-            kernel_size: int=3,
-            stride:      int | tuple[int, int]=1
-        ):
-
-        padding = (kernel_size - 1) // 2
-        super().__init__(
-            nn.Conv2d(in_planes, in_planes, kernel_size, stride, padding, groups=in_planes, bias=False),
-            nn.BatchNorm2d(in_planes),
-            nn.Hardswish(inplace=True),
-            nn.Conv2d(in_planes, out_planes, 1, bias=False),
-            nn.BatchNorm2d(out_planes),
-            nn.Hardswish(inplace=True))
-
-
-class LinearBasicConvBD(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:   int,
-            out_planes:  int,
-            kernel_size: int=3,
-            dilation:    int=1,
-            stride:      int | tuple[int, int]=1
-        ):
-
-        super().__init__()
-
-        padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
-        self.layers = nn.Sequential(
-            nn.Conv2d(
-                in_planes, in_planes, kernel_size, stride, padding,
-                dilation=dilation, groups=in_planes, bias=False),
-            nn.BatchNorm2d(in_planes),
-            nn.Conv2d(in_planes, out_planes, 1, bias=False),
-            nn.BatchNorm2d(out_planes))
-
-        self.use_res_connect = in_planes == out_planes
-
-    def forward(self, x:Tensor) -> Tensor:
-        result = self.layers(x)
-        if self.use_res_connect:
-            result = result + x
-        return result
-
-
-class LinearBasicConvDBD(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:   int,
-            expand_rate: int,
-            kernel_size: int=3,
-            dilation:    int=1,
-            stride:      int | tuple[int, int]=1
-        ):
-
-        super().__init__()
-
-        padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
-        expanded_dim = in_planes * expand_rate
-        self.layers = nn.Sequential(
-            nn.Conv2d(in_planes, expanded_dim, 1, bias=False),
-            nn.BatchNorm2d(expanded_dim),
-            nn.Conv2d(
-                expanded_dim, expanded_dim, kernel_size, stride, padding,
-                dilation=dilation, groups=expanded_dim, bias=False),
-            nn.BatchNorm2d(expanded_dim),
-            nn.Conv2d(expanded_dim, in_planes, 1, bias=False),
-            nn.BatchNorm2d(in_planes),
-        )
-
-    def forward(self, x:Tensor) -> Tensor:
-        return x + self.layers(x)
-
-
-class BasicConvDB(nn.Sequential):
-
-    def __init__(
-            self,
-            in_planes:   int,
-            out_planes:  int,
-            kernel_size: int=3,
-            stride:      int | tuple[int, int]=1
-        ):
-
-        padding = (kernel_size - 1) // 2
-        super().__init__(
-            nn.Conv2d(in_planes, out_planes, 1, bias=False),
-            nn.BatchNorm2d(out_planes),
-            nn.Hardswish(inplace=True),
-            nn.Conv2d(out_planes, out_planes, kernel_size, stride, padding, groups=out_planes, bias=False),
-            nn.BatchNorm2d(out_planes),
-            nn.Hardswish(inplace=True))
-
-
-class LinearBasicConvDB(nn.Sequential):
-
-    def __init__(
-            self,
-            in_planes:   int,
-            out_planes:  int,
-            kernel_size: int=3,
-            dilation:    int=1,
-            stride:      int | tuple[int, int]=1
-        ):
-
-        padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
-        super().__init__(
-            nn.Conv2d(in_planes, out_planes, 1, bias=False),
-            nn.BatchNorm2d(out_planes),
-            nn.Conv2d(out_planes, out_planes, kernel_size, stride, padding,
-                dilation=dilation, groups=out_planes, bias=False),
-            nn.BatchNorm2d(out_planes))
-
-
-class UpSample(nn.Sequential):
-
-    def __init__(
-            self,
-            in_planes:  int,
-            out_planes: int,
-        ):
-
-        super().__init__(
-            nn.ConvTranspose2d(in_planes, in_planes, 3, 2, 1, output_padding=1, groups=in_planes, bias=False),
-            nn.BatchNorm2d(in_planes),
-            BasicConvDB(in_planes, out_planes, 3),
-        )
-
-
-class PixelShuffleSample(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:  int,
-        ):
-
-        super().__init__()
-
-        assert in_planes % 4 == 0
-        self.block = nn.Sequential(
-            nn.Conv2d(in_planes, in_planes, 1, bias=False),
-            nn.PixelShuffle(2),
-            nn.BatchNorm2d(in_planes // 4),
-        )
-
-    def forward(self, x:Tensor) -> Tensor:
-        return torch.cat([
-            self.block(x),
-            F.interpolate(x, scale_factor=2, mode='bilinear')
-            ], dim=1)
-
-
-class CSENet(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:     int,
-            out_planes:    int,
-            kernel_size:   int=3,
-            shrink_factor: int=4,
-        ):
-
-        super().__init__()
-
-        shrink_dim = in_planes // shrink_factor
-        self.fusion = nn.Sequential(
-            BasicConvDB(in_planes, shrink_dim, kernel_size),
-            nn.Conv2d(shrink_dim, in_planes, 1, bias=False),
-            nn.Hardsigmoid(inplace=True),
-        )
-        self.project = nn.Sequential(
-            nn.Conv2d(in_planes, out_planes, 1, bias=False),
-            nn.BatchNorm2d(out_planes),
-        )
-
-    def forward(self, x:Tensor) -> Tensor:
-        return self.project(x * self.fusion(x))
+# class BasicConvBD(nn.Sequential):
+#
+#     def __init__(
+#             self,
+#             in_planes:   int,
+#             out_planes:  int,
+#             kernel_size: int=3,
+#             stride:      int | tuple[int, int]=1
+#         ):
+#
+#         padding = (kernel_size - 1) // 2
+#         super().__init__(
+#             nn.Conv2d(in_planes, in_planes, kernel_size, stride, padding, groups=in_planes, bias=False),
+#             nn.BatchNorm2d(in_planes),
+#             nn.Hardswish(inplace=True),
+#             nn.Conv2d(in_planes, out_planes, 1, bias=False),
+#             nn.BatchNorm2d(out_planes),
+#             nn.Hardswish(inplace=True))
+#
+#
+# class LinearBasicConvBD(nn.Module):
+#
+#     def __init__(
+#             self,
+#             in_planes:   int,
+#             out_planes:  int,
+#             kernel_size: int=3,
+#             dilation:    int=1,
+#             stride:      int | tuple[int, int]=1
+#         ):
+#
+#         super().__init__()
+#
+#         padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
+#         self.layers = nn.Sequential(
+#             nn.Conv2d(
+#                 in_planes, in_planes, kernel_size, stride, padding,
+#                 dilation=dilation, groups=in_planes, bias=False),
+#             nn.BatchNorm2d(in_planes),
+#             nn.Conv2d(in_planes, out_planes, 1, bias=False),
+#             nn.BatchNorm2d(out_planes))
+#
+#         self.use_res_connect = in_planes == out_planes
+#
+#     def forward(self, x:Tensor) -> Tensor:
+#         result = self.layers(x)
+#         if self.use_res_connect:
+#             result = result + x
+#         return result
+#
+#
+# class LinearBasicConvDBD(nn.Module):
+#
+#     def __init__(
+#             self,
+#             in_planes:   int,
+#             expand_rate: int,
+#             kernel_size: int=3,
+#             dilation:    int=1,
+#             stride:      int | tuple[int, int]=1
+#         ):
+#
+#         super().__init__()
+#
+#         padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
+#         expanded_dim = in_planes * expand_rate
+#         self.layers = nn.Sequential(
+#             nn.Conv2d(in_planes, expanded_dim, 1, bias=False),
+#             nn.BatchNorm2d(expanded_dim),
+#             nn.Conv2d(
+#                 expanded_dim, expanded_dim, kernel_size, stride, padding,
+#                 dilation=dilation, groups=expanded_dim, bias=False),
+#             nn.BatchNorm2d(expanded_dim),
+#             nn.Conv2d(expanded_dim, in_planes, 1, bias=False),
+#             nn.BatchNorm2d(in_planes),
+#         )
+#
+#     def forward(self, x:Tensor) -> Tensor:
+#         return x + self.layers(x)
+#
+#
+# class BasicConvDB(nn.Sequential):
+#
+#     def __init__(
+#             self,
+#             in_planes:   int,
+#             out_planes:  int,
+#             kernel_size: int=3,
+#             stride:      int | tuple[int, int]=1
+#         ):
+#
+#         padding = (kernel_size - 1) // 2
+#         super().__init__(
+#             nn.Conv2d(in_planes, out_planes, 1, bias=False),
+#             nn.BatchNorm2d(out_planes),
+#             nn.Hardswish(inplace=True),
+#             nn.Conv2d(out_planes, out_planes, kernel_size, stride, padding, groups=out_planes, bias=False),
+#             nn.BatchNorm2d(out_planes),
+#             nn.Hardswish(inplace=True))
+#
+#
+# class LinearBasicConvDB(nn.Sequential):
+#
+#     def __init__(
+#             self,
+#             in_planes:   int,
+#             out_planes:  int,
+#             kernel_size: int=3,
+#             dilation:    int=1,
+#             stride:      int | tuple[int, int]=1
+#         ):
+#
+#         padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
+#         super().__init__(
+#             nn.Conv2d(in_planes, out_planes, 1, bias=False),
+#             nn.BatchNorm2d(out_planes),
+#             nn.Conv2d(out_planes, out_planes, kernel_size, stride, padding,
+#                 dilation=dilation, groups=out_planes, bias=False),
+#             nn.BatchNorm2d(out_planes))
+#
+#
+# class PixelShuffleSample(nn.Module):
+#
+#     def __init__(
+#             self,
+#             in_planes:  int,
+#         ):
+#
+#         super().__init__()
+#
+#         assert in_planes % 4 == 0
+#         self.block = nn.Sequential(
+#             nn.Conv2d(in_planes, in_planes, 1, bias=False),
+#             nn.PixelShuffle(2),
+#             nn.BatchNorm2d(in_planes // 4),
+#         )
+#
+#     def forward(self, x:Tensor) -> Tensor:
+#         return torch.cat([
+#             self.block(x),
+#             F.interpolate(x, scale_factor=2, mode='bilinear')
+#             ], dim=1)
 
 
 class LocalSqueezeExcitation(nn.Module):
@@ -234,46 +192,6 @@ class LocalSqueezeExcitation(nn.Module):
         return scale * x
 
 
-class DetPredictor(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:     int,
-            hidden_planes: int,
-            num_anchors:   int,
-            bbox_dim:      int,
-            num_classes:   int,
-            dropout:       float,
-            dropout_bbox:  float=0.,
-        ):
-
-        super().__init__()
-
-        self.predict_bbox = nn.Sequential(
-            nn.Conv2d(in_planes, in_planes, kernel_size=1, bias=False),
-            nn.BatchNorm2d(in_planes),
-            nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout_bbox, inplace=True),
-            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
-        )
-
-        self.predict_clss = nn.Sequential(
-            nn.Conv2d(in_planes, hidden_planes, kernel_size=1, bias=False),
-            nn.BatchNorm2d(hidden_planes),
-            nn.Hardswish(inplace=True),
-            nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
-        )
-
-        self.num_anchors = num_anchors
-
-    def forward(self, x:Tensor) -> Tensor:
-        bs, _, ny, nx = x.shape
-        p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
-        p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
-        return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)
-
-
 class ConvNormActive(nn.Sequential):
 
     def __init__(
@@ -303,14 +221,15 @@ class InvertedResidual(nn.Module):
 
     def __init__(
             self,
-            in_planes:    int,
-            out_planes:   int,
-            expand_ratio: int,
-            kernel_size:  int=3,
-            stride:       int | tuple[int, int]=1,
-            dilation:     int=1,
-            heads:        int=1,
-            activation:   Callable[..., nn.Module] | None=nn.GELU,
+            in_planes:       int,
+            out_planes:      int,
+            expand_ratio:    int,
+            kernel_size:     int=3,
+            stride:          int | tuple[int, int]=1,
+            dilation:        int=1,
+            heads:           int=1,
+            activation:      Callable[..., nn.Module] | None=nn.GELU,
+            use_res_connect: bool=True,
         ):
 
         super().__init__()
@@ -328,7 +247,10 @@ class InvertedResidual(nn.Module):
                 expanded_dim, out_planes, kernel_size=1, groups=heads, activation=None),
         ])
         self.blocks = nn.Sequential(*layers)
-        self.use_res_connect = (in_planes == out_planes) and (stride == 1)
+        self.use_res_connect = (
+            use_res_connect and
+            (in_planes == out_planes) and
+            (stride == 1))
 
     def forward(self, x:Tensor) -> Tensor:
         out = self.blocks(x)
@@ -337,7 +259,23 @@ class InvertedResidual(nn.Module):
         return out
 
 
-class LSENet(nn.Module):
+class UpSample(nn.Sequential):
+
+    def __init__(
+            self,
+            in_planes:  int,
+            out_planes: int,
+            activation: Callable[..., nn.Module] | None=nn.GELU,
+        ):
+
+        super().__init__(
+            nn.ConvTranspose2d(in_planes, in_planes, 3, 2, 1, output_padding=1, groups=in_planes, bias=False),
+            nn.BatchNorm2d(in_planes),
+            nn.GELU(),
+        )
+
+
+class CSENet(nn.Module):
 
     def __init__(
             self,
@@ -351,10 +289,9 @@ class LSENet(nn.Module):
 
         shrink_dim = in_planes // shrink_factor
         self.fusion = nn.Sequential(
-            ConvNormActive(
-                in_planes, shrink_dim, 1, norm_layer=None, activation=None),
-            ConvNormActive(
-                shrink_dim, shrink_dim, kernel_size, groups=shrink_dim, norm_layer=None, activation=None),
+            nn.Conv2d(in_planes, shrink_dim, 1),
+            nn.Conv2d(shrink_dim, shrink_dim, 3, padding=1, groups=shrink_dim),
+            nn.ReLU(),
             ConvNormActive(
                 shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Sigmoid),
         )
@@ -363,3 +300,39 @@ class LSENet(nn.Module):
 
     def forward(self, x:Tensor) -> Tensor:
         return self.project(x * self.fusion(x))
+
+
+class DetPredictor(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            hidden_planes: int,
+            num_anchors:   int,
+            bbox_dim:      int,
+            num_classes:   int,
+            dropout:       float,
+            dropout_bbox:  float=0.,
+        ):
+
+        super().__init__()
+
+        self.predict_bbox = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, kernel_size=1),
+            nn.Dropout(p=dropout_bbox, inplace=True),
+            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
+        )
+
+        self.predict_clss = nn.Sequential(
+            ConvNormActive(in_planes, hidden_planes, kernel_size=1),
+            nn.Dropout(p=dropout, inplace=True),
+            nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
+        )
+
+        self.num_anchors = num_anchors
+
+    def forward(self, x:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+        p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
+        p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
+        return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)

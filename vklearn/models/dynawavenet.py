@@ -30,17 +30,6 @@ class DynawaveNet(Basic):
         self.num_waves  = num_waves
         self.wave_depth = wave_depth
 
-        # self.features = nn.Sequential(
-        #     nn.PixelUnshuffle(2),
-        #     ConvNormActive(12, 24, stride=2),
-        #     InvertedResidual(24, 24, 4),
-        #     ConvNormActive(24, 48, stride=2),
-        #     InvertedResidual(48, 48, 4),
-        #     ConvNormActive(48, 96, stride=2),
-        #     InvertedResidual(96, 96, 4),
-        #     InvertedResidual(96, 192, 4),
-        # ) # 192, 32, 32
-
         features = mobilenet_v3_small(
             weights=MobileNet_V3_Small_Weights.DEFAULT
         ).features
