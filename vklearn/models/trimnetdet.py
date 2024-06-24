@@ -93,13 +93,26 @@ class TrimNetDet(Detector):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
+    # def forward(self, x:Tensor) -> Tensor:
+    #     fs = self.trimnetx(x)[-self.num_tries:]
+    #     confs = [self.predict_conf_tries[0](fs[0])]
+    #     for k, layer in enumerate(self.predict_conf_tries[1:]):
+    #         fs_ix = min(k + 1, len(fs) - 1)
+    #         confs.append(layer(torch.cat([fs[fs_ix], confs[-1]], dim=1)))
+    #     p_objs = self.predict_objs(torch.cat([fs[-1], confs[-1]], dim=1))
+    #     bs, _, ny, nx = p_objs.shape
+    #     p_tryx = torch.cat([
+    #         conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
+    #         for conf in confs], dim=2)
+    #     p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
+    #     return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
+
     def forward(self, x:Tensor) -> Tensor:
-        fs = self.trimnetx(x)[-self.num_tries:]
-        confs = [self.predict_conf_tries[0](fs[0])]
-        for k, layer in enumerate(self.predict_conf_tries[1:]):
-            fs_ix = min(k + 1, len(fs) - 1)
-            confs.append(layer(torch.cat([fs[fs_ix], confs[-1]], dim=1)))
-        p_objs = self.predict_objs(torch.cat([fs[-1], confs[-1]], dim=1))
+        x = self.trimnetx(x)[-1]
+        confs = [self.predict_conf_tries[0](x)]
+        for layer in self.predict_conf_tries[1:]:
+            confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
+        p_objs = self.predict_objs(torch.cat([x, confs[-1]], dim=1))
         bs, _, ny, nx = p_objs.shape
         p_tryx = torch.cat([
             conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
@@ -168,33 +181,33 @@ class TrimNetDet(Detector):
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
-        # x = self.trimnetx(x)
-        #
-        # confs = [self.predict_conf_tries[0](x)]
-        # for layer in self.predict_conf_tries[1:]:
-        #     confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
-        # bs, _, ny, nx = x.shape
-        # p_tryx = torch.cat([
-        #     conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-        #     for conf in confs], dim=2).permute(0, 1, 3, 4, 2)
-        # mix = torch.cat([x, confs[-1]], dim=1)
-        fs = self.trimnetx(x)
+        x = self.trimnetx(x)[-1]
 
-        confs = [self.predict_conf_tries[0](fs[0])]
-        for k, layer in enumerate(self.predict_conf_tries[1:]):
-            fs_ix = min(k + 1, len(fs) - 1)
-            confs.append(layer(torch.cat([fs[fs_ix], confs[-1]], dim=1)))
-        bs, _, ny, nx = fs[0].shape
+        confs = [self.predict_conf_tries[0](x)]
+        for layer in self.predict_conf_tries[1:]:
+            confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
+        bs, _, ny, nx = x.shape
         p_tryx = torch.cat([
             conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
             for conf in confs], dim=2).permute(0, 1, 3, 4, 2)
-        mix = torch.cat([fs[-1], confs[-1]], dim=1)
+        mix = torch.cat([x, confs[-1]], dim=1)
+        # fs = self.trimnetx(x)
+        #
+        # confs = [self.predict_conf_tries[0](fs[0])]
+        # for k, layer in enumerate(self.predict_conf_tries[1:]):
+        #     fs_ix = min(k + 1, len(fs) - 1)
+        #     confs.append(layer(torch.cat([fs[fs_ix], confs[-1]], dim=1)))
+        # bs, _, ny, nx = fs[0].shape
+        # p_tryx = torch.cat([
+        #     conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
+        #     for conf in confs], dim=2).permute(0, 1, 3, 4, 2)
+        # mix = torch.cat([fs[-1], confs[-1]], dim=1)
 
-        p_conf = torch.ones_like(p_tryx[..., 0])
-        for conf_id in range(p_tryx.shape[-1] - 1):
-            p_conf[torch.sigmoid(p_tryx[..., conf_id]) < 0.5] = 0.
-        p_conf *= torch.sigmoid(p_tryx[..., -1])
-        # p_conf = torch.sigmoid(p_tryx[..., -1])
+        # p_conf = torch.ones_like(p_tryx[..., 0])
+        # for conf_id in range(p_tryx.shape[-1] - 1):
+        #     p_conf[torch.sigmoid(p_tryx[..., conf_id]) < 0.5] = 0.
+        # p_conf *= torch.sigmoid(p_tryx[..., -1])
+        p_conf = torch.sigmoid(p_tryx[..., -1])
 
         mask = p_conf.max(dim=1, keepdim=True).values > conf_thresh
         index = torch.nonzero(mask, as_tuple=True)
