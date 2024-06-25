@@ -95,16 +95,16 @@ class TrimNetDet(Detector):
 
     def forward(self, x:Tensor) -> Tensor:
         x = self.trimnetx(x)[-1]
-        confs = [self.predict_conf_tries[0](x)]
+        tries = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
-            confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
-        p_objs = self.predict_objs(torch.cat([x, confs[-1]], dim=1))
+            tries.append(layer(torch.cat([x, tries[-1]], dim=1)))
+        p_objs = self.predict_objs(torch.cat([x, tries[-1]], dim=1))
         bs, _, ny, nx = p_objs.shape
-        p_tryx = torch.cat([
+        p_conf = torch.cat([
             conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-            for conf in confs], dim=2)
+            for conf in tries], dim=2)
         p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
-        return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
+        return torch.cat([p_conf, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':

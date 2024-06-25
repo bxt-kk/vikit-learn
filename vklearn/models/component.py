@@ -11,6 +11,12 @@ DEFAULT_ACTIVATION = nn.Hardswish
 DEFAULT_SIGMOID    = nn.Hardsigmoid
 
 
+class LayerNorm2d(nn.GroupNorm):
+
+    def __init__(self, num_channels:int):
+        super().__init__(1, num_channels)
+
+
 class LocalSqueezeExcitation(nn.Module):
 
     def __init__(
@@ -87,7 +93,7 @@ class InvertedResidual(nn.Module):
             kernel_size:     int=3,
             stride:          int | tuple[int, int]=1,
             dilation:        int=1,
-            heads:           int=1,
+            norm_layer:      Callable[..., nn.Module] | None=DEFAULT_LAYER_NORM,
             activation:      Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
             use_res_connect: bool=True,
         ):
@@ -98,13 +104,26 @@ class InvertedResidual(nn.Module):
         expanded_dim = in_planes * expand_ratio
         if expand_ratio != 1:
             layers.append(ConvNormActive(
-                in_planes, expanded_dim, kernel_size=1, groups=heads, activation=activation))
+                in_planes,
+                expanded_dim,
+                kernel_size=1,
+                norm_layer=norm_layer,
+                activation=activation))
         layers.extend([
             ConvNormActive(
-                expanded_dim, expanded_dim,
-                stride=stride, dilation=dilation, groups=expanded_dim, activation=activation),
+                expanded_dim,
+                expanded_dim,
+                stride=stride,
+                dilation=dilation,
+                groups=expanded_dim,
+                norm_layer=norm_layer,
+                activation=activation),
             ConvNormActive(
-                expanded_dim, out_planes, kernel_size=1, groups=heads, activation=None),
+                expanded_dim,
+                out_planes,
+                kernel_size=1,
+                norm_layer=norm_layer,
+                activation=None),
         ])
         self.blocks = nn.Sequential(*layers)
         self.use_res_connect = (

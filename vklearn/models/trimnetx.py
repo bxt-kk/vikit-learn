@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
-from .component import ConvNormActive, InvertedResidual, UpSample, CSENet
+from .component import ConvNormActive, InvertedResidual, UpSample, CSENet, LayerNorm2d
 from .basic import Basic
 
 
@@ -73,11 +73,11 @@ class TrimNetX(Basic):
         for _ in range(num_waves):
             modules = []
             modules.append(InvertedResidual(
-                self.merged_dim, expanded_dim, expand_ratio, stride=2))
+                self.merged_dim, expanded_dim, expand_ratio, stride=2, norm_layer=LayerNorm2d))
             for r in range(wave_depth):
                 modules.append(
                     InvertedResidual(
-                        expanded_dim, expanded_dim, 1, dilation=2**r, activation=None))
+                        expanded_dim, expanded_dim, 1, dilation=2**r, norm_layer=LayerNorm2d, activation=None))
             modules.append(nn.Sequential(
                 UpSample(expanded_dim),
                 ConvNormActive(expanded_dim, self.merged_dim, 1),
