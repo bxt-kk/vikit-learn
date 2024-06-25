@@ -26,7 +26,7 @@ class TrimNetX(Basic):
     def __init__(
             self,
             num_waves:           int=2,
-            wave_depth:          int=4,
+            wave_depth:          int=3,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
         ):

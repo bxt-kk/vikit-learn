@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from PIL import Image
 
+from .component import DEFAULT_ACTIVATION
 from .trimnetx import TrimNetX
 from .classifier import Classifier
 
@@ -30,7 +31,7 @@ class TrimNetClf(Classifier):
             self,
             categories:          List[str],
             num_waves:           int=2,
-            wave_depth:          int=4,
+            wave_depth:          int=3,
             dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
@@ -52,7 +53,7 @@ class TrimNetClf(Classifier):
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(start_dim=1),
             nn.Linear(merged_dim, expanded_dim),
-            nn.GELU(),
+            DEFAULT_ACTIVATION,
             nn.Dropout(p=dropout, inplace=True),
             nn.Linear(expanded_dim, self.num_classes)
         )

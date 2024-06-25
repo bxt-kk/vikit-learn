@@ -12,26 +12,6 @@ class LayerNorm2d(nn.GroupNorm):
         super().__init__(1, num_channels)
 
 
-# class LayerNorm2d(nn.Module):
-#     def __init__(
-#             self,
-#             num_channels: int,
-#             eps:          float=1e-5,
-#         ):
-#
-#         super().__init__()
-#         self.weight = nn.Parameter(torch.ones(num_channels))
-#         self.bias = nn.Parameter(torch.zeros(num_channels))
-#         self.eps = eps
-#
-#     def forward(self, x: torch.Tensor) -> torch.Tensor:
-#         u = x.mean(1, keepdim=True)
-#         s = (x - u).pow(2).mean(1, keepdim=True)
-#         x = (x - u) / torch.sqrt(s + self.eps)
-#         x = self.weight[:, None, None] * x + self.bias[:, None, None]
-#         return x
-
-
 DEFAULT_LAYER_NORM = LayerNorm2d # nn.BatchNorm2d
 DEFAULT_ACTIVATION = nn.Hardswish
 DEFAULT_SIGMOID    = nn.Hardsigmoid
@@ -218,13 +198,17 @@ class DetPredictor(nn.Module):
         super().__init__()
 
         self.predict_bbox = nn.Sequential(
-            ConvNormActive(in_planes, in_planes, kernel_size=1),
+            # ConvNormActive(in_planes, in_planes, kernel_size=1),
+            InvertedResidual(in_planes, in_planes, 1),
+            DEFAULT_ACTIVATION(),
             nn.Dropout(p=dropout_bbox, inplace=True),
             nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
         )
 
         self.predict_clss = nn.Sequential(
-            ConvNormActive(in_planes, hidden_planes, kernel_size=1),
+            # ConvNormActive(in_planes, hidden_planes, kernel_size=1),
+            InvertedResidual(in_planes, hidden_planes, 1),
+            DEFAULT_ACTIVATION(),
             nn.Dropout(p=dropout, inplace=True),
             nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
         )
