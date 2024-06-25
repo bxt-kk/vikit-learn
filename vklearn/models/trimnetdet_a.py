@@ -13,13 +13,13 @@ from torchvision.ops import (
 
 from PIL import Image
 
-from .dynawavenet import DynawaveNet
-from .component import BasicConvBD, DetPredictor
+from .trimnetx import TrimNetX
+from .component import InvertedResidual, ConvNormActive, DetPredictor
 from .detector import Detector
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
-class DynawaveDet(Detector):
+class TrimNetDet(Detector):
     '''A light-weight and easy-to-train model for object detection
 
     Args:
@@ -31,18 +31,22 @@ class DynawaveDet(Detector):
         num_tries: Number of attempts to guess.
         swap_size: Dimensions of the exchanged data.
         dropout: Dropout parameters in the classifier.
+        backbone: Specify a basic model as a feature extraction module.
+        backbone_pretrained: Whether to load backbone pretrained weights.
     '''
 
     def __init__(
             self,
-            categories: List[str],
-            bbox_limit: int=640,
-            anchors:    List[Tuple[float, float]] | Tensor | None=None,
-            num_waves:  int=2,
-            wave_depth: int=4,
-            num_tries:  int=3,
-            swap_size:  int=16,
-            dropout:    float=0.1,
+            categories:          List[str],
+            bbox_limit:          int=640,
+            anchors:             List[Tuple[float, float]] | Tensor | None=None,
+            num_waves:           int=2,
+            wave_depth:          int=4,
+            num_tries:           int=3,
+            swap_size:           int=16,
+            dropout:             float=0.1,
+            backbone:            str='mobilenet_v3_small',
+            backbone_pretrained: bool=True,
         ):
 
         super().__init__(
@@ -53,24 +57,30 @@ class DynawaveDet(Detector):
         self.num_tries  = num_tries
         self.swap_size  = swap_size
         self.dropout    = dropout
+        self.backbone   = backbone
 
-        self.dynawavenet = DynawaveNet(num_waves, wave_depth)
+        self.trimnetx = TrimNetX(
+            num_waves, wave_depth, backbone, backbone_pretrained)
 
-        merged_dim = self.dynawavenet.features_dim
+        merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
 
-        ex_anchor_dim = (swap_size + 1) * self.num_anchors
+        ex_anchor_dim = swap_size * self.num_anchors
+
+        self.conf_decode = nn.Conv2d(ex_anchor_dim, self.num_anchors, 1)
 
         self.predict_conf_tries = nn.ModuleList([nn.Sequential(
-            BasicConvBD(merged_dim, merged_dim, kernel_size=3),
+            InvertedResidual(merged_dim, merged_dim, 1, use_res_connect=False),
+            nn.Hardswish(),
             nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
+            ConvNormActive(merged_dim, ex_anchor_dim, 1, activation=None),
         )])
         for _ in range(1, num_tries):
             self.predict_conf_tries.append(nn.Sequential(
-                BasicConvBD(merged_dim + ex_anchor_dim, merged_dim, kernel_size=3),
+                InvertedResidual(merged_dim + ex_anchor_dim, merged_dim, 1, use_res_connect=False),
+                nn.Hardswish(),
                 nn.Dropout(p=dropout, inplace=True),
-                nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
+                ConvNormActive(merged_dim, ex_anchor_dim, 1, activation=None),
             ))
 
         self.predict_objs = DetPredictor(
@@ -82,45 +92,36 @@ class DynawaveDet(Detector):
             dropout=dropout,
         )
 
-    # def forward(self, x:Tensor) -> Tensor:
-    #     x = self.dynawavenet(x)
-    #     confs = [self.predict_conf_tries[0](x)]
-    #     for layer in self.predict_conf_tries[1:]:
-    #         confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
-    #     p_objs = self.predict_objs(torch.cat([x, confs[-1]], dim=1))
-    #     bs, _, ny, nx = p_objs.shape
-    #     p_tryx = torch.cat([
-    #         conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-    #         for conf in confs], dim=2)
-    #     p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
-    #     return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
+    def train_features(self, flag:bool):
+        self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tensor:
-        fs = self.dynawavenet(x)
-        confs = [self.predict_conf_tries[0](fs[0])]
-        for k, layer in enumerate(self.predict_conf_tries[1:]):
-            fs_ix = min(k + 1, len(fs) - 1)
-            confs.append(layer(torch.cat([fs[fs_ix], confs[-1]], dim=1)))
-        p_objs = self.predict_objs(torch.cat([fs[-1], confs[-1]], dim=1))
+        x = self.trimnetx(x)[-1]
+        tries = [self.predict_conf_tries[0](x)]
+        for layer in self.predict_conf_tries[1:]:
+            tries.append(layer(torch.cat([x, tries[-1]], dim=1)))
+        p_objs = self.predict_objs(torch.cat([x, tries[-1]], dim=1))
         bs, _, ny, nx = p_objs.shape
-        p_tryx = torch.cat([
-            conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-            for conf in confs], dim=2)
+        p_conf = torch.cat([
+            self.conf_decode(conf).view(bs, self.num_anchors, 1, ny, nx)
+            for conf in tries], dim=2)
         p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
-        return torch.cat([p_tryx, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
+        return torch.cat([p_conf, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
 
     @classmethod
-    def load_from_state(cls, state:Mapping[str, Any]) -> 'DynawaveDet':
+    def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':
         hyps = state['hyperparameters']
         model = cls(
-            categories = hyps['categories'],
-            bbox_limit = hyps['bbox_limit'],
-            anchors    = hyps['anchors'],
-            num_waves  = hyps['num_waves'],
-            wave_depth = hyps['wave_depth'],
-            num_tries  = hyps['num_tries'],
-            swap_size  = hyps['swap_size'],
-            dropout    = hyps['dropout'],
+            categories          = hyps['categories'],
+            bbox_limit          = hyps['bbox_limit'],
+            anchors             = hyps['anchors'],
+            num_waves           = hyps['num_waves'],
+            wave_depth          = hyps['wave_depth'],
+            num_tries           = hyps['num_tries'],
+            swap_size           = hyps['swap_size'],
+            dropout             = hyps['dropout'],
+            backbone            = hyps['backbone'],
+            backbone_pretrained = False,
         )
         model.load_state_dict(state['model'])
         return model
@@ -135,6 +136,7 @@ class DynawaveDet(Detector):
             num_tries  = self.num_tries,
             swap_size  = self.swap_size,
             dropout    = self.dropout,
+            backbone   = self.backbone,
         )
 
     def load_state_dict(
@@ -143,8 +145,8 @@ class DynawaveDet(Detector):
             strict:     bool=True,
             assign:     bool=False,
         ):
-        CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.4.weight'
-        CLSS_BIAS_KEY = 'predict_objs.predict_clss.4.bias'
+        CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.2.weight'
+        CLSS_BIAS_KEY = 'predict_objs.predict_clss.2.bias'
 
         clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
         clss_bias = state_dict.pop(CLSS_BIAS_KEY)
@@ -167,21 +169,21 @@ class DynawaveDet(Detector):
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
-        fs = self.dynawavenet(x)
+        x = self.trimnetx(x)[-1]
 
-        confs = [self.predict_conf_tries[0](fs[0])]
-        for k, layer in enumerate(self.predict_conf_tries[1:]):
-            fs_ix = min(k + 1, len(fs) - 1)
-            confs.append(layer(torch.cat([fs[fs_ix], confs[-1]], dim=1)))
-        bs, _, ny, nx = fs[0].shape
+        confs = [self.predict_conf_tries[0](x)]
+        for layer in self.predict_conf_tries[1:]:
+            confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
+        bs, _, ny, nx = x.shape
         p_tryx = torch.cat([
             conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
             for conf in confs], dim=2).permute(0, 1, 3, 4, 2)
-        mix = torch.cat([fs[-1], confs[-1]], dim=1)
+        mix = torch.cat([x, confs[-1]], dim=1)
 
+        recall_thresh = 0.5
         p_conf = torch.ones_like(p_tryx[..., 0])
         for conf_id in range(p_tryx.shape[-1] - 1):
-            p_conf[torch.sigmoid(p_tryx[..., conf_id]) < 0.5] = 0.
+            p_conf[torch.sigmoid(p_tryx[..., conf_id]) < recall_thresh] = 0.
         p_conf *= torch.sigmoid(p_tryx[..., -1])
         # p_conf = torch.sigmoid(p_tryx[..., -1])
 

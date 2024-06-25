@@ -178,7 +178,7 @@ class TrimNetDet(Detector):
             for conf in confs], dim=2).permute(0, 1, 3, 4, 2)
         mix = torch.cat([x, confs[-1]], dim=1)
 
-        recall_thresh = 0.6
+        recall_thresh = 0.5
         p_conf = torch.ones_like(p_tryx[..., 0])
         for conf_id in range(p_tryx.shape[-1] - 1):
             p_conf[torch.sigmoid(p_tryx[..., conf_id]) < recall_thresh] = 0.

@@ -6,6 +6,11 @@ import torch.nn as nn
 from torchvision.ops.misc import SqueezeExcitation
 
 
+DEFAULT_LAYER_NORM = nn.BatchNorm2d
+DEFAULT_ACTIVATION = nn.Hardswish
+DEFAULT_SIGMOID    = nn.Hardsigmoid
+
+
 class LocalSqueezeExcitation(nn.Module):
 
     def __init__(
@@ -57,8 +62,8 @@ class ConvNormActive(nn.Sequential):
             stride:      int | tuple[int, int]=1,
             dilation:    int=1,
             groups:      int=1,
-            norm_layer:  Callable[..., nn.Module] | None=nn.BatchNorm2d,
-            activation:  Callable[..., nn.Module] | None=nn.GELU,
+            norm_layer:  Callable[..., nn.Module] | None=DEFAULT_LAYER_NORM,
+            activation:  Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
         ):
 
         padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
@@ -83,7 +88,7 @@ class InvertedResidual(nn.Module):
             stride:          int | tuple[int, int]=1,
             dilation:        int=1,
             heads:           int=1,
-            activation:      Callable[..., nn.Module] | None=nn.GELU,
+            activation:      Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
             use_res_connect: bool=True,
         ):
 
@@ -119,8 +124,8 @@ class UpSample(nn.Sequential):
     def __init__(
             self,
             in_planes:  int,
-            norm_layer: Callable[..., nn.Module] | None=nn.BatchNorm2d,
-            activation: Callable[..., nn.Module] | None=nn.GELU,
+            norm_layer: Callable[..., nn.Module] | None=DEFAULT_LAYER_NORM,
+            activation: Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
         ):
 
         super().__init__(
@@ -149,7 +154,7 @@ class CSENet(nn.Module):
             ConvNormActive(
                 shrink_dim, shrink_dim, 3, groups=shrink_dim),
             ConvNormActive(
-                shrink_dim, in_planes, 1, norm_layer=None, activation=nn.Sigmoid),
+                shrink_dim, in_planes, 1, norm_layer=None, activation=DEFAULT_SIGMOID),
         )
         self.project = ConvNormActive(
             in_planes, out_planes, 1, activation=None)
