@@ -14,7 +14,8 @@ from torchvision.ops import (
 from PIL import Image
 
 from .trimnetx import TrimNetX
-from .component import InvertedResidual, DetPredictor, DEFAULT_ACTIVATION
+# from .component import InvertedResidual, DetPredictor, DEFAULT_ACTIVATION
+from .component import ConvNormActive, DetPredictor
 from .detector import Detector
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
@@ -68,15 +69,19 @@ class TrimNetDet(Detector):
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
         self.predict_conf_tries = nn.ModuleList([nn.Sequential(
-            InvertedResidual(merged_dim, merged_dim, 1, use_res_connect=False),
-            DEFAULT_ACTIVATION(),
+            # InvertedResidual(merged_dim, merged_dim, 1, use_res_connect=False),
+            # DEFAULT_ACTIVATION(),
+            ConvNormActive(merged_dim, merged_dim, 1),
+            ConvNormActive(merged_dim, merged_dim, 3, groups=merged_dim),
             nn.Dropout(p=dropout, inplace=True),
             nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
         )])
         for _ in range(1, num_tries):
             self.predict_conf_tries.append(nn.Sequential(
-                InvertedResidual(merged_dim + ex_anchor_dim, merged_dim, 1, use_res_connect=False),
-                DEFAULT_ACTIVATION(),
+                # InvertedResidual(merged_dim + ex_anchor_dim, merged_dim, 1, use_res_connect=False),
+                # DEFAULT_ACTIVATION(),
+                ConvNormActive(merged_dim + ex_anchor_dim, merged_dim, 1),
+                ConvNormActive(merged_dim, merged_dim, 3, groups=merged_dim),
                 nn.Dropout(p=dropout, inplace=True),
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
@@ -143,8 +148,8 @@ class TrimNetDet(Detector):
             strict:     bool=True,
             assign:     bool=False,
         ):
-        CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.2.weight'
-        CLSS_BIAS_KEY = 'predict_objs.predict_clss.2.bias'
+        CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.3.weight'
+        CLSS_BIAS_KEY = 'predict_objs.predict_clss.3.bias'
 
         clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
         clss_bias = state_dict.pop(CLSS_BIAS_KEY)
@@ -167,40 +172,72 @@ class TrimNetDet(Detector):
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
-        x = self.trimnetx(x)[-1]
 
-        confs = [self.predict_conf_tries[0](x)]
+        # # <<< Lab
+        # x = self.trimnetx(x)[-1]
+        #
+        # confs = [self.predict_conf_tries[0](x)]
+        # for layer in self.predict_conf_tries[1:]:
+        #     confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
+        # bs, _, ny, nx = x.shape
+        # p_tryx = torch.cat([
+        #     conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
+        #     for conf in confs], dim=2).permute(0, 1, 3, 4, 2)
+        # mix = torch.cat([x, confs[-1]], dim=1)
+        #
+        # recall_thresh = 0.5
+        # p_conf = torch.ones_like(p_tryx[..., 0])
+        # for conf_id in range(p_tryx.shape[-1] - 1):
+        #     p_conf[torch.sigmoid(p_tryx[..., conf_id]) < recall_thresh] = 0.
+        # p_conf *= torch.sigmoid(p_tryx[..., -1])
+        # # p_conf = torch.sigmoid(p_tryx[..., -1])
+        #
+        # mask = p_conf.max(dim=1, keepdim=True).values > conf_thresh
+        # index = torch.nonzero(mask, as_tuple=True)
+        # if len(index[0]) == 0: return []
+        #
+        # p_objs = self.predict_objs(
+        #     mix[index[0], :, index[2], index[3]].reshape(len(index[0]), -1, 1, 1))
+        #
+        # p_objs = p_objs.reshape(len(index[0]), self.num_anchors, -1)
+        #
+        # anchor_mask = p_conf[index[0], :, index[2], index[3]] > conf_thresh
+        # sub_ids, anchor_ids = torch.nonzero(anchor_mask, as_tuple=True)
+        # # bids = index[0][sub_ids]
+        # rids = index[2][sub_ids]
+        # cids = index[3][sub_ids]
+        # objs = p_objs[sub_ids, anchor_ids]
+        # conf = p_conf[index[0], :, index[2], index[3]][sub_ids, anchor_ids]
+        # # >>>
+        # <<< Lab
+        x = self.trimnetx(x)[-1]
+        tries = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
-            confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
-        bs, _, ny, nx = x.shape
-        p_tryx = torch.cat([
+            tries.append(layer(torch.cat([x, tries[-1]], dim=1)))
+        p_objs = self.predict_objs(torch.cat([x, tries[-1]], dim=1))
+        bs, _, ny, nx = p_objs.shape
+        p_conf = torch.cat([
             conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-            for conf in confs], dim=2).permute(0, 1, 3, 4, 2)
-        mix = torch.cat([x, confs[-1]], dim=1)
+            for conf in tries], dim=2).permute(0, 1, 3, 4, 2)
+        p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
 
         recall_thresh = 0.5
-        p_conf = torch.ones_like(p_tryx[..., 0])
-        for conf_id in range(p_tryx.shape[-1] - 1):
-            p_conf[torch.sigmoid(p_tryx[..., conf_id]) < recall_thresh] = 0.
-        p_conf *= torch.sigmoid(p_tryx[..., -1])
-        # p_conf = torch.sigmoid(p_tryx[..., -1])
+        p_conf_prob = torch.ones_like(p_conf[..., 0])
+        for conf_id in range(p_conf.shape[-1] - 1):
+            p_conf_prob[torch.sigmoid(p_conf[..., conf_id]) < recall_thresh] = 0.
+        p_conf_prob *= torch.sigmoid(p_conf[..., -1])
+        # p_conf_prob = torch.sigmoid(p_conf[..., -1])
 
-        mask = p_conf.max(dim=1, keepdim=True).values > conf_thresh
+        mask = p_conf_prob > recall_thresh # conf_thresh
         index = torch.nonzero(mask, as_tuple=True)
         if len(index[0]) == 0: return []
 
-        p_objs = self.predict_objs(
-            mix[index[0], :, index[2], index[3]].reshape(len(index[0]), -1, 1, 1))
-
-        p_objs = p_objs.reshape(len(index[0]), self.num_anchors, -1)
-
-        anchor_mask = p_conf[index[0], :, index[2], index[3]] > conf_thresh
-        sub_ids, anchor_ids = torch.nonzero(anchor_mask, as_tuple=True)
-        # bids = index[0][sub_ids]
-        rids = index[2][sub_ids]
-        cids = index[3][sub_ids]
-        objs = p_objs[sub_ids, anchor_ids]
-        conf = p_conf[index[0], :, index[2], index[3]][sub_ids, anchor_ids]
+        # bids = index[0]
+        rids = index[2]
+        cids = index[3]
+        objs = p_objs[index[0], index[1], index[2], index[3]]
+        conf = p_conf_prob[index[0], index[1], index[2], index[3]]
+        # >>>
 
         cx = (cids + torch.tanh(objs[:, 0]) + 0.5) * self.cell_size
         cy = (rids + torch.tanh(objs[:, 1]) + 0.5) * self.cell_size

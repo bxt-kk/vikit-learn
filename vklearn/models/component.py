@@ -1,9 +1,11 @@
-from typing import Callable
+from typing import Callable, List
 
 from torch import Tensor
 import torch
 import torch.nn as nn
 from torchvision.ops.misc import SqueezeExcitation
+
+import clip
 
 
 class LayerNorm2d(nn.GroupNorm):
@@ -199,16 +201,20 @@ class DetPredictor(nn.Module):
 
         self.predict_bbox = nn.Sequential(
             # ConvNormActive(in_planes, in_planes, kernel_size=1),
-            InvertedResidual(in_planes, in_planes, 1),
-            DEFAULT_ACTIVATION(),
+            # InvertedResidual(in_planes, in_planes, 1, use_res_connect=False),
+            # DEFAULT_ACTIVATION(),
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
             nn.Dropout(p=dropout_bbox, inplace=True),
             nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
         )
 
         self.predict_clss = nn.Sequential(
             # ConvNormActive(in_planes, hidden_planes, kernel_size=1),
-            InvertedResidual(in_planes, hidden_planes, 1),
-            DEFAULT_ACTIVATION(),
+            # InvertedResidual(in_planes, hidden_planes, 1),
+            # DEFAULT_ACTIVATION(),
+            ConvNormActive(in_planes, hidden_planes, 1),
+            ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
             nn.Dropout(p=dropout, inplace=True),
             nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
         )
@@ -220,3 +226,55 @@ class DetPredictor(nn.Module):
         p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
         p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
         return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)
+
+
+class ClipConv2d1x1(nn.Conv2d):
+
+    def __init__(
+            self,
+            in_planes:  int,
+            out_planes: int,
+            prompts:    List[str],
+            use_clip:   bool=False,
+        ):
+
+        super().__init__(in_planes, out_planes, 1)
+
+        num_classes = len(prompts)
+        assert num_classes <= out_planes
+
+        priori = torch.zeros(out_planes, in_planes, 1, 1)
+        if use_clip:
+            clip_device = 'cpu'
+            code_length = 512
+            clip_inputs = clip.tokenize(prompts).to(clip_device)
+            clip_model, _ = clip.load('ViT-B/32', device=clip_device)
+            with torch.no_grad():
+                codes = clip_model.encode_text(clip_inputs)
+            if in_planes < code_length:
+                codes, _ = self._code_align_weight(codes, in_planes)
+            for i, code in enumerate(codes):
+                priori[i, :len(code), 0, 0] = code
+        self.register_buffer('priori', priori)
+
+    @classmethod
+    def category_to_prompt(self, categories:List[str]) -> List[str]:
+        prompts = []
+        for category in categories:
+            prompt = 'an' if category[0].upper() in 'AEIOU' else 'a'
+            prompts.append(prompt + ' ' + category)
+        return prompts
+
+    def _code_align_weight(self, code:Tensor, in_planes:int) -> Tensor:
+        mean = code.mean(dim=0)
+        X = code - mean
+        cov = torch.cov(X.T)
+        eigval, eigvect = torch.linalg.eig(cov)
+        eigval_idxs = torch.argsort(eigval.real, descending=True)[:in_planes]
+        red_eigvect = eigvect.real[:, eigval_idxs]
+        short_code = X @ red_eigvect
+        recon = (short_code @ red_eigvect.T) + mean
+        return short_code, recon
+
+    def forward(self, x:Tensor) -> Tensor:
+        return self._conv_forward(x, self.weight + self.priori, self.bias)
