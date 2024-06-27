@@ -279,3 +279,42 @@ class ClipConv2d1x1(nn.Conv2d):
 
     def forward(self, x:Tensor) -> Tensor:
         return self._conv_forward(x, self.weight + self.priori, self.bias)
+
+
+class ClipDetPredictor(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            hidden_planes: int,
+            num_anchors:   int,
+            bbox_dim:      int,
+            num_classes:   int,
+            dropout:       float,
+            prompts:       List[str],
+            dropout_bbox:  float=0.,
+        ):
+
+        super().__init__()
+
+        self.predict_bbox = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+            nn.Dropout(p=dropout_bbox, inplace=True),
+            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
+        )
+
+        self.predict_clss = nn.Sequential(
+            ClipConv2d1x1(in_planes, hidden_planes, prompts),
+            ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
+            nn.Dropout(p=dropout, inplace=True),
+            nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
+        )
+
+        self.num_anchors = num_anchors
+
+    def forward(self, x:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+        p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
+        p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
+        return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)

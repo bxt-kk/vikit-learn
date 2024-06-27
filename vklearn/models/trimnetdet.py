@@ -15,7 +15,8 @@ from PIL import Image
 
 from .trimnetx import TrimNetX
 # from .component import InvertedResidual, DetPredictor, DEFAULT_ACTIVATION
-from .component import ConvNormActive, DetPredictor
+# from .component import ConvNormActive, DetPredictor
+from .component import ConvNormActive, ClipConv2d1x1, ClipDetPredictor
 from .detector import Detector
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
@@ -86,13 +87,16 @@ class TrimNetDet(Detector):
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        self.predict_objs = DetPredictor(
+        prompts = ClipConv2d1x1.category_to_prompt(categories)
+
+        self.predict_objs = ClipDetPredictor(
             merged_dim + ex_anchor_dim,
             expanded_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
             num_classes=self.num_classes,
             dropout=dropout,
+            prompts=prompts,
         )
 
     def train_features(self, flag:bool):
