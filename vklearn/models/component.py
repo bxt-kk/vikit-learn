@@ -253,7 +253,11 @@ class ClipConv2d1x1(nn.Conv2d):
                 codes = clip_model.encode_text(clip_inputs)
             if in_planes < code_length:
                 codes, _ = self._code_align_weight(codes, in_planes)
-            for i, code in enumerate(codes):
+            # for i, code in enumerate(codes):
+            #     priori[i, :len(code), 0, 0] = code
+            num_codes = len(codes)
+            for i in range(out_planes):
+                code = codes[i % num_codes]
                 priori[i, :len(code), 0, 0] = code
         self.register_buffer('priori', priori)
 
@@ -305,10 +309,11 @@ class ClipDetPredictor(nn.Module):
         )
 
         self.predict_clss = nn.Sequential(
-            ClipConv2d1x1(in_planes, hidden_planes, prompts),
+            ConvNormActive(in_planes, hidden_planes, 1),
             ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
             nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
+            # nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
+            ClipConv2d1x1(hidden_planes, num_anchors * num_classes, prompts),
         )
 
         self.num_anchors = num_anchors

@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from PIL import Image
 
 # from .component import DEFAULT_ACTIVATION
-from .component import ClipConv2d1x1
+from .component import ConvNormActive, ClipConv2d1x1
 from .trimnetx import TrimNetX
 from .classifier import Classifier
 
@@ -50,16 +50,22 @@ class TrimNetClf(Classifier):
         merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
 
-        prompts = ClipConv2d1x1.category_to_prompt(categories)
+        # self.predict_clss = nn.Sequential(
+        #     nn.AdaptiveAvgPool2d(1),
+        #     nn.Flatten(start_dim=1),
+        #     nn.Linear(merged_dim, expanded_dim),
+        #     DEFAULT_ACTIVATION,
+        #     nn.Dropout(p=dropout, inplace=True),
+        #     nn.Linear(expanded_dim, self.num_classes)
+        # )
 
+        prompts = ClipConv2d1x1.category_to_prompt(categories)
         self.predict_clss = nn.Sequential(
-            ClipConv2d1x1(merged_dim, expanded_dim, prompts),
+            ConvNormActive(merged_dim, expanded_dim, 1),
             nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(start_dim=1),
-            # nn.Linear(merged_dim, expanded_dim),
-            # DEFAULT_ACTIVATION,
             nn.Dropout(p=dropout, inplace=True),
-            nn.Linear(expanded_dim, self.num_classes)
+            ClipConv2d1x1(expanded_dim, self.num_classes, prompts),
+            nn.Flatten(start_dim=1),
         )
 
     def train_features(self, flag:bool):
