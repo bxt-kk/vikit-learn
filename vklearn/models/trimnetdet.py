@@ -49,6 +49,7 @@ class TrimNetDet(Detector):
             dropout:             float=0.1,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
+            prompt_to_embed:     bool=False,
         ):
 
         super().__init__(
@@ -87,7 +88,9 @@ class TrimNetDet(Detector):
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        prompts = ClipConv2d1x1.category_to_prompt(categories)
+        prompts = None
+        if prompt_to_embed:
+            prompts = ClipConv2d1x1.category_to_prompt(categories)
 
         self.predict_objs = ClipDetPredictor(
             merged_dim + ex_anchor_dim,

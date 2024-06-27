@@ -253,6 +253,8 @@ class ClipConv2d1x1(nn.Conv2d):
                 codes = clip_model.encode_text(clip_inputs)
             if in_planes < code_length:
                 codes, _ = self._code_align_weight(codes, in_planes)
+            modes = (codes**2).sum(dim=1, keepdim=True)**0.5
+            codes = codes / modes
             # for i, code in enumerate(codes):
             #     priori[i, :len(code), 0, 0] = code
             num_codes = len(codes)

@@ -36,6 +36,7 @@ class TrimNetClf(Classifier):
             dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
+            prompt_to_embed:     bool=False,
         ):
         super().__init__(categories)
 
@@ -59,7 +60,10 @@ class TrimNetClf(Classifier):
         #     nn.Linear(expanded_dim, self.num_classes)
         # )
 
-        prompts = ClipConv2d1x1.category_to_prompt(categories)
+        prompts = None
+        if prompt_to_embed:
+            prompts = ClipConv2d1x1.category_to_prompt(categories)
+
         self.predict_clss = nn.Sequential(
             ConvNormActive(merged_dim, expanded_dim, 1),
             nn.AdaptiveAvgPool2d(1),
