@@ -234,17 +234,17 @@ class ClipConv2d1x1(nn.Conv2d):
             self,
             in_planes:  int,
             out_planes: int,
-            prompts:    List[str],
-            use_clip:   bool=False,
+            prompts:    List[str] | None=None,
         ):
 
         super().__init__(in_planes, out_planes, 1)
 
-        num_classes = len(prompts)
-        assert num_classes <= out_planes
-
         priori = torch.zeros(out_planes, in_planes, 1, 1)
-        if use_clip:
+        if prompts is not None:
+            print('enable clip encoding:', prompts)
+            num_classes = len(prompts)
+            assert num_classes <= out_planes
+
             clip_device = 'cpu'
             code_length = 512
             clip_inputs = clip.tokenize(prompts).to(clip_device)
@@ -261,8 +261,9 @@ class ClipConv2d1x1(nn.Conv2d):
     def category_to_prompt(self, categories:List[str]) -> List[str]:
         prompts = []
         for category in categories:
-            prompt = 'an' if category[0].upper() in 'AEIOU' else 'a'
-            prompts.append(prompt + ' ' + category)
+            name = category.lower()
+            prompt = 'an' if name[0] in 'aeiou' else 'a'
+            prompts.append(prompt + ' ' + name)
         return prompts
 
     def _code_align_weight(self, code:Tensor, in_planes:int) -> Tensor:
