@@ -133,6 +133,7 @@ class Trainer:
                 if (max_train_step > 0) and ((step + 1) >= max_train_step):
                     break
 
+            optimizer.zero_grad()
             self.lr_scheduler.step()
 
             self.model.eval()
