@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from PIL import Image
 
 # from .component import DEFAULT_ACTIVATION
-from .component import ConvNormActive, ClipConv2d1x1
+from .component import ConvNormActive, ClipConv2d1x1v2 as ClipConv2d1x1
 from .trimnetx import TrimNetX
 from .classifier import Classifier
 
@@ -49,7 +49,7 @@ class TrimNetClf(Classifier):
             num_waves, wave_depth, backbone, backbone_pretrained)
 
         merged_dim = self.trimnetx.merged_dim
-        expanded_dim = ClipConv2d1x1.CODE_LENGTH # merged_dim * 4
+        expanded_dim = merged_dim * 4
 
         # self.predict_clss = nn.Sequential(
         #     nn.AdaptiveAvgPool2d(1),

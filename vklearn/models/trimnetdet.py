@@ -66,7 +66,7 @@ class TrimNetDet(Detector):
             num_waves, wave_depth, backbone, backbone_pretrained)
 
         merged_dim = self.trimnetx.merged_dim
-        expanded_dim = ClipConv2d1x1.CODE_LENGTH # merged_dim * 4
+        expanded_dim = merged_dim * 4
 
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
