@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from PIL import Image
 
 # from .component import DEFAULT_ACTIVATION
-from .component import ConvNormActive, ClipConv2d1x1v2 as ClipConv2d1x1
+from .component import ConvNormActive, ClipConv2d1x1
 from .trimnetx import TrimNetX
 from .classifier import Classifier
 

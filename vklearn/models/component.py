@@ -255,14 +255,12 @@ class ClipConv2d1x1(nn.Conv2d):
             if in_planes < self.CODE_LENGTH:
                 codes, _ = self._code_align_weight(codes, in_planes)
             modes = (codes**2).sum(dim=1, keepdim=True)**0.5
-            codes = codes / modes
+            codes = codes / modes * 2
             num_codes = len(codes)
             for i in range(out_planes):
                 code = codes[i % num_codes]
                 priori[i, :len(code), 0, 0] = code
         self.register_buffer('priori', priori)
-        self.alpha = nn.Parameter(
-            torch.ones(out_planes, 1, 1, 1) * in_planes**(-0.5))
 
     @classmethod
     def category_to_prompt(self, categories:List[str]) -> List[str]:
@@ -286,55 +284,6 @@ class ClipConv2d1x1(nn.Conv2d):
 
     def forward(self, x:Tensor) -> Tensor:
         weight = self.priori # self.alpha * self.weight + (1 - self.alpha) * self.priori
-        return self._conv_forward(x, weight, self.bias)
-
-
-class ClipConv2d1x1v2(nn.Conv2d):
-
-    CODE_LENGTH = 512
-
-    def __init__(
-            self,
-            in_planes:  int,
-            out_planes: int,
-            prompts:    List[str] | None=None,
-        ):
-
-        assert in_planes > self.CODE_LENGTH
-
-        super().__init__(in_planes - self.CODE_LENGTH, out_planes, 1)
-
-        priori = torch.zeros(out_planes, self.CODE_LENGTH, 1, 1)
-        if prompts is not None:
-            print('enable clip encoding:', prompts)
-            assert len(prompts) <= out_planes
-
-            clip_device = 'cpu'
-            clip_inputs = clip.tokenize(prompts).to(clip_device)
-            clip_model, _ = clip.load('ViT-B/32', device=clip_device)
-            with torch.no_grad():
-                codes = clip_model.encode_text(clip_inputs)
-            modes = (codes**2).sum(dim=1, keepdim=True)**0.5
-            codes = codes / modes
-            num_codes = len(codes)
-            for i in range(out_planes):
-                code = codes[i % num_codes]
-                priori[i, :, 0, 0] = code
-        self.register_buffer('priori', priori)
-        self.bias = nn.Parameter(torch.empty(
-            out_planes, dtype=self.bias.dtype, device=self.bias.device))
-
-    @classmethod
-    def category_to_prompt(self, categories:List[str]) -> List[str]:
-        prompts = []
-        for category in categories:
-            name = category.lower()
-            prompt = 'an' if name[0] in 'aeiou' else 'a'
-            prompts.append(prompt + ' ' + name)
-        return prompts
-
-    def forward(self, x:Tensor) -> Tensor:
-        weight = torch.cat([self.priori, self.weight], dim=1)
         return self._conv_forward(x, weight, self.bias)
 
 
@@ -366,7 +315,7 @@ class ClipDetPredictor(nn.Module):
             ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
             nn.Dropout(p=dropout, inplace=True),
             # nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
-            ClipConv2d1x1v2(hidden_planes, num_anchors * num_classes, prompts),
+            ClipConv2d1x1(hidden_planes, num_anchors * num_classes, prompts),
         )
 
         self.num_anchors = num_anchors
