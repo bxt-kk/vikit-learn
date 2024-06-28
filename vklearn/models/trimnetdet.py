@@ -15,8 +15,8 @@ from PIL import Image
 
 from .trimnetx import TrimNetX
 # from .component import InvertedResidual, DetPredictor, DEFAULT_ACTIVATION
-# from .component import ConvNormActive, DetPredictor
-from .component import ConvNormActive, ClipConv2d1x1, ClipDetPredictor
+# from .component import ConvNormActive, ClipConv2d1x1, ClipDetPredictor
+from .component import ConvNormActive, DetPredictor
 from .detector import Detector
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
@@ -49,7 +49,7 @@ class TrimNetDet(Detector):
             dropout:             float=0.1,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
-            prompt_to_embed:     bool=False,
+            # prompt_to_embed:     bool=False,
         ):
 
         super().__init__(
@@ -88,18 +88,19 @@ class TrimNetDet(Detector):
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        prompts = None
-        if prompt_to_embed:
-            prompts = ClipConv2d1x1.category_to_prompt(categories)
+        # prompts = None
+        # if prompt_to_embed:
+        #     prompts = ClipConv2d1x1.category_to_prompt(categories)
 
-        self.predict_objs = ClipDetPredictor(
+        # self.predict_objs = ClipDetPredictor(
+        self.predict_objs = DetPredictor(
             merged_dim + ex_anchor_dim,
             expanded_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
             num_classes=self.num_classes,
             dropout=dropout,
-            prompts=prompts,
+            # prompts=prompts,
         )
 
     def train_features(self, flag:bool):
