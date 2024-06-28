@@ -242,6 +242,7 @@ class ClipConv2d1x1(nn.Conv2d):
         super().__init__(in_planes, out_planes, 1)
 
         priori = torch.zeros(out_planes, in_planes, 1, 1)
+        scale = 1
         if prompts is not None:
             print('enable clip encoding:', prompts)
             num_classes = len(prompts)
@@ -254,13 +255,13 @@ class ClipConv2d1x1(nn.Conv2d):
                 codes = clip_model.encode_text(clip_inputs)
             if in_planes < self.CODE_LENGTH:
                 codes, _ = self._code_align_weight(codes, in_planes)
-            modes = (codes**2).sum(dim=1, keepdim=True)**0.5
-            codes = codes / modes * 2
+            scale = 1 / ((codes**2).sum(dim=1)**0.5).mean().item()
             num_codes = len(codes)
             for i in range(out_planes):
                 code = codes[i % num_codes]
                 priori[i, :len(code), 0, 0] = code
         self.register_buffer('priori', priori)
+        self.scale = scale
 
     @classmethod
     def category_to_prompt(self, categories:List[str]) -> List[str]:
@@ -283,7 +284,8 @@ class ClipConv2d1x1(nn.Conv2d):
         return short_code, recon
 
     def forward(self, x:Tensor) -> Tensor:
-        return self._conv_forward(x, self.weight + self.priori, self.bias)
+        return self._conv_forward(
+            x, self.weight + self.priori, self.bias) * self.scale
 
 
 class ClipDetPredictor(nn.Module):
