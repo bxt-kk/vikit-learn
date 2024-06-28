@@ -283,8 +283,7 @@ class ClipConv2d1x1(nn.Conv2d):
         return short_code, recon
 
     def forward(self, x:Tensor) -> Tensor:
-        weight = self.priori # self.alpha * self.weight + (1 - self.alpha) * self.priori
-        return self._conv_forward(x, weight, self.bias)
+        return self._conv_forward(x, self.weight + self.priori, self.bias)
 
 
 class ClipDetPredictor(nn.Module):
