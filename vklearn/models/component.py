@@ -230,6 +230,8 @@ class DetPredictor(nn.Module):
 
 class ClipConv2d1x1(nn.Conv2d):
 
+    CODE_LENGTH = 512
+
     def __init__(
             self,
             in_planes:  int,
@@ -246,22 +248,21 @@ class ClipConv2d1x1(nn.Conv2d):
             assert num_classes <= out_planes
 
             clip_device = 'cpu'
-            code_length = 512
             clip_inputs = clip.tokenize(prompts).to(clip_device)
             clip_model, _ = clip.load('ViT-B/32', device=clip_device)
             with torch.no_grad():
                 codes = clip_model.encode_text(clip_inputs)
-            if in_planes < code_length:
+            if in_planes < self.CODE_LENGTH:
                 codes, _ = self._code_align_weight(codes, in_planes)
             modes = (codes**2).sum(dim=1, keepdim=True)**0.5
             codes = codes / modes
-            # for i, code in enumerate(codes):
-            #     priori[i, :len(code), 0, 0] = code
             num_codes = len(codes)
             for i in range(out_planes):
                 code = codes[i % num_codes]
                 priori[i, :len(code), 0, 0] = code
         self.register_buffer('priori', priori)
+        self.alpha = nn.Parameter(
+            torch.ones(out_planes, 1, 1, 1) * in_planes**(-0.5))
 
     @classmethod
     def category_to_prompt(self, categories:List[str]) -> List[str]:
@@ -284,7 +285,8 @@ class ClipConv2d1x1(nn.Conv2d):
         return short_code, recon
 
     def forward(self, x:Tensor) -> Tensor:
-        return self._conv_forward(x, self.weight + self.priori, self.bias)
+        weight = self.alpha * self.weight + (1 - self.alpha) * self.priori
+        return self._conv_forward(x, weight, self.bias)
 
 
 class ClipDetPredictor(nn.Module):

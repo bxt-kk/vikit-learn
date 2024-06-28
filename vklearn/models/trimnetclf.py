@@ -49,7 +49,7 @@ class TrimNetClf(Classifier):
             num_waves, wave_depth, backbone, backbone_pretrained)
 
         merged_dim = self.trimnetx.merged_dim
-        expanded_dim = merged_dim * 4
+        expanded_dim = ClipConv2d1x1.CODE_LENGTH # merged_dim * 4
 
         # self.predict_clss = nn.Sequential(
         #     nn.AdaptiveAvgPool2d(1),
