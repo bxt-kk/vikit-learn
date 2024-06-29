@@ -13,11 +13,9 @@ from torchvision.ops import (
 
 from PIL import Image
 
-from .trimnetx import TrimNetX
-# from .component import InvertedResidual, DetPredictor, DEFAULT_ACTIVATION
-# from .component import ConvNormActive, ClipConv2d1x1, ClipDetPredictor
-from .component import ConvNormActive, DetPredictor
 from .detector import Detector
+from .trimnetx import TrimNetX
+from .component import ConvNormActive, DetPredictor
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
@@ -49,18 +47,14 @@ class TrimNetDet(Detector):
             dropout:             float=0.1,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
-            # prompt_to_embed:     bool=False,
         ):
 
         super().__init__(
             categories, bbox_limit=bbox_limit, anchors=anchors)
 
-        self.num_waves  = num_waves
-        self.wave_depth = wave_depth
         self.num_tries  = num_tries
         self.swap_size  = swap_size
         self.dropout    = dropout
-        self.backbone   = backbone
 
         self.trimnetx = TrimNetX(
             num_waves, wave_depth, backbone, backbone_pretrained)
@@ -71,8 +65,6 @@ class TrimNetDet(Detector):
         ex_anchor_dim = (swap_size + 1) * self.num_anchors
 
         self.predict_conf_tries = nn.ModuleList([nn.Sequential(
-            # InvertedResidual(merged_dim, merged_dim, 1, use_res_connect=False),
-            # DEFAULT_ACTIVATION(),
             ConvNormActive(merged_dim, merged_dim, 1),
             ConvNormActive(merged_dim, merged_dim, 3, groups=merged_dim),
             nn.Dropout(p=dropout, inplace=True),
@@ -80,19 +72,12 @@ class TrimNetDet(Detector):
         )])
         for _ in range(1, num_tries):
             self.predict_conf_tries.append(nn.Sequential(
-                # InvertedResidual(merged_dim + ex_anchor_dim, merged_dim, 1, use_res_connect=False),
-                # DEFAULT_ACTIVATION(),
                 ConvNormActive(merged_dim + ex_anchor_dim, merged_dim, 1),
                 ConvNormActive(merged_dim, merged_dim, 3, groups=merged_dim),
                 nn.Dropout(p=dropout, inplace=True),
                 nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
             ))
 
-        # prompts = None
-        # if prompt_to_embed:
-        #     prompts = ClipConv2d1x1.category_to_prompt(categories)
-
-        # self.predict_objs = ClipDetPredictor(
         self.predict_objs = DetPredictor(
             merged_dim + ex_anchor_dim,
             expanded_dim,
@@ -100,7 +85,6 @@ class TrimNetDet(Detector):
             bbox_dim=self.bbox_dim,
             num_classes=self.num_classes,
             dropout=dropout,
-            # prompts=prompts,
         )
 
     def train_features(self, flag:bool):
@@ -126,11 +110,11 @@ class TrimNetDet(Detector):
             categories          = hyps['categories'],
             bbox_limit          = hyps['bbox_limit'],
             anchors             = hyps['anchors'],
-            num_waves           = hyps['num_waves'],
-            wave_depth          = hyps['wave_depth'],
             num_tries           = hyps['num_tries'],
             swap_size           = hyps['swap_size'],
             dropout             = hyps['dropout'],
+            num_waves           = hyps['num_waves'],
+            wave_depth          = hyps['wave_depth'],
             backbone            = hyps['backbone'],
             backbone_pretrained = False,
         )
@@ -142,12 +126,12 @@ class TrimNetDet(Detector):
             categories = self.categories,
             bbox_limit = self.bbox_limit,
             anchors    = self.anchors,
-            num_waves  = self.num_waves,
-            wave_depth = self.wave_depth,
             num_tries  = self.num_tries,
             swap_size  = self.swap_size,
             dropout    = self.dropout,
-            backbone   = self.backbone,
+            num_waves  = self.trimnetx.num_waves,
+            wave_depth = self.trimnetx.wave_depth,
+            backbone   = self.trimnetx.backbone,
         )
 
     def load_state_dict(
@@ -168,112 +152,42 @@ class TrimNetDet(Detector):
 
     def detect(
             self,
-            image:       Image.Image,
-            conf_thresh: float=0.6,
-            iou_thresh:  float=0.55,
-            align_size:  int=448,
-            mini_side:   int=1,
+            image:         Image.Image,
+            conf_thresh:   float=0.6,
+            recall_thresh: float=0.5,
+            iou_thresh:    float=0.5,
+            align_size:    int=448,
+            mini_side:     int=1,
         ) -> List[Dict[str, Any]]:
-        # RV-240605
 
         device = self.get_model_device()
         x, scale, pad_x, pad_y = self.preprocess(
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
 
-        # # <<< Lab
-        # x = self.trimnetx(x)[-1]
-        #
-        # confs = [self.predict_conf_tries[0](x)]
-        # for layer in self.predict_conf_tries[1:]:
-        #     confs.append(layer(torch.cat([x, confs[-1]], dim=1)))
-        # bs, _, ny, nx = x.shape
-        # p_tryx = torch.cat([
-        #     conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-        #     for conf in confs], dim=2).permute(0, 1, 3, 4, 2)
-        # mix = torch.cat([x, confs[-1]], dim=1)
-        #
-        # recall_thresh = 0.5
-        # p_conf = torch.ones_like(p_tryx[..., 0])
-        # for conf_id in range(p_tryx.shape[-1] - 1):
-        #     p_conf[torch.sigmoid(p_tryx[..., conf_id]) < recall_thresh] = 0.
-        # p_conf *= torch.sigmoid(p_tryx[..., -1])
-        # # p_conf = torch.sigmoid(p_tryx[..., -1])
-        #
-        # mask = p_conf.max(dim=1, keepdim=True).values > conf_thresh
-        # index = torch.nonzero(mask, as_tuple=True)
-        # if len(index[0]) == 0: return []
-        #
-        # p_objs = self.predict_objs(
-        #     mix[index[0], :, index[2], index[3]].reshape(len(index[0]), -1, 1, 1))
-        #
-        # p_objs = p_objs.reshape(len(index[0]), self.num_anchors, -1)
-        #
-        # anchor_mask = p_conf[index[0], :, index[2], index[3]] > conf_thresh
-        # sub_ids, anchor_ids = torch.nonzero(anchor_mask, as_tuple=True)
-        # # bids = index[0][sub_ids]
-        # rids = index[2][sub_ids]
-        # cids = index[3][sub_ids]
-        # objs = p_objs[sub_ids, anchor_ids]
-        # conf = p_conf[index[0], :, index[2], index[3]][sub_ids, anchor_ids]
-        # # >>>
-        # <<< Lab
-        x = self.trimnetx(x)[-1]
-        tries = [self.predict_conf_tries[0](x)]
-        for layer in self.predict_conf_tries[1:]:
-            tries.append(layer(torch.cat([x, tries[-1]], dim=1)))
-        p_objs = self.predict_objs(torch.cat([x, tries[-1]], dim=1))
-        bs, _, ny, nx = p_objs.shape
-        p_conf = torch.cat([
-            conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-            for conf in tries], dim=2).permute(0, 1, 3, 4, 2)
-        p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
+        predicts = self.forward(x)
+        conf_prob = torch.ones_like(predicts[..., 0])
+        for conf_id in range(self.num_tries - 1):
+            conf_prob[torch.sigmoid(predicts[..., conf_id]) < recall_thresh] = 0.
+        conf_prob *= torch.sigmoid(predicts[..., self.num_tries - 1])
+        pred_objs = predicts[..., self.num_tries:]
 
-        recall_thresh = 0.5
-        p_conf_prob = torch.ones_like(p_conf[..., 0])
-        for conf_id in range(p_conf.shape[-1] - 1):
-            p_conf_prob[torch.sigmoid(p_conf[..., conf_id]) < recall_thresh] = 0.
-        p_conf_prob *= torch.sigmoid(p_conf[..., -1])
-        # p_conf_prob = torch.sigmoid(p_conf[..., -1])
-
-        mask = p_conf_prob > recall_thresh # conf_thresh
-        index = torch.nonzero(mask, as_tuple=True)
+        index = torch.nonzero(conf_prob > recall_thresh, as_tuple=True)
         if len(index[0]) == 0: return []
-
-        # bids = index[0]
-        rids = index[2]
-        cids = index[3]
-        objs = p_objs[index[0], index[1], index[2], index[3]]
-        conf = p_conf_prob[index[0], index[1], index[2], index[3]]
-        # >>>
-
-        cx = (cids + torch.tanh(objs[:, 0]) + 0.5) * self.cell_size
-        cy = (rids + torch.tanh(objs[:, 1]) + 0.5) * self.cell_size
-
-        regions = self.regions.type_as(objs)
-        rw = (
-            torch.tanh(objs[:, 2 + 0]) +
-            (objs[:, 2 + 1:2 + 7].softmax(dim=-1) * regions).sum(dim=-1)
-        ) * self.region_scale
-        rh = (
-            torch.tanh(objs[:, 2 + 7]) +
-            (objs[:, 2 + 8:2 + 14].softmax(dim=-1) * regions).sum(dim=-1)
-        ) * self.region_scale
-        x1, y1 = cx - rw / 2, cy - rh / 2
-        x2, y2 = x1 + rw, y1 + rh
+        conf = conf_prob[index[0], index[1], index[2], index[3]]
+        objs = pred_objs[index[0], index[1], index[2], index[3]]
 
         raw_w, raw_h = image.size
-        x1 = torch.clamp((x1 - pad_x) / scale, 0, raw_w - 1)
-        y1 = torch.clamp((y1 - pad_y) / scale, 0, raw_h - 1)
-        x2 = torch.clamp((x2 - pad_x) / scale, 1, raw_w)
-        y2 = torch.clamp((y2 - pad_y) / scale, 1, raw_h)
+        boxes = self.pred2boxes(objs[:, :self.bbox_dim], index)
+        boxes[:, 0] = torch.clamp((boxes[:, 0] - pad_x) / scale, 0, raw_w - 1)
+        boxes[:, 1] = torch.clamp((boxes[:, 1] - pad_y) / scale, 0, raw_h - 1)
+        boxes[:, 2] = torch.clamp((boxes[:, 2] - pad_x) / scale, 1, raw_w)
+        boxes[:, 3] = torch.clamp((boxes[:, 3] - pad_y) / scale, 1, raw_h)
 
-        boxes = torch.stack([x1, y1, x2, y2]).T
         clss = torch.softmax(objs[:, self.bbox_dim:], dim=-1).max(dim=-1)
         labels, probs = clss.indices, clss.values
         scores = conf * probs
         final_ids = box_ops.batched_nms(boxes, scores, labels, iou_thresh)
-        # bids = bids[final_ids]
         boxes = boxes[final_ids]
         labels = labels[final_ids]
         probs = probs[final_ids]
@@ -349,6 +263,7 @@ class TrimNetDet(Detector):
             target_labels: Tensor,
             target_bboxes: Tensor,
             conf_thresh:   float=0.5,
+            recall_thresh: float=0.5,
             eps:           float=1e-5,
         ) -> Dict[str, Any]:
 
@@ -357,7 +272,8 @@ class TrimNetDet(Detector):
         targ_conf = torch.zeros_like(inputs[..., 0])
         targ_conf[target_index] = 1.
 
-        pred_obj = focal_boost_positive(inputs, num_confs, conf_thresh)
+        pred_obj = focal_boost_positive(
+            inputs, num_confs, conf_thresh, recall_thresh)
 
         pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
         conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
@@ -419,12 +335,14 @@ class TrimNetDet(Detector):
             target_labels: Tensor,
             target_bboxes: Tensor,
             conf_thresh:   float=0.5,
+            recall_thresh: float=0.5,
             iou_thresh:    float=0.5,
         ):
 
         num_confs = len(self.predict_conf_tries)
 
-        preds_mask = focal_boost_positive(inputs, num_confs, conf_thresh)
+        preds_mask = focal_boost_positive(
+            inputs, num_confs, conf_thresh, recall_thresh)
         preds_index = torch.nonzero(preds_mask, as_tuple=True)
 
         objects = inputs[preds_index]

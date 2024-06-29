@@ -8,10 +8,9 @@ import torch.nn.functional as F
 
 from PIL import Image
 
-# from .component import DEFAULT_ACTIVATION
-from .component import ConvNormActive # , ClipConv2d1x1
-from .trimnetx import TrimNetX
 from .classifier import Classifier
+from .trimnetx import TrimNetX
+from .component import ConvNormActive
 
 
 class TrimNetClf(Classifier):
@@ -36,14 +35,10 @@ class TrimNetClf(Classifier):
             dropout:             float=0.2,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
-            # prompt_to_embed:     bool=False,
         ):
         super().__init__(categories)
 
-        self.num_waves  = num_waves
-        self.wave_depth = wave_depth
-        self.dropout    = dropout
-        self.backbone   = backbone
+        self.dropout = dropout
 
         self.trimnetx = TrimNetX(
             num_waves, wave_depth, backbone, backbone_pretrained)
@@ -51,24 +46,10 @@ class TrimNetClf(Classifier):
         merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
 
-        # self.predict_clss = nn.Sequential(
-        #     nn.AdaptiveAvgPool2d(1),
-        #     nn.Flatten(start_dim=1),
-        #     nn.Linear(merged_dim, expanded_dim),
-        #     DEFAULT_ACTIVATION,
-        #     nn.Dropout(p=dropout, inplace=True),
-        #     nn.Linear(expanded_dim, self.num_classes)
-        # )
-
-        # prompts = None
-        # if prompt_to_embed:
-        #     prompts = ClipConv2d1x1.category_to_prompt(categories)
-
         self.predict_clss = nn.Sequential(
             ConvNormActive(merged_dim, expanded_dim, 1),
             nn.AdaptiveAvgPool2d(1),
             nn.Dropout(p=dropout, inplace=True),
-            # ClipConv2d1x1(expanded_dim, self.num_classes, prompts),
             nn.Conv2d(expanded_dim, self.num_classes, 1),
             nn.Flatten(start_dim=1),
         )
@@ -85,9 +66,9 @@ class TrimNetClf(Classifier):
         hyps = state['hyperparameters']
         model = cls(
             categories          = hyps['categories'],
+            dropout             = hyps['dropout'],
             num_waves           = hyps['num_waves'],
             wave_depth          = hyps['wave_depth'],
-            dropout             = hyps['dropout'],
             backbone            = hyps['backbone'],
             backbone_pretrained = False,
         )
@@ -97,10 +78,10 @@ class TrimNetClf(Classifier):
     def hyperparameters(self) -> Dict[str, Any]:
         return dict(
             categories = self.categories,
-            num_waves  = self.num_waves,
-            wave_depth = self.wave_depth,
             dropout    = self.dropout,
-            backbone   = self.backbone,
+            num_waves  = self.trimnetx.num_waves,
+            wave_depth = self.trimnetx.wave_depth,
+            backbone   = self.trimnetx.backbone,
         )
 
     def classify(

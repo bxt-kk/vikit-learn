@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import os.path
 
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 import torch
 
 from .logging import Logger
@@ -113,9 +114,10 @@ class Task:
 
     def save_checkpoint(
             self,
-            epoch:     int,
-            output:    str,
-            optimizer: Optimizer,
+            epoch:        int,
+            output:       str,
+            optimizer:    Optimizer,
+            lr_scheduler: LRScheduler,
         ) -> str:
 
         out_path = os.path.splitext(output)[0]
@@ -123,14 +125,16 @@ class Task:
         torch.save({
             'model': self.model.state_dict(),
             'hyperparameters': self.model.hyperparameters(),
-            'optim': optimizer.state_dict()}, filename)
+            'optim': optimizer.state_dict(),
+            'lr_scheduler': lr_scheduler.state_dict()}, filename)
         return filename
 
     def choose_best_model(
             self,
-            output:    str,
-            optimizer: Optimizer,
-            logger:    Logger,
+            output:       str,
+            optimizer:    Optimizer,
+            lr_scheduler: LRScheduler,
+            logger:       Logger,
         ) -> bool:
 
         metric = logger.compute('metric')[self.key_metrics[0]]
@@ -142,5 +146,6 @@ class Task:
         torch.save({
             'model': self.model.state_dict(),
             'hyperparameters': self.model.hyperparameters(),
-            'optim': optimizer.state_dict()}, filename)
+            'optim': optimizer.state_dict(),
+            'lr_scheduler': lr_scheduler.state_dict()}, filename)
         return True

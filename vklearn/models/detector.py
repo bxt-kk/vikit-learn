@@ -90,11 +90,12 @@ class Detector(Basic):
 
     def detect(
             self,
-            image:       Image.Image,
-            conf_thresh: float=0.6,
-            iou_thresh:  float=0.55,
-            align_size:  int=448,
-            mini_side:   int=1,
+            image:         Image.Image,
+            conf_thresh:   float=0.6,
+            recall_thresh: float=0.5,
+            iou_thresh:    float=0.5,
+            align_size:    int=448,
+            mini_side:     int=1,
         ) -> List[Dict[str, Any]]:
         assert not 'this is an empty func'
 

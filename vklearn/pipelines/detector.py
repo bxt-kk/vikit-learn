@@ -52,11 +52,12 @@ class Detector:
 
     def __call__(
             self,
-            image:       PILImage | str | ndarray,
-            conf_thresh: float=0.6,
-            iou_thresh:  float=0.55,
-            align_size:  int=448,
-            mini_side:   int=1,
+            image:         PILImage | str | ndarray,
+            conf_thresh:   float=0.6,
+            recall_thresh: float=0.5,
+            iou_thresh:    float=0.5,
+            align_size:    int=448,
+            mini_side:     int=1,
         ) -> List[Dict[str, Any]]:
 
         if isinstance(image, str):
@@ -68,6 +69,7 @@ class Detector:
             result = self.model.detect(
                 image=image,
                 conf_thresh=conf_thresh,
+                recall_thresh=recall_thresh,
                 iou_thresh=iou_thresh,
                 align_size=align_size,
                 mini_side=mini_side,

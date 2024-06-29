@@ -17,23 +17,24 @@ from .logging import Logger
 
 @dataclass
 class Trainer:
-    task:         Task
-    output:       str
-    train_loader: DataLoader
+    task:              Task
+    output:            str
+    train_loader:      DataLoader
 
-    valid_loader: DataLoader=None
-    test_loader:  DataLoader=None
-    checkpoint:   str=None
-    drop_optim:   bool=False
-    optim_method: Callable[..., Optimizer]=Adam
-    lr:           float=1e-3
-    weight_decay: float=0.
-    lrf:          float=1.
-    T_num:        int=1
-    grad_steps:   int=1
-    epochs:       int=1
-    show_step:    int=50
-    save_epoch:   int=1
+    valid_loader:      DataLoader=None
+    test_loader:       DataLoader=None
+    checkpoint:        str=None
+    drop_optim:        bool=False
+    drop_lr_scheduler: bool=False
+    optim_method:      Callable[..., Optimizer]=Adam
+    lr:                float=1e-3
+    weight_decay:      float=0.
+    lrf:               float=1.
+    T_num:             float=1.
+    grad_steps:        int=1
+    epochs:            int=1
+    show_step:         int=50
+    save_epoch:        int=1
 
     def _dump_progress(
             self,
@@ -71,18 +72,20 @@ class Trainer:
                 num_workers=loader.num_workers,
             ))
 
+        assert self.lrf <= 1.
+        self.lr_scheduler = LambdaLR(self.optimizer, lr_lambda=
+            lambda epoch:
+            (1 + math.cos(epoch / (self.epochs / self.T_num) * math.pi)) *
+            0.5 * (1 - self.lrf) + self.lrf)
+
         if self.checkpoint is not None:
             print('checkpoint:', self.checkpoint)
             state_dict = torch.load(self.checkpoint)
             self.model.load_state_dict(state_dict['model'], strict=False)
             if not self.drop_optim:
                 self.optimizer.load_state_dict(state_dict['optim'])
-
-        assert self.lrf <= 1.
-        self.lr_scheduler = LambdaLR(self.optimizer, lr_lambda=
-            lambda epoch:
-            (1 + math.cos(epoch / (self.epochs / self.T_num) * math.pi)) *
-            0.5 * (1 - self.lrf) + self.lrf)
+            if not self.drop_lr_scheduler:
+                self.lr_scheduler.load_state_dict(state_dict['lr_scheduler'])
 
     def fit(
             self,
@@ -90,9 +93,10 @@ class Trainer:
             max_test_step:  int=0,
         ):
 
-        task      = self.task
-        optimizer = self.optimizer
-        logger    = Logger.create_by_output(self.output)
+        task         = self.task
+        optimizer    = self.optimizer
+        lr_scheduler = self.lr_scheduler
+        logger       = Logger.create_by_output(self.output)
         print('-' * 80)
         print('Training ...')
         for epoch in range(self.epochs):
@@ -107,7 +111,7 @@ class Trainer:
                 valid_generator = iter(valid_loader)
 
             print('train mode:', self.model.training)
-            print(f'lr={self.lr_scheduler.get_last_lr()}')
+            print(f'lr={lr_scheduler.get_last_lr()}')
             for step, sample in enumerate(train_loader):
                 task.train_on_step(epoch, step, sample, logger)
 
@@ -134,7 +138,12 @@ class Trainer:
                     break
 
             optimizer.zero_grad()
-            self.lr_scheduler.step()
+            lr_scheduler.step()
+
+            if (epoch + 1) % self.save_epoch == 0:
+                checkpoint_filename = task.save_checkpoint(
+                    epoch, self.output, optimizer, lr_scheduler)
+                print('save checkpoint -> {}'.format(checkpoint_filename))
 
             self.model.eval()
             test_loader = self.test_loader
@@ -154,15 +163,10 @@ class Trainer:
             task.end_on_epoch(epoch, logger)
             print(logger.dumpf())
 
-            print('A new best model emerges:',
-                task.choose_best_model(self.output, optimizer, logger))
-
-            if (epoch + 1) % self.save_epoch == 0:
-                checkpoint_filename = task.save_checkpoint(
-                    epoch, self.output, optimizer)
-                print('save checkpoint -> {}'.format(checkpoint_filename))
+            print('A new best model emerges:', task.choose_best_model(
+                self.output, optimizer, lr_scheduler, logger))
 
         checkpoint_filename = task.save_checkpoint(
-            epoch, self.output, optimizer)
+            epoch, self.output, optimizer, lr_scheduler)
         print('finished and save checkpoint -> {}'.format(checkpoint_filename))
         logger.plot()

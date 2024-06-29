@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any, Mapping, Dict
 
 from torch import Tensor
 
@@ -106,3 +106,22 @@ class TrimNetX(Basic):
             x = self.normals[i](x)
             fs.append(x)
         return fs
+
+    @classmethod
+    def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetX':
+        hyps = state['hyperparameters']
+        model = cls(
+            num_waves           = hyps['num_waves'],
+            wave_depth          = hyps['wave_depth'],
+            backbone            = hyps['backbone'],
+            backbone_pretrained = False,
+        )
+        model.load_state_dict(state['model'])
+        return model
+
+    def hyperparameters(self) -> Dict[str, Any]:
+        return dict(
+            num_waves  = self.num_waves,
+            wave_depth = self.wave_depth,
+            backbone   = self.backbone,
+        )
