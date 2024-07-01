@@ -59,6 +59,8 @@ class TrimNetDet(Detector):
         self.trimnetx = TrimNetX(
             num_waves, wave_depth, backbone, backbone_pretrained)
 
+        self.cell_size = self.trimnetx.cell_size
+
         merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
 

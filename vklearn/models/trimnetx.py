@@ -4,12 +4,13 @@ from torch import Tensor
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn.functional as F
 
-from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
-from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
+# from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+# from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 from .component import ConvNormActive, InvertedResidual, UpSample, CSENet
+from .component import MobileNetFeatures, DinoFeatures
 from .basic import Basic
 
 
@@ -38,28 +39,46 @@ class TrimNetX(Basic):
         self.backbone   = backbone
 
         if backbone == 'mobilenet_v3_small':
-            features = mobilenet_v3_small(
-                weights=MobileNet_V3_Small_Weights.DEFAULT
-                if backbone_pretrained else None,
-            ).features
-
-            self.features_dim = 48 + 96
+            # features = mobilenet_v3_small(
+            #     weights=MobileNet_V3_Small_Weights.DEFAULT
+            #     if backbone_pretrained else None,
+            # ).features
+            #
+            # self.features_dim = 48 + 96
+            # self.merged_dim   = 160
+            #
+            # self.features_d = features[:9] # 48, 32, 32
+            # self.features_u = features[9:-1] # 96, 16, 16
+            self.features = MobileNetFeatures(
+                backbone, backbone_pretrained)
+            self.features_dim = self.features.features_dim
             self.merged_dim   = 160
 
-            self.features_d = features[:9] # 48, 32, 32
-            self.features_u = features[9:-1] # 96, 16, 16
-
         elif backbone == 'mobilenet_v3_large':
-            features = mobilenet_v3_large(
-                weights=MobileNet_V3_Large_Weights.DEFAULT
-                if backbone_pretrained else None,
-            ).features
-
-            self.features_dim = 112 + 160
+            # features = mobilenet_v3_large(
+            #     weights=MobileNet_V3_Large_Weights.DEFAULT
+            #     if backbone_pretrained else None,
+            # ).features
+            #
+            # self.features_dim = 112 + 160
+            # self.merged_dim   = 320
+            #
+            # self.features_d = features[:13] # 112, 32, 32
+            # self.features_u = features[13:-1] # 160, 16, 16
+            self.features = MobileNetFeatures(
+                backbone, backbone_pretrained)
+            self.features_dim = self.features.features_dim
             self.merged_dim   = 320
 
-            self.features_d = features[:13] # 112, 32, 32
-            self.features_u = features[13:-1] # 160, 16, 16
+        elif backbone == 'dinov2_vits14':
+            self.features     = DinoFeatures(backbone)
+            self.features_dim = self.features.features_dim
+            self.merged_dim   = 192
+
+        else:
+            raise ValueError(f'Unsupported backbone `{backbone}`')
+
+        self.cell_size = self.features.cell_size
 
         self.merge = ConvNormActive(
             self.features_dim, self.merged_dim, 1, activation=None)
@@ -89,17 +108,20 @@ class TrimNetX(Basic):
 
     def forward(self, x:Tensor) -> List[Tensor]:
         if not self._keep_features:
-            fd = self.features_d(x)
-            fu = self.features_u(fd)
+            # fd = self.features_d(x)
+            # fu = self.features_u(fd)
+            x = self.features(x)
         else:
             with torch.no_grad():
-                fd = self.features_d(x)
-                fu = self.features_u(fd)
+                # fd = self.features_d(x)
+                # fu = self.features_u(fd)
+                x = self.features(x)
 
-        x = self.merge(torch.cat([
-            fd,
-            F.interpolate(fu, scale_factor=2, mode='bilinear'),
-        ], dim=1))
+        # x = self.merge(torch.cat([
+        #     fd,
+        #     F.interpolate(fu, scale_factor=2, mode='bilinear'),
+        # ], dim=1))
+        x = self.merge(x)
         fs = [x]
         for i, cluster_i in enumerate(self.cluster):
             x = x + self.csenets[i](torch.cat([x, cluster_i(x)], dim=1))

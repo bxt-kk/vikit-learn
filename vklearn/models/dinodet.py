@@ -61,8 +61,8 @@ class DinoDet(Detector):
         # self.trimnetx = TrimNetX(
         #     num_waves, wave_depth, backbone, backbone_pretrained)
         self.dinonet = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
-        for param in self.dinonet.parameters():
-            param.requires_grad = False
+        # for param in self.dinonet.parameters():
+        #     param.requires_grad = False
         # for param in self.dinonet.patch_embed.parameters():
         #     param.requires_grad = True
         # for param in self.dinonet.blocks[-1].parameters():

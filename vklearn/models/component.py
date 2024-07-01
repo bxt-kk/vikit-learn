@@ -3,7 +3,10 @@ from typing import Callable, List
 from torch import Tensor
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.ops.misc import SqueezeExcitation
+from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 
 import clip
 
@@ -326,3 +329,64 @@ class ClipDetPredictor(nn.Module):
         p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
         p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
         return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)
+
+
+class MobileNetFeatures(nn.Module):
+
+    def __init__(self, arch:str, pretrained:bool):
+
+        super().__init__()
+
+        if arch == 'mobilenet_v3_small':
+            features = mobilenet_v3_small(
+                weights=MobileNet_V3_Small_Weights.DEFAULT
+                if pretrained else None,
+            ).features
+
+            self.features_dim = 48 + 96
+
+            self.features_d = features[:9] # 48, 32, 32
+            self.features_u = features[9:-1] # 96, 16, 16
+
+        elif arch == 'mobilenet_v3_large':
+            features = mobilenet_v3_large(
+                weights=MobileNet_V3_Large_Weights.DEFAULT
+                if pretrained else None,
+            ).features
+
+            self.features_dim = 112 + 160
+
+            self.features_d = features[:13] # 112, 32, 32
+            self.features_u = features[13:-1] # 160, 16, 16
+
+        else:
+            raise ValueError(f'Unsupported arch `{arch}`')
+
+        self.cell_size = 16
+
+    def forward(self, x:Tensor) -> Tensor:
+        fd = self.features_d(x)
+        fu = self.features_u(fd)
+        return torch.cat([
+            fd, F.interpolate(fu, scale_factor=2, mode='bilinear')], dim=1)
+
+
+class DinoFeatures(nn.Module):
+
+    def __init__(self, arch:str):
+
+        super().__init__()
+
+        if arch == 'dinov2_vits14':
+            self.features = torch.hub.load(
+                'facebookresearch/dinov2', arch).forward_features
+            self.features_dim = 384
+            self.cell_size    = 14
+
+        else:
+            raise ValueError(f'Unsupported arch `{arch}`')
+
+    def forward(self, x:Tensor) -> Tensor:
+        dr, dc = x.shape[2] // self.cell_size, x.shape[3] // self.cell_size
+        x = self.features(x)['x_norm_patchtokens']
+        return x.transpose(1, 2).view(-1, self.features_dim, dr, dc)
