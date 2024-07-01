@@ -63,8 +63,8 @@ class DinoDet(Detector):
         self.dinonet = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
         for param in self.dinonet.parameters():
             param.requires_grad = False
-        for param in self.dinonet.patch_embed.parameters():
-            param.requires_grad = True
+        # for param in self.dinonet.patch_embed.parameters():
+        #     param.requires_grad = True
         # for param in self.dinonet.blocks[-1].parameters():
         #     param.requires_grad = True
 
@@ -99,7 +99,8 @@ class DinoDet(Detector):
     def forward(self, x:Tensor) -> Tensor:
         # x = self.trimnetx(x)[-1]
         sr, sc = x.shape[2], x.shape[3]
-        x = self.dinonet.forward_features(x)['x_norm_patchtokens']
+        with torch.no_grad():
+            x = self.dinonet.forward_features(x)['x_norm_patchtokens']
         x = x.transpose(1, 2).view(-1, 384, sr // 14, sc // 14)
         tries = [self.predict_conf_tries[0](x)]
         for layer in self.predict_conf_tries[1:]:
@@ -122,10 +123,10 @@ class DinoDet(Detector):
             num_tries           = hyps['num_tries'],
             swap_size           = hyps['swap_size'],
             dropout             = hyps['dropout'],
-            num_waves           = hyps['num_waves'],
-            wave_depth          = hyps['wave_depth'],
-            backbone            = hyps['backbone'],
-            backbone_pretrained = False,
+            # num_waves           = hyps['num_waves'],
+            # wave_depth          = hyps['wave_depth'],
+            # backbone            = hyps['backbone'],
+            # backbone_pretrained = False,
         )
         model.load_state_dict(state['model'])
         return model
@@ -138,9 +139,9 @@ class DinoDet(Detector):
             num_tries  = self.num_tries,
             swap_size  = self.swap_size,
             dropout    = self.dropout,
-            num_waves  = self.trimnetx.num_waves,
-            wave_depth = self.trimnetx.wave_depth,
-            backbone   = self.trimnetx.backbone,
+            # num_waves  = self.trimnetx.num_waves,
+            # wave_depth = self.trimnetx.wave_depth,
+            # backbone   = self.trimnetx.backbone,
         )
 
     def load_state_dict(
