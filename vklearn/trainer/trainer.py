@@ -7,6 +7,7 @@ import math
 from torch.optim import Optimizer, Adam
 from torch.optim.lr_scheduler import LambdaLR
 
+from torch import Tensor
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -110,10 +111,12 @@ class Trainer:
             if valid_loader is not None:
                 valid_generator = iter(valid_loader)
 
+            loss:Tensor = 0.
+
             print('train mode:', self.model.training)
             print(f'lr={lr_scheduler.get_last_lr()}')
             for step, sample in enumerate(train_loader):
-                task.train_on_step(epoch, step, sample, logger)
+                loss = loss + task.train_on_step(epoch, step, sample, logger)
 
                 if (step + 1) % self.show_step == 0:
                     print(self._dump_progress(epoch, step, train_loader))
@@ -131,13 +134,17 @@ class Trainer:
                         print('valid:', logger.dumps('valid'))
 
                 if (step + 1) % self.grad_steps == 0:
+                    avg_loss = loss / self.grad_steps
+                    avg_loss.backward()
                     optimizer.step()
                     optimizer.zero_grad()
+                    loss = 0.
 
                 if (max_train_step > 0) and ((step + 1) >= max_train_step):
                     break
 
             optimizer.zero_grad()
+            loss = 0.
             lr_scheduler.step()
 
             if (epoch + 1) % self.save_epoch == 0:
