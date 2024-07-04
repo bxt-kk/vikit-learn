@@ -2,7 +2,6 @@ from typing import Any, Dict, Tuple
 from dataclasses import dataclass, field
 import os.path
 
-from torch import Tensor
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 import torch
@@ -29,11 +28,12 @@ class Task:
 
     def train_on_step(
             self,
-            epoch:  int,
-            step:   int,
-            sample: Any,
-            logger: Logger,
-        ) -> Tensor:
+            epoch:      int,
+            step:       int,
+            sample:     Any,
+            logger:     Logger,
+            grad_steps: int,
+        ):
 
         inputs, target = self.sample_convert(sample)
 
@@ -44,17 +44,15 @@ class Task:
         outputs = model(inputs)
         losses = model.calc_loss(
             outputs, *target, **self.loss_options)
-        loss = losses['loss']
 
-        # loss.backward()
+        loss = losses['loss'] / grad_steps
+        loss.backward()
 
         with torch.no_grad():
             scores = model.calc_score(
                 outputs, *target, **self.score_options)
 
         logger.update('train', losses, scores)
-
-        return loss
 
     def valid_on_step(
             self,
