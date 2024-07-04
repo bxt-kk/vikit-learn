@@ -65,11 +65,12 @@ class CocoDetection(VisionDataset):
         self.coid2supercategory = {
             clss['id']: clss['supercategory']
             for clss in self.coco.dataset['categories']}
-        self.coid2subcategory = {
-            clss['id']: (clss[category_type] if clss[category_type] in sub_categories else self.NAME_OTHER)
-            for clss in self.coco.dataset['categories']}
         self.coid2object = {
             clss['id']: self.NAME_OBJECT
+            for clss in self.coco.dataset['categories']}
+        subtype = category_type if category_type != 'object' else 'name'
+        self.coid2subcategory = {
+            clss['id']: (clss[subtype] if clss[subtype] in sub_categories else self.NAME_OTHER)
             for clss in self.coco.dataset['categories']}
 
         idxs = sorted(self.coid2name.keys())
