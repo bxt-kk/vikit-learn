@@ -75,13 +75,13 @@ class CocoDetection(VisionDataset):
 
         idxs = sorted(self.coid2name.keys())
         self.names = [self.coid2name[i] for i in idxs]
+        self.objcategories = [self.NAME_OBJECT, self.NAME_OTHER]
         self.supercategories = []
         for i in idxs:
             category = self.coid2supercategory[i]
             if category in self.supercategories: continue
             self.supercategories.append(category)
         self.subcategories = sub_categories + [self.NAME_OTHER]
-        self.objcategories = [self.NAME_OBJECT, self.NAME_OTHER]
 
         if len(sub_categories) > 0:
             self.classes = self.subcategories
