@@ -14,12 +14,12 @@ from torchvision.ops import (
 from PIL import Image
 
 from .detector import Detector
-# from .trimnetx import TrimNetX
+from .trimnetx2 import TrimNetX
 from .component import ConvNormActive, DetPredictor
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
-class DinoDet(Detector):
+class TrimNetDet(Detector):
     '''A light-weight and easy-to-train model for object detection
 
     Args:
@@ -40,7 +40,7 @@ class DinoDet(Detector):
             categories:          List[str],
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
-            num_waves:           int=2,
+            num_waves:           int=3,
             wave_depth:          int=3,
             num_tries:           int=3,
             swap_size:           int=16,
@@ -52,69 +52,55 @@ class DinoDet(Detector):
         super().__init__(
             categories, bbox_limit=bbox_limit, anchors=anchors)
 
-        self.cell_size = 14
+        assert num_tries == num_waves
 
         self.num_tries  = num_tries
         self.swap_size  = swap_size
         self.dropout    = dropout
 
-        # self.trimnetx = TrimNetX(
-        #     num_waves, wave_depth, backbone, backbone_pretrained)
-        self.dinonet = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
-        # for param in self.dinonet.parameters():
-        #     param.requires_grad = False
-        # for param in self.dinonet.patch_embed.parameters():
-        #     param.requires_grad = True
-        # for param in self.dinonet.blocks[-1].parameters():
-        #     param.requires_grad = True
+        self.trimnetx = TrimNetX(
+            num_waves, wave_depth, backbone, backbone_pretrained)
 
-        merged_dim = 384 # self.trimnetx.merged_dim
+        self.cell_size = self.trimnetx.cell_size
+
+        merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
 
-        ex_anchor_dim = (swap_size + 1) * self.num_anchors
+        object_dim = (1 + self.bbox_dim + self.num_classes)
+        predict_dim = object_dim * self.num_anchors
 
-        self.predict_conf_tries = nn.ModuleList([nn.Sequential(
-            ConvNormActive(merged_dim, merged_dim, 1),
-            ConvNormActive(merged_dim, merged_dim, 3, groups=merged_dim),
-            nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
-        )])
-        for _ in range(1, num_tries):
-            self.predict_conf_tries.append(nn.Sequential(
-                ConvNormActive(merged_dim + ex_anchor_dim, merged_dim, 1),
-                ConvNormActive(merged_dim, merged_dim, 3, groups=merged_dim),
-                nn.Dropout(p=dropout, inplace=True),
-                nn.Conv2d(merged_dim, ex_anchor_dim, kernel_size=1),
+        self.predicts = nn.ModuleList()
+        for _ in range(num_tries):
+            self.predicts.append(nn.Sequential(
+                ConvNormActive(merged_dim, expanded_dim, 1),
+                ConvNormActive(expanded_dim, expanded_dim, 3, groups=expanded_dim),
+                nn.Conv2d(expanded_dim, predict_dim, kernel_size=1),
             ))
 
-        self.predict_objs = DetPredictor(
-            merged_dim + ex_anchor_dim,
-            expanded_dim,
-            num_anchors=self.num_anchors,
-            bbox_dim=self.bbox_dim,
-            num_classes=self.num_classes,
-            dropout=dropout,
-        )
+    def train_features(self, flag:bool):
+        self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tensor:
-        # x = self.trimnetx(x)[-1]
-        sr, sc = x.shape[2], x.shape[3]
-        with torch.no_grad():
-            x = self.dinonet.forward_features(x)['x_norm_patchtokens']
-        x = x.transpose(1, 2).view(-1, 384, sr // 14, sc // 14)
-        tries = [self.predict_conf_tries[0](x)]
-        for layer in self.predict_conf_tries[1:]:
-            tries.append(layer(torch.cat([x, tries[-1]], dim=1)))
-        p_objs = self.predict_objs(torch.cat([x, tries[-1]], dim=1))
-        bs, _, ny, nx = p_objs.shape
-        p_conf = torch.cat([
-            conf.view(bs, self.num_anchors, -1, ny, nx)[:, :, :1]
-            for conf in tries], dim=2)
-        p_objs = p_objs.view(bs, self.num_anchors, -1, ny, nx)
-        return torch.cat([p_conf, p_objs], dim=2).permute(0, 1, 3, 4, 2).contiguous()
+        hs = self.trimnetx(x)
+        n, _, rs, cs = hs[0].shape
+        y = self.predicts[0](hs[0])
+        y = y.view(n, self.num_anchors, -1, rs, cs)
+        y = y.permute(0, 1, 3, 4, 2)
+        p = y
+        ps = [p[..., :1]]
+        times = len(self.predicts)
+        for t in range(1, times):
+            y = self.predicts[t](hs[t])
+            y = y.view(n, self.num_anchors, -1, rs, cs)
+            y = y.permute(0, 1, 3, 4, 2)
+            a = torch.sigmoid(ps[-1])
+            p = y * a + p * (1 - a)
+            ps.append(p[..., :1])
+        ps.append(p[..., 1:])
+        return torch.cat(ps, dim=-1)
 
     @classmethod
-    def load_from_state(cls, state:Mapping[str, Any]) -> 'DinoDet':
+    def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':
         hyps = state['hyperparameters']
         model = cls(
             categories          = hyps['categories'],
@@ -123,10 +109,10 @@ class DinoDet(Detector):
             num_tries           = hyps['num_tries'],
             swap_size           = hyps['swap_size'],
             dropout             = hyps['dropout'],
-            # num_waves           = hyps['num_waves'],
-            # wave_depth          = hyps['wave_depth'],
-            # backbone            = hyps['backbone'],
-            # backbone_pretrained = False,
+            num_waves           = hyps['num_waves'],
+            wave_depth          = hyps['wave_depth'],
+            backbone            = hyps['backbone'],
+            backbone_pretrained = False,
         )
         model.load_state_dict(state['model'])
         return model
@@ -139,9 +125,9 @@ class DinoDet(Detector):
             num_tries  = self.num_tries,
             swap_size  = self.swap_size,
             dropout    = self.dropout,
-            # num_waves  = self.trimnetx.num_waves,
-            # wave_depth = self.trimnetx.wave_depth,
-            # backbone   = self.trimnetx.backbone,
+            num_waves  = self.trimnetx.num_waves,
+            wave_depth = self.trimnetx.wave_depth,
+            backbone   = self.trimnetx.backbone,
         )
 
     def load_state_dict(
