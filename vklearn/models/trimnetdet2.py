@@ -1,4 +1,5 @@
 from typing import List, Any, Dict, Tuple, Mapping
+import math
 
 from torch import Tensor
 
@@ -84,12 +85,17 @@ class TrimNetDet(Detector):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
+    def random_factor(self, x:Tensor, t:int) -> Tensor:
+        sigma = (math.cos((t + 1) / self.num_tries * math.pi) + 1) / 4
+        return torch.dropout(x, p=sigma, train=True)
+
     def forward(self, x:Tensor) -> Tensor:
         hs = self.trimnetx(x)
         n, _, rs, cs = hs[0].shape
 
         # y = self.predicts[0](hs[0])
-        y = self.predict(hs[0])
+        # y = self.predict(hs[0])
+        y = self.predict(self.random_factor(hs[0], 0))
         y = y.view(n, self.num_anchors, -1, rs, cs)
         y = y.permute(0, 1, 3, 4, 2)
 
@@ -100,7 +106,8 @@ class TrimNetDet(Detector):
         for t in range(1, times):
 
             # y = self.predicts[t](hs[t])
-            y = self.predict(hs[t])
+            # y = self.predict(hs[t])
+            y = self.predict(self.random_factor(hs[t], t))
             y = y.view(n, self.num_anchors, -1, rs, cs)
             y = y.permute(0, 1, 3, 4, 2)
 
