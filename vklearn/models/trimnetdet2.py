@@ -94,8 +94,8 @@ class TrimNetDet(Detector):
         n, _, rs, cs = hs[0].shape
 
         # y = self.predicts[0](hs[0])
-        # y = self.predict(hs[0])
-        y = self.predict(self.random_factor(hs[0], 0))
+        y = self.predict(hs[0])
+        # y = self.predict(self.random_factor(hs[0], 0))
         y = y.view(n, self.num_anchors, -1, rs, cs)
         y = y.permute(0, 1, 3, 4, 2)
 
@@ -106,8 +106,8 @@ class TrimNetDet(Detector):
         for t in range(1, times):
 
             # y = self.predicts[t](hs[t])
-            # y = self.predict(hs[t])
-            y = self.predict(self.random_factor(hs[t], t))
+            y = self.predict(hs[t])
+            # y = self.predict(self.random_factor(hs[t], t))
             y = y.view(n, self.num_anchors, -1, rs, cs)
             y = y.permute(0, 1, 3, 4, 2)
 

@@ -1,4 +1,5 @@
 from typing import List
+import math
 
 from torch import Tensor
 
@@ -90,6 +91,10 @@ class TrimNetX(Basic):
             self.trim_units.append(TrimUnit(
                 in_planes, self.merged_dim, wave_depth=wave_depth))
 
+    def random_factor(self, x:Tensor, t:int) -> Tensor:
+        sigma = ((math.cos((t + 1) / self.num_waves * math.pi) + 1) / 4)**0.5 # Note!
+        return torch.dropout(x, p=sigma, train=True)
+
     def forward(self, x:Tensor) -> List[Tensor]:
         if not self._keep_features:
             f = self.features(x)
@@ -98,10 +103,12 @@ class TrimNetX(Basic):
                 f = self.features(x)
 
         m = self.merge(f)
-        h = self.trim_units[0](m)
+        # h = self.trim_units[0](m)
+        h = self.random_factor(self.trim_units[0](m), 0)
         ht = [h]
         times = len(self.trim_units)
         for t in range(1, times):
-            h = self.trim_units[t](torch.cat([m, h], dim=1))
+            # h = self.trim_units[t](torch.cat([m, h], dim=1))
+            h = self.random_factor(self.trim_units[t](torch.cat([m, h], dim=1)), t)
             ht.append(h)
         return ht
