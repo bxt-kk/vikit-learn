@@ -51,11 +51,16 @@ def focal_boost_iter(
         sample_mask = pred_conf.detach() >= obj_pred_min
 
     # alpha = (math.cos(math.pi / num_confs * conf_id) + 1) / 2
-    alpha = (math.cos(math.pi / num_confs * conf_id) + 1) / 2 * 0.8 + 0.2
+    sigma_0 = 0.25
+    sigma_T = (math.cos((num_confs - 1) / num_confs * math.pi) + 1) / 2
+    scale_r = (1 - sigma_0) / (1 - sigma_T)
+    sigma_k = (math.cos(math.pi / num_confs * conf_id) + 1) / 2
+    sigma_k = sigma_k * scale_r - scale_r + 1
     num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).numel()
 
     conf_loss = (
-        obj_loss * alpha / max(1, num_foreground_per_img) +
+        # obj_loss * alpha / max(1, num_foreground_per_img) +
+        obj_loss * sigma_k / max(1, num_foreground_per_img) +
         sampled_loss) / num_confs
 
     return conf_loss, sampled_loss, sample_mask
