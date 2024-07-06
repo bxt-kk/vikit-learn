@@ -86,7 +86,7 @@ class TrimNetDet(Detector):
         self.trimnetx.train_features(flag)
 
     def random_factor(self, x:Tensor, t:int) -> Tensor:
-        sigma = (math.cos((t + 1) / self.num_tries * math.pi) + 1) / 4
+        sigma = ((math.cos((t + 1) / self.num_tries * math.pi) + 1) / 4)**0.5 # Note!
         return torch.dropout(x, p=sigma, train=True)
 
     def forward(self, x:Tensor) -> Tensor:
