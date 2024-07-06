@@ -95,20 +95,61 @@ class TrimNetX(Basic):
         sigma = ((math.cos((t + 1) / self.num_waves * math.pi) + 1) / 4)# **0.5 # Note!
         return torch.dropout(x, p=sigma, train=True)
 
-    def forward(self, x:Tensor) -> List[Tensor]:
+    # def forward(self, x:Tensor) -> List[Tensor]:
+    #     if not self._keep_features:
+    #         f = self.features(x)
+    #     else:
+    #         with torch.no_grad():
+    #             f = self.features(x)
+    #
+    #     m = self.merge(f)
+    #     # h = self.trim_units[0](m)
+    #     h = self.random_factor(self.trim_units[0](m), 0)
+    #     ht = [h]
+    #     times = len(self.trim_units)
+    #     for t in range(1, times):
+    #         # h = self.trim_units[t](torch.cat([m, h], dim=1))
+    #         h = self.random_factor(self.trim_units[t](torch.cat([m, h], dim=1)), t)
+    #         ht.append(h)
+    #     return ht
+
+    def det_forward(
+            self,
+            x:           Tensor,
+            embedding:   nn.Module,
+            predict:     nn.Module,
+            num_anchors: int,
+        ) -> List[Tensor]:
+
         if not self._keep_features:
             f = self.features(x)
         else:
             with torch.no_grad():
                 f = self.features(x)
 
+        n, _, rs, cs = f.shape
+
         m = self.merge(f)
-        # h = self.trim_units[0](m)
         h = self.random_factor(self.trim_units[0](m), 0)
-        ht = [h]
+
+        y = predict(h)
+        y = y.view(n, num_anchors, -1, rs, cs)
+        y = y.permute(0, 1, 3, 4, 2)
+
+        p = y
+        pt = [p[..., :1]]
         times = len(self.trim_units)
         for t in range(1, times):
-            # h = self.trim_units[t](torch.cat([m, h], dim=1))
-            h = self.random_factor(self.trim_units[t](torch.cat([m, h], dim=1)), t)
-            ht.append(h)
-        return ht
+            # n, a, r, c, p -> n, a, p, r, c
+            e = embedding(p.permute(0, 1, 4, 2, 3).view(n, -1, rs, cs))
+            h = self.random_factor(self.trim_units[t](torch.cat([m, e], dim=1)), t)
+
+            y = predict(h)
+            y = y.view(n, num_anchors, -1, rs, cs)
+            y = y.permute(0, 1, 3, 4, 2)
+
+            a = torch.sigmoid(pt[-1])
+            p = y * a + p * (1 - a)
+            pt.append(p)
+        pt.append(p[..., 1:])
+        return pt
