@@ -92,7 +92,7 @@ class TrimNetX(Basic):
                 in_planes, self.merged_dim, wave_depth=wave_depth))
 
     def random_factor(self, x:Tensor, t:int) -> Tensor:
-        sigma = ((math.cos((t + 1) / self.num_waves * math.pi) + 1) / 4)**0.5 # Note!
+        sigma = ((math.cos((t + 1) / self.num_waves * math.pi) + 1) / 4)# **0.5 # Note!
         return torch.dropout(x, p=sigma, train=True)
 
     def forward(self, x:Tensor) -> List[Tensor]:
