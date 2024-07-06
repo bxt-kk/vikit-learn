@@ -150,6 +150,6 @@ class TrimNetX(Basic):
 
             a = torch.sigmoid(pt[-1])
             p = y * a + p * (1 - a)
-            pt.append(p)
+            pt.append(p[..., :1])
         pt.append(p[..., 1:])
         return pt
