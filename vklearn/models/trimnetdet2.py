@@ -213,7 +213,7 @@ class TrimNetDet(Detector):
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
-        num_confs = len(self.predict_conf_tries)
+        num_confs = self.num_tries # len(self.predict_conf_tries)
 
         conf_loss, sampled_loss = focal_boost_loss(
             inputs, target_index, num_confs, alpha, gamma)
@@ -263,7 +263,7 @@ class TrimNetDet(Detector):
             eps:           float=1e-5,
         ) -> Dict[str, Any]:
 
-        num_confs = len(self.predict_conf_tries)
+        num_confs = self.num_tries # len(self.predict_conf_tries)
 
         targ_conf = torch.zeros_like(inputs[..., 0])
         targ_conf[target_index] = 1.
@@ -335,7 +335,7 @@ class TrimNetDet(Detector):
             iou_thresh:    float=0.5,
         ):
 
-        num_confs = len(self.predict_conf_tries)
+        num_confs = self.num_tries # len(self.predict_conf_tries)
 
         preds_mask = focal_boost_positive(
             inputs, num_confs, conf_thresh, recall_thresh)

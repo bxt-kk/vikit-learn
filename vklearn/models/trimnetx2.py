@@ -53,6 +53,7 @@ class TrimNetX(Basic):
 
         super().__init__()
 
+        self.num_waves  = num_waves
         self.wave_depth = wave_depth
         self.backbone   = backbone
 
