@@ -69,13 +69,17 @@ class TrimNetDet(Detector):
         object_dim = (1 + self.bbox_dim + self.num_classes)
         predict_dim = object_dim * self.num_anchors
 
-        self.predicts = nn.ModuleList()
-        for _ in range(num_tries):
-            self.predicts.append(nn.Sequential(
-                ConvNormActive(merged_dim, expanded_dim, 1),
-                ConvNormActive(expanded_dim, expanded_dim, 3, groups=expanded_dim),
-                nn.Conv2d(expanded_dim, predict_dim, kernel_size=1),
-            ))
+        # self.predicts = nn.ModuleList()
+        # for _ in range(num_tries):
+        #     self.predicts.append(nn.Sequential(
+        #         ConvNormActive(merged_dim, expanded_dim, 1),
+        #         ConvNormActive(expanded_dim, expanded_dim, 3, groups=expanded_dim),
+        #         nn.Conv2d(expanded_dim, predict_dim, kernel_size=1),
+        #     ))
+        self.predict = nn.Sequential(
+            ConvNormActive(merged_dim, expanded_dim, 1),
+            ConvNormActive(expanded_dim, expanded_dim, 3, groups=expanded_dim),
+            nn.Conv2d(expanded_dim, predict_dim, kernel_size=1))
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
@@ -83,16 +87,23 @@ class TrimNetDet(Detector):
     def forward(self, x:Tensor) -> Tensor:
         hs = self.trimnetx(x)
         n, _, rs, cs = hs[0].shape
-        y = self.predicts[0](hs[0])
+
+        # y = self.predicts[0](hs[0])
+        y = self.predict(hs[0])
         y = y.view(n, self.num_anchors, -1, rs, cs)
         y = y.permute(0, 1, 3, 4, 2)
+
         p = y
         ps = [p[..., :1]]
-        times = len(self.predicts)
+        # times = len(self.predicts)
+        times = self.num_tries
         for t in range(1, times):
-            y = self.predicts[t](hs[t])
+
+            # y = self.predicts[t](hs[t])
+            y = self.predict(hs[t])
             y = y.view(n, self.num_anchors, -1, rs, cs)
             y = y.permute(0, 1, 3, 4, 2)
+
             a = torch.sigmoid(ps[-1])
             p = y * a + p * (1 - a)
             ps.append(p[..., :1])
@@ -136,14 +147,14 @@ class TrimNetDet(Detector):
             strict:     bool=True,
             assign:     bool=False,
         ):
-        CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.3.weight'
-        CLSS_BIAS_KEY = 'predict_objs.predict_clss.3.bias'
-
-        clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
-        clss_bias = state_dict.pop(CLSS_BIAS_KEY)
-        if clss_bias.shape[0] == self.num_anchors * self.num_classes:
-            state_dict[CLSS_WEIGHT_KEY] = clss_weight
-            state_dict[CLSS_BIAS_KEY] = clss_bias
+        # CLSS_WEIGHT_KEY = 'predict_objs.predict_clss.3.weight'
+        # CLSS_BIAS_KEY = 'predict_objs.predict_clss.3.bias'
+        #
+        # clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
+        # clss_bias = state_dict.pop(CLSS_BIAS_KEY)
+        # if clss_bias.shape[0] == self.num_anchors * self.num_classes:
+        #     state_dict[CLSS_WEIGHT_KEY] = clss_weight
+        #     state_dict[CLSS_BIAS_KEY] = clss_bias
         super().load_state_dict(state_dict, strict, assign)
 
     def detect(
