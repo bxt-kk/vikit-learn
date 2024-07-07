@@ -42,7 +42,7 @@ class TrimNetDet(Detector):
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
             num_waves:           int=3,
-            wave_depth:          int=3,
+            wave_depth:          int=4,
             num_tries:           int=3,
             swap_size:           int=16,
             dropout:             float=0.1,
@@ -85,21 +85,11 @@ class TrimNetDet(Detector):
         hs = self.trimnetx(x)
         n, _, rs, cs = hs[0].shape
 
-        # y = self.predict(hs[0])
-        # y = y.view(n, self.num_anchors, -1, rs, cs)
-        # y = y.permute(0, 1, 3, 4, 2)
         p = self.predict(hs[0])
-
-        # p = y
         ps = [p[..., :1]]
         times = self.num_tries
         for t in range(1, times):
-
-            # y = self.predict(hs[t])
-            # y = y.view(n, self.num_anchors, -1, rs, cs)
-            # y = y.permute(0, 1, 3, 4, 2)
             y = self.predict(hs[t])
-
             a = torch.sigmoid(ps[-1])
             p = y * a + p * (1 - a)
             ps.append(p[..., :1])
