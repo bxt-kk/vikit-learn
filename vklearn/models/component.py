@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torchvision.ops.misc import SqueezeExcitation
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
+from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
 
 import clip
 
@@ -388,6 +389,17 @@ class MobileNetFeatures(nn.Module):
 
             self.features_d = features[:13] # 112, 32, 32
             self.features_u = features[13:-1] # 160, 16, 16
+
+        elif arch == 'efficientnet_v2_s':
+            features = efficientnet_v2_s(
+                weights=EfficientNet_V2_S_Weights.DEFAULT
+                if pretrained else None,
+            ).features
+
+            self.features_dim = 128 + 256
+
+            self.features_d = features[:5] # 128, 32, 32
+            self.features_u = features[5:-1] # 256, 16, 16
 
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
