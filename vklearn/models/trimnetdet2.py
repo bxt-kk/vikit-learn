@@ -16,7 +16,7 @@ from PIL import Image
 
 from .detector import Detector
 from .trimnetx2 import TrimNetX
-from .component import ConvNormActive, DetPredictor
+from .component import ConvNormActive, DetPredictorV2
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
@@ -70,60 +70,41 @@ class TrimNetDet(Detector):
         object_dim = (1 + self.bbox_dim + self.num_classes)
         predict_dim = object_dim * self.num_anchors
 
-        # self.predicts = nn.ModuleList()
-        # for _ in range(num_tries):
-        #     self.predicts.append(nn.Sequential(
-        #         ConvNormActive(merged_dim, expanded_dim, 1),
-        #         ConvNormActive(expanded_dim, expanded_dim, 3, groups=expanded_dim),
-        #         nn.Conv2d(expanded_dim, predict_dim, kernel_size=1),
-        #     ))
-        self.predict = nn.Sequential(
-            ConvNormActive(merged_dim, expanded_dim, 1),
-            ConvNormActive(expanded_dim, expanded_dim, 3, groups=expanded_dim),
-            nn.Conv2d(expanded_dim, predict_dim, kernel_size=1))
-
-        # Lab <<<
-        self.embedding = ConvNormActive(predict_dim, merged_dim, 1, activation=None)
-        # <<<
+        self.predict = DetPredictorV2(
+            in_planes=merged_dim,
+            hidden_planes=expanded_dim,
+            num_anchors=self.num_anchors,
+            bbox_dim=self.bbox_dim,
+            num_classes=self.num_classes,
+        )
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def random_factor(self, x:Tensor, t:int) -> Tensor:
-        sigma = ((math.cos((t + 1) / self.num_tries * math.pi) + 1) / 4)**0.5 # Note!
-        return torch.dropout(x, p=sigma, train=True)
-
-    # def forward(self, x:Tensor) -> Tensor:
-    #     hs = self.trimnetx(x)
-    #     n, _, rs, cs = hs[0].shape
-    #
-    #     # y = self.predicts[0](hs[0])
-    #     y = self.predict(hs[0])
-    #     # y = self.predict(self.random_factor(hs[0], 0))
-    #     y = y.view(n, self.num_anchors, -1, rs, cs)
-    #     y = y.permute(0, 1, 3, 4, 2)
-    #
-    #     p = y
-    #     ps = [p[..., :1]]
-    #     # times = len(self.predicts)
-    #     times = self.num_tries
-    #     for t in range(1, times):
-    #
-    #         # y = self.predicts[t](hs[t])
-    #         y = self.predict(hs[t])
-    #         # y = self.predict(self.random_factor(hs[t], t))
-    #         y = y.view(n, self.num_anchors, -1, rs, cs)
-    #         y = y.permute(0, 1, 3, 4, 2)
-    #
-    #         a = torch.sigmoid(ps[-1])
-    #         p = y * a + p * (1 - a)
-    #         ps.append(p[..., :1])
-    #     ps.append(p[..., 1:])
-    #     return torch.cat(ps, dim=-1)
-
     def forward(self, x:Tensor) -> Tensor:
-        pt = self.trimnetx.det_forward(x, self.embedding, self.predict, self.num_anchors)
-        return torch.cat(pt, dim=-1)
+        hs = self.trimnetx(x)
+        n, _, rs, cs = hs[0].shape
+
+        # y = self.predict(hs[0])
+        # y = y.view(n, self.num_anchors, -1, rs, cs)
+        # y = y.permute(0, 1, 3, 4, 2)
+        p = self.predict(hs[0])
+
+        # p = y
+        ps = [p[..., :1]]
+        times = self.num_tries
+        for t in range(1, times):
+
+            # y = self.predict(hs[t])
+            # y = y.view(n, self.num_anchors, -1, rs, cs)
+            # y = y.permute(0, 1, 3, 4, 2)
+            y = self.predict(hs[t])
+
+            a = torch.sigmoid(ps[-1])
+            p = y * a + p * (1 - a)
+            ps.append(p[..., :1])
+        ps.append(p[..., 1:])
+        return torch.cat(ps, dim=-1)
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':

@@ -18,6 +18,7 @@ class TrimUnit(nn.Module):
             in_planes:  int,
             out_planes: int,
             wave_depth: int=4,
+            dropout_p:  float=0,
         ):
 
         super().__init__()
@@ -28,6 +29,8 @@ class TrimUnit(nn.Module):
             modules.append(InvertedResidual(
                 out_planes, out_planes, 1, dilation=2**r, activation=None))
         modules.append(ConvNormActive(out_planes, out_planes, 1))
+        if dropout_p > 0:
+            modules.append(nn.Dropout(dropout_p))
         self.blocks = nn.Sequential(*modules)
 
     def forward(self, x:Tensor) -> Tensor:
@@ -83,73 +86,35 @@ class TrimNetX(Basic):
         self.merge = ConvNormActive(
             self.features_dim, self.merged_dim, 1, activation=None)
 
+        self.project = ConvNormActive(
+            self.merged_dim, self.merged_dim, 1, activation=None)
+
         self.trim_units = nn.ModuleList()
-        for wave_id in range(num_waves):
+        for t in range(num_waves):
             in_planes = self.merged_dim
-            if wave_id > 0:
+            if t > 0:
                 in_planes = 2 * self.merged_dim
+            sigma = (math.cos((t + 1) / num_waves * math.pi) + 1) / 4
             self.trim_units.append(TrimUnit(
-                in_planes, self.merged_dim, wave_depth=wave_depth))
+                in_planes,
+                self.merged_dim,
+                wave_depth=wave_depth,
+                dropout_p=sigma,
+            ))
 
-    def random_factor(self, x:Tensor, t:int) -> Tensor:
-        sigma = ((math.cos((t + 1) / self.num_waves * math.pi) + 1) / 4)# **0.5 # Note!
-        return torch.dropout(x, p=sigma, train=True)
-
-    # def forward(self, x:Tensor) -> List[Tensor]:
-    #     if not self._keep_features:
-    #         f = self.features(x)
-    #     else:
-    #         with torch.no_grad():
-    #             f = self.features(x)
-    #
-    #     m = self.merge(f)
-    #     # h = self.trim_units[0](m)
-    #     h = self.random_factor(self.trim_units[0](m), 0)
-    #     ht = [h]
-    #     times = len(self.trim_units)
-    #     for t in range(1, times):
-    #         # h = self.trim_units[t](torch.cat([m, h], dim=1))
-    #         h = self.random_factor(self.trim_units[t](torch.cat([m, h], dim=1)), t)
-    #         ht.append(h)
-    #     return ht
-
-    def det_forward(
-            self,
-            x:           Tensor,
-            embedding:   nn.Module,
-            predict:     nn.Module,
-            num_anchors: int,
-        ) -> List[Tensor]:
-
+    def forward(self, x:Tensor) -> List[Tensor]:
         if not self._keep_features:
             f = self.features(x)
         else:
             with torch.no_grad():
                 f = self.features(x)
 
-        n, _, rs, cs = f.shape
-
         m = self.merge(f)
-        h = self.random_factor(self.trim_units[0](m), 0)
-
-        y = predict(h)
-        y = y.view(n, num_anchors, -1, rs, cs)
-        y = y.permute(0, 1, 3, 4, 2)
-
-        p = y
-        pt = [p[..., :1]]
+        h = self.trim_units[0](m)
+        ht = [h]
         times = len(self.trim_units)
         for t in range(1, times):
-            # n, a, r, c, p -> n, a, p, r, c
-            e = embedding(p.permute(0, 1, 4, 2, 3).view(n, -1, rs, cs))
-            h = self.random_factor(self.trim_units[t](torch.cat([m, e], dim=1)), t)
-
-            y = predict(h)
-            y = y.view(n, num_anchors, -1, rs, cs)
-            y = y.permute(0, 1, 3, 4, 2)
-
-            a = torch.sigmoid(pt[-1])
-            p = y * a + p * (1 - a)
-            pt.append(p[..., :1])
-        pt.append(p[..., 1:])
-        return pt
+            e = self.project(h)
+            h = self.trim_units[t](torch.cat([m, e], dim=1))
+            ht.append(h)
+        return ht

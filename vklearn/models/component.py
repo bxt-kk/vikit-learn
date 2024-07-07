@@ -231,6 +231,36 @@ class DetPredictor(nn.Module):
         return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)
 
 
+class DetPredictorV2(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            hidden_planes: int,
+            num_anchors:   int,
+            bbox_dim:      int,
+            num_classes:   int,
+        ):
+
+        super().__init__()
+
+        object_dim = (1 + bbox_dim + num_classes)
+        predict_dim = object_dim * num_anchors
+        self.predict = nn.Sequential(
+            ConvNormActive(in_planes, hidden_planes, 1),
+            ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
+            nn.Conv2d(hidden_planes, predict_dim, kernel_size=1))
+
+        self.num_anchors = num_anchors
+
+    def forward(self, x:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+        x = self.predict(x)
+        x = x.view(bs, self.num_anchors, -1, ny, nx)
+        x = x.permute(0, 1, 3, 4, 2)
+        return x
+
+
 class ClipConv2d1x1(nn.Conv2d):
 
     CODE_LENGTH = 512
