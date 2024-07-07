@@ -26,11 +26,13 @@ class TrimUnit(nn.Module):
         modules = []
         modules.append(CSENet(in_planes, out_planes))
         for r in range(wave_depth):
-            modules.append(nn.Sequential(
-                InvertedResidual(
-                    out_planes, out_planes, 1, dilation=2**r, activation=None),
-                DEFAULT_LAYER_NORM(out_planes),
-            ))
+            # modules.append(nn.Sequential(
+            #     InvertedResidual(
+            #         out_planes, out_planes, 1, dilation=2**r, activation=None),
+            #     DEFAULT_LAYER_NORM(out_planes),
+            # ))
+            modules.append(InvertedResidual(
+                out_planes, out_planes, 1, dilation=2**r, activation=None))
         modules.append(ConvNormActive(out_planes, out_planes, 1))
         if dropout_p > 0:
             modules.append(nn.Dropout(dropout_p))
