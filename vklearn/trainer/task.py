@@ -15,7 +15,7 @@ class Task:
     model:              Model
     device:             torch.device
     metric_start_epoch: int=0
-    fit_features_start: int=0
+    fit_features_start: int=-1
     loss_options:       Dict[str, Any]=field(default_factory=dict)
     score_options:      Dict[str, Any]=field(default_factory=dict)
     metric_options:     Dict[str, Any]=field(default_factory=dict)
