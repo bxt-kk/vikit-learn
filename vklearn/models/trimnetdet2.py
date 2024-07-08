@@ -1,22 +1,24 @@
 from typing import List, Any, Dict, Tuple, Mapping
-import math
+# import math
 
 from torch import Tensor
 
 import torch
-import torch.nn as nn
+# import torch.nn as nn
 import torch.nn.functional as F
 
 from torchvision.ops import (
     generalized_box_iou_loss,
     boxes as box_ops,
+    box_convert,
 )
 
 from PIL import Image
 
 from .detector import Detector
 from .trimnetx2 import TrimNetX
-from .component import ConvNormActive, DetPredictorV2
+# from .component import ConvNormActive, DetPredictorV2
+from .component import DetPredictorV2
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
@@ -67,8 +69,8 @@ class TrimNetDet(Detector):
         merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
 
-        object_dim = (1 + self.bbox_dim + self.num_classes)
-        predict_dim = object_dim * self.num_anchors
+        # object_dim = (1 + self.bbox_dim + self.num_classes)
+        # predict_dim = object_dim * self.num_anchors
 
         self.predict = DetPredictorV2(
             in_planes=merged_dim,
@@ -367,3 +369,35 @@ class TrimNetDet(Detector):
                 labels=target_labels[target_ids],
             ))
         self.m_ap_metric.update(preds, target)
+
+    def pred2boxes(
+            self,
+            cxcywh: Tensor,
+            index:  List[Tensor],
+            fmt:    str='xyxy',
+        ) -> Tensor:
+
+        # regions = self.regions.type_as(cxcywh)
+        regions = torch.tensor([[0] + [2**r for r in range(6)]]).type_as(cxcywh)
+        region_scales = torch.tensor([8, 16, 32]).type_as(cxcywh)
+        boxes_x = (
+            torch.tanh(cxcywh[:, 0]) + 0.5 +
+            index[3].type_as(cxcywh)
+        ) * self.cell_size
+        boxes_y = (
+            torch.tanh(cxcywh[:, 1]) + 0.5 +
+            index[2].type_as(cxcywh)
+        ) * self.cell_size
+        boxes_w = (
+            (cxcywh[:, 2 + 0:2 + 7].softmax(dim=-1) * regions).sum(dim=-1)
+        ) * region_scales[index[1]]
+        boxes_h = (
+            (cxcywh[:, 2 + 7:2 + 14].softmax(dim=-1) * regions).sum(dim=-1)
+        ) * region_scales[index[1]]
+        bboxes = torch.cat([
+            boxes_x.unsqueeze(-1),
+            boxes_y.unsqueeze(-1),
+            boxes_w.unsqueeze(-1),
+            boxes_h.unsqueeze(-1),
+            ], dim=-1)
+        return box_convert(bboxes, 'cxcywh', fmt)
