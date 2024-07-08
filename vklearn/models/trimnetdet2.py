@@ -377,8 +377,7 @@ class TrimNetDet(Detector):
             fmt:    str='xyxy',
         ) -> Tensor:
 
-        # regions = self.regions.type_as(cxcywh)
-        regions = torch.tensor([[0] + [2**r for r in range(6)]]).type_as(cxcywh)
+        regions = self.regions.type_as(cxcywh)
         region_scales = torch.tensor([8, 16, 32]).type_as(cxcywh)
         boxes_x = (
             torch.tanh(cxcywh[:, 0]) + 0.5 +
@@ -389,10 +388,12 @@ class TrimNetDet(Detector):
             index[2].type_as(cxcywh)
         ) * self.cell_size
         boxes_w = (
-            (cxcywh[:, 2 + 0:2 + 7].softmax(dim=-1) * regions).sum(dim=-1)
+            torch.tanh(cxcywh[:, 2 + 0]) +
+            (cxcywh[:, 2 + 1:2 + 7].softmax(dim=-1) * regions).sum(dim=-1)
         ) * region_scales[index[1]]
         boxes_h = (
-            (cxcywh[:, 2 + 7:2 + 14].softmax(dim=-1) * regions).sum(dim=-1)
+            torch.tanh(cxcywh[:, 2 + 7]) +
+            (cxcywh[:, 2 + 8:2 + 14].softmax(dim=-1) * regions).sum(dim=-1)
         ) * region_scales[index[1]]
         bboxes = torch.cat([
             boxes_x.unsqueeze(-1),
