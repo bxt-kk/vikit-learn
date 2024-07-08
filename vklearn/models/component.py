@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import Callable
 
 from torch import Tensor
 import torch
@@ -7,9 +7,6 @@ import torch.nn.functional as F
 from torchvision.ops.misc import SqueezeExcitation
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
-from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
-
-import clip
 
 
 class LayerNorm2d(nn.GroupNorm):
@@ -18,7 +15,7 @@ class LayerNorm2d(nn.GroupNorm):
         super().__init__(1, num_channels)
 
 
-DEFAULT_LAYER_NORM = LayerNorm2d # nn.BatchNorm2d
+DEFAULT_NORM_LAYER = LayerNorm2d # nn.BatchNorm2d
 DEFAULT_ACTIVATION = nn.Hardswish
 DEFAULT_SIGMOID    = nn.Hardsigmoid
 
@@ -74,7 +71,7 @@ class ConvNormActive(nn.Sequential):
             stride:      int | tuple[int, int]=1,
             dilation:    int=1,
             groups:      int=1,
-            norm_layer:  Callable[..., nn.Module] | None=DEFAULT_LAYER_NORM,
+            norm_layer:  Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
             activation:  Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
         ):
 
@@ -99,7 +96,7 @@ class InvertedResidual(nn.Module):
             kernel_size:     int=3,
             stride:          int | tuple[int, int]=1,
             dilation:        int=1,
-            norm_layer:      Callable[..., nn.Module] | None=DEFAULT_LAYER_NORM,
+            norm_layer:      Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
             activation:      Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
             use_res_connect: bool=True,
         ):
@@ -149,7 +146,7 @@ class UpSample(nn.Sequential):
     def __init__(
             self,
             in_planes:  int,
-            norm_layer: Callable[..., nn.Module] | None=DEFAULT_LAYER_NORM,
+            norm_layer: Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
             activation: Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
         ):
 
@@ -197,50 +194,6 @@ class DetPredictor(nn.Module):
             num_anchors:   int,
             bbox_dim:      int,
             num_classes:   int,
-            dropout:       float,
-            dropout_bbox:  float=0.,
-        ):
-
-        super().__init__()
-
-        self.predict_bbox = nn.Sequential(
-            # ConvNormActive(in_planes, in_planes, kernel_size=1),
-            # InvertedResidual(in_planes, in_planes, 1, use_res_connect=False),
-            # DEFAULT_ACTIVATION(),
-            ConvNormActive(in_planes, in_planes, 1),
-            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Dropout(p=dropout_bbox, inplace=True),
-            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
-        )
-
-        self.predict_clss = nn.Sequential(
-            # ConvNormActive(in_planes, hidden_planes, kernel_size=1),
-            # InvertedResidual(in_planes, hidden_planes, 1),
-            # DEFAULT_ACTIVATION(),
-            ConvNormActive(in_planes, hidden_planes, 1),
-            ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
-            nn.Dropout(p=dropout, inplace=True),
-            nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
-        )
-
-        self.num_anchors = num_anchors
-
-    def forward(self, x:Tensor) -> Tensor:
-        bs, _, ny, nx = x.shape
-        p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
-        p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
-        return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)
-
-
-class DetPredictorV2(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:     int,
-            hidden_planes: int,
-            num_anchors:   int,
-            bbox_dim:      int,
-            num_classes:   int,
         ):
 
         super().__init__()
@@ -260,106 +213,6 @@ class DetPredictorV2(nn.Module):
         x = x.view(bs, self.num_anchors, -1, ny, nx)
         x = x.permute(0, 1, 3, 4, 2)
         return x
-
-
-class ClipConv2d1x1(nn.Conv2d):
-
-    CODE_LENGTH = 512
-
-    def __init__(
-            self,
-            in_planes:  int,
-            out_planes: int,
-            prompts:    List[str] | None=None,
-        ):
-
-        super().__init__(in_planes, out_planes, 1)
-
-        priori = torch.zeros(out_planes, in_planes, 1, 1)
-        scale = 1
-        if prompts is not None:
-            print('enable clip encoding:', prompts)
-            num_classes = len(prompts)
-            assert num_classes <= out_planes
-
-            clip_device = 'cpu'
-            clip_inputs = clip.tokenize(prompts).to(clip_device)
-            clip_model, _ = clip.load('ViT-B/32', device=clip_device)
-            with torch.no_grad():
-                codes = clip_model.encode_text(clip_inputs)
-            if in_planes < self.CODE_LENGTH:
-                codes, _ = self._code_align_weight(codes, in_planes)
-            scale = 1 / ((codes**2).sum(dim=1)**0.5).mean().item()
-            num_codes = len(codes)
-            for i in range(out_planes):
-                code = codes[i % num_codes]
-                priori[i, :len(code), 0, 0] = code
-        self.register_buffer('priori', priori)
-        self.scale = scale
-
-    @classmethod
-    def category_to_prompt(self, categories:List[str]) -> List[str]:
-        prompts = []
-        for category in categories:
-            name = category.lower()
-            prompt = 'an' if name[0] in 'aeiou' else 'a'
-            prompts.append(prompt + ' ' + name)
-        return prompts
-
-    def _code_align_weight(self, code:Tensor, in_planes:int) -> Tensor:
-        mean = code.mean(dim=0)
-        X = code - mean
-        cov = torch.cov(X.T)
-        eigval, eigvect = torch.linalg.eig(cov)
-        eigval_idxs = torch.argsort(eigval.real, descending=True)[:in_planes]
-        red_eigvect = eigvect.real[:, eigval_idxs]
-        short_code = X @ red_eigvect
-        recon = (short_code @ red_eigvect.T) + mean
-        return short_code, recon
-
-    def forward(self, x:Tensor) -> Tensor:
-        return self._conv_forward(
-            x, self.weight + self.priori, self.bias) * self.scale
-
-
-class ClipDetPredictor(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:     int,
-            hidden_planes: int,
-            num_anchors:   int,
-            bbox_dim:      int,
-            num_classes:   int,
-            dropout:       float,
-            prompts:       List[str],
-            dropout_bbox:  float=0.,
-        ):
-
-        super().__init__()
-
-        self.predict_bbox = nn.Sequential(
-            ConvNormActive(in_planes, in_planes, 1),
-            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Dropout(p=dropout_bbox, inplace=True),
-            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1),
-        )
-
-        self.predict_clss = nn.Sequential(
-            ConvNormActive(in_planes, hidden_planes, 1),
-            ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
-            nn.Dropout(p=dropout, inplace=True),
-            # nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1),
-            ClipConv2d1x1(hidden_planes, num_anchors * num_classes, prompts),
-        )
-
-        self.num_anchors = num_anchors
-
-    def forward(self, x:Tensor) -> Tensor:
-        bs, _, ny, nx = x.shape
-        p_bbox = self.predict_bbox(x).view(bs, self.num_anchors, -1, ny, nx)
-        p_clss = self.predict_clss(x).view(bs, self.num_anchors, -1, ny, nx)
-        return torch.cat([p_bbox, p_clss], dim=2).view(bs, -1, ny, nx)
 
 
 class MobileNetFeatures(nn.Module):
@@ -390,28 +243,13 @@ class MobileNetFeatures(nn.Module):
             self.features_d = features[:13] # 112, 32, 32
             self.features_u = features[13:-1] # 160, 16, 16
 
-        elif arch == 'efficientnet_v2_s':
-            features = efficientnet_v2_s(
-                weights=EfficientNet_V2_S_Weights.DEFAULT
-                if pretrained else None,
-            ).features
-
-            self.features_dim = 128 + 256
-
-            self.features_d = features[:5] # 128, 32, 32
-            self.features_u = features[5:-1] # 256, 16, 16
-
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
 
         self.cell_size = 16
 
     def forward(self, x:Tensor) -> Tensor:
-        # Lab code
-        with torch.no_grad():
-            fd = self.features_d(x)
-        # >>>
-        # fd = self.features_d(x)
+        fd = self.features_d(x)
         fu = self.features_u(fd)
         return torch.cat([
             fd, F.interpolate(fu, scale_factor=2, mode='bilinear')], dim=1)
