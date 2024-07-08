@@ -30,8 +30,6 @@ class Detector(Basic):
         self.bbox_limit   = bbox_limit
         self.region_scale = bbox_limit / 32
 
-        # anchors = anchors if anchors is not None else [
-        #     (self.region_scale * 3**k, ) * 2 for k in range(0, 3)]
         if anchors is None:
             anchors = []
             for k in range(3):
@@ -44,11 +42,12 @@ class Detector(Basic):
         anchors = anchors if isinstance(anchors, Tensor) else torch.tensor(
             anchors, dtype=torch.float32).reshape(3, -1, 2)
 
+        self.register_buffer(
+            'regions', torch.tensor([[2**k for k in range(6)]]))
+        self.bbox_dim    = 2 + (self.regions.shape[1] + 1) * 2
         self.anchors     = anchors
         self.num_anchors = len(anchors)
         self.cell_size   = 16
-        self.regions     = torch.tensor([[2**k for k in range(6)]])
-        self.bbox_dim    = 2 + (self.regions.shape[1] + 1) * 2
 
         self.m_ap_metric = MeanAveragePrecision(
             iou_type='bbox',
@@ -63,7 +62,6 @@ class Detector(Basic):
             fmt:    str='xyxy',
         ) -> Tensor:
 
-        regions = self.regions.type_as(cxcywh)
         boxes_x = (
             torch.tanh(cxcywh[:, 0]) + 0.5 +
             index[3].type_as(cxcywh)
@@ -74,11 +72,11 @@ class Detector(Basic):
         ) * self.cell_size
         boxes_w = (
             torch.tanh(cxcywh[:, 2 + 0]) +
-            (cxcywh[:, 2 + 1:2 + 7].softmax(dim=-1) * regions).sum(dim=-1)
+            (cxcywh[:, 2 + 1:2 + 7].softmax(dim=-1) * self.regions).sum(dim=-1)
         ) * self.region_scale
         boxes_h = (
             torch.tanh(cxcywh[:, 2 + 7]) +
-            (cxcywh[:, 2 + 8:2 + 14].softmax(dim=-1) * regions).sum(dim=-1)
+            (cxcywh[:, 2 + 8:2 + 14].softmax(dim=-1) * self.regions).sum(dim=-1)
         ) * self.region_scale
         bboxes = torch.cat([
             boxes_x.unsqueeze(-1),

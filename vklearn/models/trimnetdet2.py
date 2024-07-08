@@ -10,7 +10,6 @@ import torch.nn.functional as F
 from torchvision.ops import (
     generalized_box_iou_loss,
     boxes as box_ops,
-    box_convert,
 )
 
 from PIL import Image
@@ -369,36 +368,3 @@ class TrimNetDet(Detector):
                 labels=target_labels[target_ids],
             ))
         self.m_ap_metric.update(preds, target)
-
-    def pred2boxes(
-            self,
-            cxcywh: Tensor,
-            index:  List[Tensor],
-            fmt:    str='xyxy',
-        ) -> Tensor:
-
-        regions = self.regions.type_as(cxcywh)
-        region_scales = torch.tensor([8, 16, 32]).type_as(cxcywh)
-        boxes_x = (
-            torch.tanh(cxcywh[:, 0]) + 0.5 +
-            index[3].type_as(cxcywh)
-        ) * self.cell_size
-        boxes_y = (
-            torch.tanh(cxcywh[:, 1]) + 0.5 +
-            index[2].type_as(cxcywh)
-        ) * self.cell_size
-        boxes_w = (
-            torch.tanh(cxcywh[:, 2 + 0]) +
-            (cxcywh[:, 2 + 1:2 + 7].softmax(dim=-1) * regions).sum(dim=-1)
-        ) * region_scales[index[1]]
-        boxes_h = (
-            torch.tanh(cxcywh[:, 2 + 7]) +
-            (cxcywh[:, 2 + 8:2 + 14].softmax(dim=-1) * regions).sum(dim=-1)
-        ) * region_scales[index[1]]
-        bboxes = torch.cat([
-            boxes_x.unsqueeze(-1),
-            boxes_y.unsqueeze(-1),
-            boxes_w.unsqueeze(-1),
-            boxes_h.unsqueeze(-1),
-            ], dim=-1)
-        return box_convert(bboxes, 'cxcywh', fmt)
