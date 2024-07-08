@@ -39,7 +39,9 @@ class Task:
 
         model = self.model
         model.train_features(
-            epoch >= self.fit_features_start)
+            self.fit_features_start >= 0 and
+            epoch >= self.fit_features_start
+        )
 
         outputs = model(inputs)
         losses = model.calc_loss(
