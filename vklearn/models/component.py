@@ -407,7 +407,11 @@ class MobileNetFeatures(nn.Module):
         self.cell_size = 16
 
     def forward(self, x:Tensor) -> Tensor:
-        fd = self.features_d(x)
+        # Lab code
+        with torch.no_grad():
+            fd = self.features_d(x)
+        # >>>
+        # fd = self.features_d(x)
         fu = self.features_u(fd)
         return torch.cat([
             fd, F.interpolate(fu, scale_factor=2, mode='bilinear')], dim=1)
