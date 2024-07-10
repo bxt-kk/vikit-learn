@@ -145,6 +145,15 @@ class OxfordIIITPet(VisionDataset):
             )
         )
 
+    def _load_mask(self, idx:int) -> tv_tensors.Mask:
+        image = Image.open(self._segs[idx])
+        mask = tv_tensors.Mask(image)
+        mask[mask != 1] = 0
+        rows, cols = mask.shape[1], mask.shape[2]
+        data = torch.zeros((2, rows, cols), dtype=mask.dtype)
+        data[self._bin_labels[idx]] = mask.data
+        return tv_tensors.Mask(data)
+
     def __getitem__(self, idx: int) -> Tuple[Any, Any]:
         image = Image.open(self._images[idx]).convert('RGB')
 
@@ -155,7 +164,7 @@ class OxfordIIITPet(VisionDataset):
             elif target_type == 'binary-category':
                 target.append(self._bin_labels[idx])
             elif target_type == 'segmentation':
-                target.append(Image.open(self._segs[idx]))
+                target.append(self._load_mask(idx))
             elif target_type == 'detection':
                 target.append(self._load_obj(idx, image.size))
 

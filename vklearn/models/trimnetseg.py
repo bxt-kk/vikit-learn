@@ -1,20 +1,23 @@
 from typing import List, Any, Dict, Mapping
+import math
 
 from torch import Tensor
+from torchvision.ops import (
+    sigmoid_focal_loss,
+)
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from PIL import Image
 
-from .classifier import Classifier
+from .segment import Segment
 from .trimnetx import TrimNetX
-from .component import ConvNormActive
+from .component import ConvNormActive, UpSample
 
 
-class TrimNetClf(Classifier):
-    '''A light-weight and easy-to-train model for image classification
+class TrimNetSeg(Segment):
+    '''A light-weight and easy-to-train model for image segmentation
 
     Args:
         categories: Target categories.
@@ -38,31 +41,40 @@ class TrimNetClf(Classifier):
             num_scans, scan_range, backbone, backbone_pretrained)
 
         merged_dim = self.trimnetx.merged_dim
-        expanded_dim = merged_dim * 4
+        # expanded_dim = merged_dim * 4
 
+        # self.predict = nn.Sequential(
+        #     ConvNormActive(merged_dim, expanded_dim, 1),
+        #     nn.Conv2d(expanded_dim, self.num_classes, 1),
+        # )
         self.predict = nn.Sequential(
-            ConvNormActive(merged_dim, expanded_dim, 1),
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(expanded_dim, self.num_classes, 1),
-            nn.Flatten(start_dim=1),
+            UpSample(merged_dim),
+            ConvNormActive(merged_dim, merged_dim // 2, 1), # 80, 56
+            UpSample(merged_dim // 2),
+            ConvNormActive(merged_dim // 2, merged_dim // 4, 1), # 40, 112
+            UpSample(merged_dim // 4),
+            ConvNormActive(merged_dim // 4, merged_dim // 8, 1), # 20, 224
+            UpSample(merged_dim // 8),
+            ConvNormActive(merged_dim // 8, merged_dim // 16, 1), # 10, 448
+            nn.Conv2d(merged_dim // 16, self.num_classes, 1),
         )
-
-        self.category_weights = nn.Parameter(torch.ones(
-            num_scans, 1, self.num_classes) / num_scans)
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tensor:
         hs = self.trimnetx(x)
-        p = self.predict(hs[0]) * self.category_weights[0]
+        p = self.predict(hs[0])
+        ps = [p]
         times = len(hs)
         for t in range(1, times):
-            p = p + self.predict(hs[t]) * self.category_weights[t]
-        return p
+            a = torch.sigmoid(p)
+            p = self.predict(hs[t]) * a + p * (1 - a)
+            ps.append(p)
+        return torch.cat([p[..., None] for p in ps], dim=-1)
 
     @classmethod
-    def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetClf':
+    def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetSeg':
         hyps = state['hyperparameters']
         model = cls(
             categories          = hyps['categories'],
@@ -82,26 +94,13 @@ class TrimNetClf(Classifier):
             backbone   = self.trimnetx.backbone,
         )
 
-    def classify(
+    def segment(
             self,
-            image:      Image.Image,
-            top_k:      int=10,
-            align_size: int=224,
+            image:       Image.Image,
+            conf_thresh: float=0.5,
+            align_size:  int=448,
         ) -> List[Dict[str, Any]]:
-
-        device = self.get_model_device()
-        x, scale, pad_x, pad_y = self.preprocess(
-            image, align_size, limit_size=32, fill_value=127)
-        x = x.to(device)
-        x = self.forward(x)
-        top_k = min(self.num_classes, top_k)
-        topk = x.squeeze(dim=0).softmax(dim=-1).topk(top_k)
-        probs = [round(v, 5) for v in topk.values.tolist()]
-        labels = [self.categories[cid] for cid in topk.indices]
-        return dict(
-            probs=dict(zip(labels, probs)),
-            predict=labels[0],
-        )
+        assert not 'this is an empty func'
 
     def calc_loss(
             self,
@@ -113,7 +112,24 @@ class TrimNetClf(Classifier):
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
-        loss = F.cross_entropy(inputs, target, reduction=reduction)
+
+        times = inputs.shape[-1]
+        F_sigma = lambda t: 1 - (math.cos((t + 1) / times * math.pi) + 1) * 0.5
+        target = target.type_as(inputs)
+
+        grand_sigma = 0.
+        loss = 0.
+        for t in range(times):
+            sigma = F_sigma(t)
+            grand_sigma += sigma
+            loss = loss + sigmoid_focal_loss(
+                inputs[..., t],
+                target,
+                alpha=alpha,
+                gamma=gamma,
+                reduction=reduction,
+            ) * sigma
+        loss = loss / grand_sigma
 
         return dict(
             loss=loss,
@@ -123,17 +139,22 @@ class TrimNetClf(Classifier):
             self,
             inputs: Tensor,
             target: Tensor,
-            thresh: float=0.5,
             eps:    float=1e-5,
         ) -> Dict[str, Any]:
 
-        if len(target.shape) == 2:
-            predict = torch.softmax(inputs, dim=-1)
-            accuracy = (1 - 0.5 * torch.abs(predict - target).sum(dim=-1)).mean()
-        else:
-            predict = torch.argmax(inputs, dim=-1)
-            accuracy = (predict == target).sum() / len(predict)
+        predicts = torch.sigmoid(inputs[..., -1])
+        distance = torch.abs(predicts - target).mean(dim=(2, 3)).mean()
 
         return dict(
-            accuracy=accuracy,
+            mad=distance,
         )
+
+    def update_metric(
+            self,
+            inputs:      Tensor,
+            target:      Tensor,
+            conf_thresh: float=0.5,
+        ):
+
+        predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
+        self.m_iou.update(predicts.to(torch.int), target.to(torch.int))
