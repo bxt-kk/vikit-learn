@@ -251,29 +251,53 @@ class SegPredictor(nn.Module):
         return self.classifier(x)
 
 
-class SegPredictor_(nn.Module):
+class SegPredictorV2(nn.Module):
 
     def __init__(
             self,
-            in_planes:      int,
-            num_classes:    int,
-            upscale_factor: int,
+            in_planes:   int,
+            num_classes: int,
+            num_layers:  int,
         ):
 
         super().__init__()
 
+        self.num_layers = num_layers
+
+        project_dim = min(
+            max(in_planes // 2**num_layers, num_classes**0.5),
+            num_classes,
+        )
+
         self.projects = nn.ModuleList()
-        for t in range(num_classes):
-            hidden_planes = upscale_factor
-            out_planes = int(upscale_factor * upscale_factor)
-            self.projects.append(nn.Sequential(
-                ConvNormActive(in_planes, hidden_planes, 1, activation=None),
-                nn.Conv2d(hidden_planes, out_planes, 1),
-                nn.PixelShuffle(upscale_factor),
+        self.upsamples = nn.ModuleList()
+        for t in range(num_layers):
+            self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
+            out_planes = in_planes
+            if out_planes > num_classes**0.5:
+                out_planes //= 2
+            self.upsamples.append(nn.Sequential(
+                ConvNormActive(in_planes + project_dim, out_planes, 1),
+                UpSample(out_planes),
             ))
+            in_planes = out_planes
+        self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
+
+        self.norm_layer = DEFAULT_NORM_LAYER(project_dim)
+        self.classifier = nn.Conv2d(project_dim, num_classes, 1)
 
     def forward(self, x:Tensor) -> Tensor:
-        return torch.cat([project(x) for project in self.projects], dim=1)
+        ps = []
+        for t in range(self.num_layers):
+            p = self.projects[t](x)
+            x = self.upsamples[t](torch.cat([x, p], dim=1))
+            scale_factor = 2**(self.num_layers - t)
+            p = F.interpolate(p, scale_factor=scale_factor, mode='bilinear')
+            ps.append(p)
+        x = self.projects[-1](x)
+        for t in range(self.num_layers):
+            x = x + ps.pop()
+        return self.classifier(self.norm_layer(x))
 
 
 class MobileNetFeatures(nn.Module):
