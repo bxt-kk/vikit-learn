@@ -10,8 +10,7 @@ from PIL import Image
 
 from .segment import Segment
 from .trimnetx import TrimNetX
-from .component import SegPredictorV2 as SegPredictor
-# from .component import SegPredictor
+from .component import SegPredictor
 
 
 class TrimNetSeg(Segment):

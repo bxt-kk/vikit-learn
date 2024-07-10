@@ -226,42 +226,6 @@ class SegPredictor(nn.Module):
 
         super().__init__()
 
-        self.upsamples = nn.ModuleList()
-        self.projects = nn.ModuleList()
-        for t in range(num_layers):
-            out_planes = in_planes
-            if out_planes > num_classes**0.5:
-                out_planes //= 2
-            self.upsamples.append(nn.Sequential(
-                UpSample(in_planes),
-                ConvNormActive(in_planes, out_planes, 1, activation=None),
-            ))
-            self.projects.append(ConvNormActive(
-                in_planes, out_planes, 1, activation=None))
-            in_planes = out_planes
-        self.activation = DEFAULT_ACTIVATION()
-        self.classifier = nn.Conv2d(out_planes, num_classes, 1)
-
-    def forward(self, x:Tensor) -> Tensor:
-        for upsample, project in zip(self.upsamples, self.projects):
-            u = upsample(x)
-            p = project(x)
-            x = u + F.interpolate(p, scale_factor=2, mode='bilinear')
-            x = self.activation(x)
-        return self.classifier(x)
-
-
-class SegPredictorV2(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:   int,
-            num_classes: int,
-            num_layers:  int,
-        ):
-
-        super().__init__()
-
         self.num_layers = num_layers
 
         project_dim = min(
