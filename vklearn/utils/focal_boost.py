@@ -39,7 +39,7 @@ def focal_boost_iter(
     #     reduction=reduction,
     # )
     sampled_loss = F.binary_cross_entropy_with_logits(
-        inputs=sampled_pred,
+        input=sampled_pred,
         targets=sampled_targ,
         # alpha=alpha,
         # gamma=gamma,
