@@ -7,6 +7,7 @@ from torchvision.ops import (
 )
 
 import torch
+import torch.nn.functional as F
 
 from PIL import Image
 
@@ -108,11 +109,16 @@ class TrimNetSeg(Segment):
         for t in range(times):
             sigma = F_sigma(t)
             grand_sigma += sigma
-            loss = loss + sigmoid_focal_loss(
+            # loss = loss + sigmoid_focal_loss(
+            #     inputs[..., t],
+            #     target,
+            #     alpha=alpha,
+            #     gamma=gamma,
+            #     reduction=reduction,
+            # ) * sigma
+            loss = loss + F.binary_cross_entropy_with_logits(
                 inputs[..., t],
                 target,
-                alpha=alpha,
-                gamma=gamma,
                 reduction=reduction,
             ) * sigma
         loss = loss / grand_sigma
