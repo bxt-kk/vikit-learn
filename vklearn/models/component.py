@@ -286,17 +286,26 @@ class SegPredictorV2(nn.Module):
         self.norm_layer = DEFAULT_NORM_LAYER(project_dim)
         self.classifier = nn.Conv2d(project_dim, num_classes, 1)
 
+    # def forward(self, x:Tensor) -> Tensor:
+    #     ps = []
+    #     for t in range(self.num_layers):
+    #         p = self.projects[t](x)
+    #         x = self.upsamples[t](torch.cat([x, p], dim=1))
+    #         scale_factor = 2**(self.num_layers - t)
+    #         p = F.interpolate(p, scale_factor=scale_factor, mode='bilinear')
+    #         ps.append(p)
+    #     x = self.projects[-1](x)
+    #     for t in range(self.num_layers):
+    #         x = x + ps.pop()
+    #     return self.classifier(self.norm_layer(x))
+
     def forward(self, x:Tensor) -> Tensor:
-        ps = []
+        p = 0.
         for t in range(self.num_layers):
-            p = self.projects[t](x)
+            p = p + self.projects[t](x)
             x = self.upsamples[t](torch.cat([x, p], dim=1))
-            scale_factor = 2**(self.num_layers - t)
-            p = F.interpolate(p, scale_factor=scale_factor, mode='bilinear')
-            ps.append(p)
-        x = self.projects[-1](x)
-        for t in range(self.num_layers):
-            x = x + ps.pop()
+            p = F.interpolate(p, scale_factor=2, mode='bilinear')
+        x = p + self.projects[-1](x)
         return self.classifier(self.norm_layer(x))
 
 
