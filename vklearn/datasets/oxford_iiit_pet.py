@@ -148,6 +148,7 @@ class OxfordIIITPet(VisionDataset):
     def _load_mask(self, idx:int) -> tv_tensors.Mask:
         image = Image.open(self._segs[idx])
         mask = tv_tensors.Mask(image)
+        mask[mask == 3] = 1
         mask[mask != 1] = 0
         rows, cols = mask.shape[1], mask.shape[2]
         data = torch.zeros((2, rows, cols), dtype=mask.dtype)
