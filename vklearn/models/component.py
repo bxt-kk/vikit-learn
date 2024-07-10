@@ -302,11 +302,11 @@ class SegPredictorV2(nn.Module):
     def forward(self, x:Tensor) -> Tensor:
         p = 0.
         for t in range(self.num_layers):
-            p = p + self.projects[t](x)
+            p = self.norm_layer(p + self.projects[t](x))
             x = self.upsamples[t](torch.cat([x, p], dim=1))
             p = F.interpolate(p, scale_factor=2, mode='bilinear')
-        x = p + self.projects[-1](x)
-        return self.classifier(self.norm_layer(x))
+        x = self.norm_layer(p + self.projects[-1](x))
+        return self.classifier(x)
 
 
 class MobileNetFeatures(nn.Module):
