@@ -215,6 +215,67 @@ class DetPredictor(nn.Module):
         return x
 
 
+class SegPredictor(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:   int,
+            num_classes: int,
+            num_layers:  int,
+        ):
+
+        super().__init__()
+
+        self.upsamples = nn.ModuleList()
+        self.projects = nn.ModuleList()
+        for t in range(num_layers):
+            out_planes = in_planes
+            if out_planes > num_classes**0.5:
+                out_planes //= 2
+            self.upsamples.append(nn.Sequential(
+                UpSample(in_planes),
+                ConvNormActive(in_planes, out_planes, 1, activation=None),
+            ))
+            self.projects.append(ConvNormActive(
+                in_planes, out_planes, 1, activation=None))
+            in_planes = out_planes
+        self.activation = DEFAULT_ACTIVATION()
+        self.classifier = nn.Conv2d(out_planes, num_classes, 1)
+
+    def forward(self, x:Tensor) -> Tensor:
+        for upsample, project in zip(self.upsamples, self.projects):
+            u = upsample(x)
+            p = project(x)
+            x = u + F.interpolate(p, scale_factor=2, mode='bilinear')
+            x = self.activation(x)
+        return self.classifier(x)
+
+
+class SegPredictor_(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:      int,
+            num_classes:    int,
+            upscale_factor: int,
+        ):
+
+        super().__init__()
+
+        self.projects = nn.ModuleList()
+        for t in range(num_classes):
+            hidden_planes = upscale_factor
+            out_planes = int(upscale_factor * upscale_factor)
+            self.projects.append(nn.Sequential(
+                ConvNormActive(in_planes, hidden_planes, 1, activation=None),
+                nn.Conv2d(hidden_planes, out_planes, 1),
+                nn.PixelShuffle(upscale_factor),
+            ))
+
+    def forward(self, x:Tensor) -> Tensor:
+        return torch.cat([project(x) for project in self.projects], dim=1)
+
+
 class MobileNetFeatures(nn.Module):
 
     def __init__(self, arch:str, pretrained:bool):

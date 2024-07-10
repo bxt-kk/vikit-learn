@@ -7,13 +7,12 @@ from torchvision.ops import (
 )
 
 import torch
-import torch.nn as nn
 
 from PIL import Image
 
 from .segment import Segment
 from .trimnetx import TrimNetX
-from .component import ConvNormActive, UpSample
+from .component import SegPredictor
 
 
 class TrimNetSeg(Segment):
@@ -41,23 +40,10 @@ class TrimNetSeg(Segment):
             num_scans, scan_range, backbone, backbone_pretrained)
 
         merged_dim = self.trimnetx.merged_dim
-        # expanded_dim = merged_dim * 4
 
-        # self.predict = nn.Sequential(
-        #     ConvNormActive(merged_dim, expanded_dim, 1),
-        #     nn.Conv2d(expanded_dim, self.num_classes, 1),
-        # )
-        self.predict = nn.Sequential(
-            UpSample(merged_dim),
-            ConvNormActive(merged_dim, merged_dim // 2, 1), # 80, 56
-            UpSample(merged_dim // 2),
-            ConvNormActive(merged_dim // 2, merged_dim // 4, 1), # 40, 112
-            UpSample(merged_dim // 4),
-            ConvNormActive(merged_dim // 4, merged_dim // 8, 1), # 20, 224
-            UpSample(merged_dim // 8),
-            ConvNormActive(merged_dim // 8, merged_dim // 16, 1), # 10, 448
-            nn.Conv2d(merged_dim // 16, self.num_classes, 1),
-        )
+        # self.predict = SegPredictor(merged_dim, self.num_classes, upscale_factor=16)
+        self.predict = SegPredictor(
+            merged_dim, self.num_classes, num_layers=4)
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
