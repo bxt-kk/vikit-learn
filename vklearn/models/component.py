@@ -283,41 +283,17 @@ class SegPredictorV2(nn.Module):
             in_planes = out_planes
         self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
 
-        # self.norm_layer = DEFAULT_NORM_LAYER(project_dim)
-        self.normal_l1 = DEFAULT_NORM_LAYER(project_dim)
-        self.normal_l2 = DEFAULT_NORM_LAYER(project_dim)
+        self.norm_layer = DEFAULT_NORM_LAYER(project_dim)
         self.classifier = nn.Conv2d(project_dim, num_classes, 1)
-
-    # def forward(self, x:Tensor) -> Tensor:
-    #     ps = []
-    #     for t in range(self.num_layers):
-    #         p = self.projects[t](x)
-    #         x = self.upsamples[t](torch.cat([x, p], dim=1))
-    #         scale_factor = 2**(self.num_layers - t)
-    #         p = F.interpolate(p, scale_factor=scale_factor, mode='bilinear')
-    #         ps.append(p)
-    #     x = self.projects[-1](x)
-    #     for t in range(self.num_layers):
-    #         x = x + ps.pop()
-    #     return self.classifier(self.norm_layer(x))
-
-    # def forward(self, x:Tensor) -> Tensor:
-    #     p = 0.
-    #     for t in range(self.num_layers):
-    #         p = self.norm_layer(p + self.norm_layer(self.projects[t](x)))
-    #         x = self.upsamples[t](torch.cat([x, p], dim=1))
-    #         p = F.interpolate(p, scale_factor=2, mode='bilinear')
-    #     x = self.norm_layer(p + self.norm_layer(self.projects[-1](x)))
-    #     return self.classifier(x)
 
     def forward(self, x:Tensor) -> Tensor:
         p = 0.
         for t in range(self.num_layers):
             p = p + self.projects[t](x)
-            x = self.upsamples[t](torch.cat([x, self.normal_l1(p)], dim=1))
+            x = self.upsamples[t](torch.cat([x, p], dim=1))
             p = F.interpolate(p, scale_factor=2, mode='bilinear')
         x = p + self.projects[-1](x)
-        return self.classifier(self.normal_l2(x))
+        return self.classifier(self.norm_layer(x))
 
 
 class MobileNetFeatures(nn.Module):
