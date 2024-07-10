@@ -2,9 +2,6 @@ from typing import List, Any, Dict, Mapping
 import math
 
 from torch import Tensor
-from torchvision.ops import (
-    sigmoid_focal_loss,
-)
 
 import torch
 import torch.nn.functional as F
@@ -109,13 +106,6 @@ class TrimNetSeg(Segment):
         for t in range(times):
             sigma = F_sigma(t)
             grand_sigma += sigma
-            # loss = loss + sigmoid_focal_loss(
-            #     inputs[..., t],
-            #     target,
-            #     alpha=alpha,
-            #     gamma=gamma,
-            #     reduction=reduction,
-            # ) * sigma
             loss = loss + F.binary_cross_entropy_with_logits(
                 inputs[..., t],
                 target,

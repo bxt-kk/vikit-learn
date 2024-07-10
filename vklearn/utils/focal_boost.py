@@ -31,11 +31,18 @@ def focal_boost_iter(
 
     sampled_pred = torch.masked_select(pred_conf, sample_mask)
     sampled_targ = torch.masked_select(targ_conf, sample_mask)
-    sampled_loss = sigmoid_focal_loss(
+    # sampled_loss = sigmoid_focal_loss(
+    #     inputs=sampled_pred,
+    #     targets=sampled_targ,
+    #     alpha=alpha,
+    #     gamma=gamma,
+    #     reduction=reduction,
+    # )
+    sampled_loss = F.binary_cross_entropy_with_logits(
         inputs=sampled_pred,
         targets=sampled_targ,
-        alpha=alpha,
-        gamma=gamma,
+        # alpha=alpha,
+        # gamma=gamma,
         reduction=reduction,
     )
 
