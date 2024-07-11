@@ -104,13 +104,14 @@ class TrimNetSeg(Segment):
             eps:    float=1e-5,
         ) -> Tensor:
 
-        predict = torch.sigmoid(inputs)
-        intersection = predict * target
+        predict = torch.sigmoid(inputs).flatten(1)
+        ground = target.flatten(1)
+        intersection = predict * ground
         dice = (
-            intersection.flatten(1).sum(dim=1) * 2 /
-            (predict + target + eps).flatten(1).sum(dim=1)
+            intersection.sum(dim=1) * 2 /
+            (predict.sum(dim=1) + ground.sum(dim=1) + eps)
         )
-        dice_loss = 1 - dice # .mean()
+        dice_loss = 1 - dice
         return dice_loss
 
     def calc_loss(
