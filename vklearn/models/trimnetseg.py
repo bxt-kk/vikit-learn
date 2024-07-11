@@ -139,12 +139,9 @@ class TrimNetSeg(Segment):
                 target,
                 reduction='none',
             ).mean(dim=(1, 2, 3))
-            dice = 0.
-            if sigma < 1:
-                dice = self.dice_loss(
-                    inputs[..., t],
-                    target,
-                )
+            dice = self.dice_loss(
+                inputs[..., t],
+                target)
             loss_t = alpha * bce + (1 - alpha) * dice
             loss = loss + loss_t.mean() * sigma
 
