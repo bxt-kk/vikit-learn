@@ -161,6 +161,7 @@ class TrimNetSeg(Segment):
 
         return dict(
             loss=loss,
+            alpha=alpha.mean(),
         )
 
     def calc_score(
