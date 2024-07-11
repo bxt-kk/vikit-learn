@@ -110,7 +110,7 @@ class TrimNetSeg(Segment):
             intersection.flatten(1).sum(dim=1) * 2 /
             (predict + target + eps).flatten(1).sum(dim=1)
         )
-        dice_loss = 1 - dice.mean()
+        dice_loss = 1 - dice # .mean()
         return dice_loss
 
     def calc_loss(
@@ -120,26 +120,47 @@ class TrimNetSeg(Segment):
             weights: Dict[str, float] | None=None,
         ) -> Dict[str, Any]:
 
-        reduction = 'mean'
+        # reduction = 'mean'
 
         times = inputs.shape[-1]
         F_sigma = lambda t: 1 - (math.cos((t + 1) / times * math.pi) + 1) * 0.5
         target = target.type_as(inputs)
 
+        alpha = target.mean(dim=(1, 2, 3))
+        grand_sigma = 0.
+
         loss = 0.
         for t in range(times):
+
             sigma = F_sigma(t)
-            loss = loss + F.binary_cross_entropy_with_logits(
+            grand_sigma += sigma
+            bce = F.binary_cross_entropy_with_logits(
                 inputs[..., t],
                 target,
-                reduction=reduction,
-            ) * sigma
+                reduction='none',
+            ).mean(dim=(1, 2, 3))
+            dice = 0.
             if sigma < 1:
-                loss = loss + self.dice_loss(
+                dice = self.dice_loss(
                     inputs[..., t],
                     target,
-                ) * (1 - sigma)
-        loss = loss / times
+                )
+            loss_t = alpha * bce + (1 - alpha) * dice
+            loss = loss + loss_t.mean() * sigma
+
+        #     sigma = F_sigma(t)
+        #     loss = loss + F.binary_cross_entropy_with_logits(
+        #         inputs[..., t],
+        #         target,
+        #         reduction=reduction,
+        #     ) * sigma
+        #     if sigma < 1:
+        #         loss = loss + self.dice_loss(
+        #             inputs[..., t],
+        #             target,
+        #         ) * (1 - sigma)
+        # loss = loss / times
+        loss = loss / grand_sigma
 
         return dict(
             loss=loss,
