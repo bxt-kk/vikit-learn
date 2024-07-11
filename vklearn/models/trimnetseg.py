@@ -136,12 +136,21 @@ class TrimNetSeg(Segment):
             #     target,
             #     reduction=reduction,
             # ) * sigma
+            # loss = loss + self.dice_loss(
+            #     inputs[..., t],
+            #     target,
+            # ) * sigma
+            loss = loss + F.binary_cross_entropy_with_logits(
+                inputs[..., t],
+                target,
+                reduction=reduction,
+            ) * sigma
             loss = loss + self.dice_loss(
                 inputs[..., t],
                 target,
-                # reduction=reduction,
-            ) * sigma
-        loss = loss / grand_sigma
+            ) * (1 - sigma)
+        # loss = loss / grand_sigma
+        loss = loss / times
 
         return dict(
             loss=loss,
