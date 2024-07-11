@@ -101,7 +101,7 @@ class TrimNetSeg(Segment):
             self,
             inputs: Tensor,
             target: Tensor,
-            eps:    1e-5,
+            eps:    float=1e-5,
         ) -> Tensor:
 
         predict = torch.sigmoid(inputs)
