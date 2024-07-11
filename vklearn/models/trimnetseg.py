@@ -144,13 +144,14 @@ class TrimNetSeg(Segment):
                 inputs[..., t],
                 target,
                 reduction=reduction,
-            ) * sigma
-            loss = loss + self.dice_loss(
-                inputs[..., t],
-                target,
-            ) * (1 - sigma)
-        # loss = loss / grand_sigma
-        loss = loss / times
+            ) * sigma * sigma
+            if sigma < 1:
+                loss = loss + self.dice_loss(
+                    inputs[..., t],
+                    target,
+                ) * (1 - sigma) * sigma
+        loss = loss / grand_sigma
+        # loss = loss / times
 
         return dict(
             loss=loss,
