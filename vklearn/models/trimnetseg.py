@@ -84,15 +84,40 @@ class TrimNetSeg(Segment):
             conf_thresh: float=0.5,
             align_size:  int=448,
         ) -> List[Dict[str, Any]]:
-        assert not 'this is an empty func'
+
+        device = self.get_model_device()
+        x, scale, pad_x, pad_y = self.preprocess(
+            image, align_size, limit_size=32, fill_value=127)
+        x = x.to(device)
+        x = self.forward(x)
+        src_w, src_h = image.size
+        dst_w, dst_h = round(scale * src_w), round(scale * src_h)
+        x = torch.sigmoid(x[..., pad_y:pad_y + dst_h, pad_x:pad_x + dst_w, -1])
+        x[x < conf_thresh] = 0.
+        x = F.interpolate(x, (src_h, src_w), mode='bilinear')
+        return x[0].cpu().numpy()
+
+    def dice_loss(
+            self,
+            inputs: Tensor,
+            target: Tensor,
+            eps:    1e-5,
+        ) -> Tensor:
+
+        predict = torch.sigmoid(inputs)
+        intersection = predict * target
+        dice = (
+            intersection.flatten(1).sum(dim=1) * 2 /
+            (predict + target + eps).flatten(1).sum(dim=1)
+        )
+        dice_loss = 1 - dice.mean()
+        return dice_loss
 
     def calc_loss(
             self,
             inputs:  Tensor,
             target:  Tensor,
             weights: Dict[str, float] | None=None,
-            alpha:   float=0.25,
-            gamma:   float=2.,
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
@@ -106,10 +131,15 @@ class TrimNetSeg(Segment):
         for t in range(times):
             sigma = F_sigma(t)
             grand_sigma += sigma
-            loss = loss + F.binary_cross_entropy_with_logits(
+            # loss = loss + F.binary_cross_entropy_with_logits(
+            #     inputs[..., t],
+            #     target,
+            #     reduction=reduction,
+            # ) * sigma
+            loss = loss + self.dice_loss(
                 inputs[..., t],
                 target,
-                reduction=reduction,
+                # reduction=reduction,
             ) * sigma
         loss = loss / grand_sigma
 
@@ -128,7 +158,7 @@ class TrimNetSeg(Segment):
         distance = torch.abs(predicts - target).mean(dim=(2, 3)).mean()
 
         return dict(
-            mad=distance,
+            mae=distance,
         )
 
     def update_metric(

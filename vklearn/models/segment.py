@@ -41,8 +41,6 @@ class Segment(Basic):
             inputs:  Tensor,
             target:  Tensor,
             weights: Dict[str, float] | None=None,
-            alpha:   float=0.25,
-            gamma:   float=2.,
         ) -> Dict[str, Any]:
         assert not 'this is an empty func'
 
