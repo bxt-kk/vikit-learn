@@ -8,48 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .component import ConvNormActive, InvertedResidual, CSENet
-from .component import MobileNetFeatures, DinoFeatures, DEFAULT_NORM_LAYER
+from .component import MobileNetFeatures, DinoFeatures
 from .basic import Basic
-
-
-class MixtureHead(nn.Module):
-
-    def __init__(
-            self,
-            in_planes: int,
-            num_layers: int,
-        ):
-
-        super().__init__()
-
-        self.num_layers = num_layers
-
-        project_dim = in_planes
-
-        self.projects = nn.ModuleList()
-        self.samples = nn.ModuleList()
-        for t in range(num_layers):
-            out_planes = in_planes * 2
-            self.samples.append(InvertedResidual(
-                in_planes, out_planes, 1, stride=2))
-            self.projects.insert(0, nn.Conv2d(
-                in_planes + project_dim, project_dim, 1))
-            in_planes = out_planes
-        self.project_final = nn.Conv2d(in_planes, project_dim, 1)
-
-        self.norm_layer = DEFAULT_NORM_LAYER(project_dim)
-
-    def forward(self, x:Tensor) -> Tensor:
-        hs = [x]
-        for t in range(self.num_layers):
-            hs.append(self.samples[t](hs[-1]))
-        p = self.project_final(hs.pop())
-        for t in range(self.num_layers):
-            p = F.interpolate(p, scale_factor=2, mode='bilinear')
-            x = hs.pop()
-            x = torch.cat([x, p], dim=1)
-            p = p + self.projects[t](x)
-        return self.norm_layer(p)
 
 
 class TrimUnit(nn.Module):
@@ -127,8 +87,6 @@ class TrimNetX(Basic):
         self.merge = ConvNormActive(
             self.features_dim, self.merged_dim, 1, activation=None)
 
-        self.mixture = MixtureHead(self.merged_dim, 2)
-
         self.project = ConvNormActive(
             self.merged_dim, self.merged_dim, 1, activation=None)
 
@@ -153,9 +111,6 @@ class TrimNetX(Basic):
                 f = self.features(x)
 
         m = self.merge(f)
-        # Lab
-        m = self.mixture(m)
-        # >>>
         h = self.trim_units[0](m)
         ht = [h]
         times = len(self.trim_units)
