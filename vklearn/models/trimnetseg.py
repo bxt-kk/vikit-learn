@@ -126,32 +126,20 @@ class TrimNetSeg(Segment):
         F_sigma = lambda t: 1 - (math.cos((t + 1) / times * math.pi) + 1) * 0.5
         target = target.type_as(inputs)
 
-        grand_sigma = 0.
         loss = 0.
         for t in range(times):
             sigma = F_sigma(t)
-            grand_sigma += sigma
-            # loss = loss + F.binary_cross_entropy_with_logits(
-            #     inputs[..., t],
-            #     target,
-            #     reduction=reduction,
-            # ) * sigma
-            # loss = loss + self.dice_loss(
-            #     inputs[..., t],
-            #     target,
-            # ) * sigma
             loss = loss + F.binary_cross_entropy_with_logits(
                 inputs[..., t],
                 target,
                 reduction=reduction,
-            ) * sigma * sigma
+            ) * sigma
             if sigma < 1:
                 loss = loss + self.dice_loss(
                     inputs[..., t],
                     target,
-                ) * (1 - sigma) * sigma
-        loss = loss / grand_sigma
-        # loss = loss / times
+                ) * (1 - sigma)
+        loss = loss / times
 
         return dict(
             loss=loss,
