@@ -122,8 +122,6 @@ class TrimNetSeg(Segment):
             weights: Dict[str, float] | None=None,
         ) -> Dict[str, Any]:
 
-        # reduction = 'mean'
-
         times = inputs.shape[-1]
         F_sigma = lambda t: 1 - (math.cos((t + 1) / times * math.pi) + 1) * 0.5
         target = target.type_as(inputs)
@@ -147,18 +145,6 @@ class TrimNetSeg(Segment):
             loss_t = alpha * bce + (1 - alpha) * dice
             loss = loss + loss_t.mean() * sigma
 
-        #     sigma = F_sigma(t)
-        #     loss = loss + F.binary_cross_entropy_with_logits(
-        #         inputs[..., t],
-        #         target,
-        #         reduction=reduction,
-        #     ) * sigma
-        #     if sigma < 1:
-        #         loss = loss + self.dice_loss(
-        #             inputs[..., t],
-        #             target,
-        #         ) * (1 - sigma)
-        # loss = loss / times
         loss = loss / grand_sigma
 
         return dict(
