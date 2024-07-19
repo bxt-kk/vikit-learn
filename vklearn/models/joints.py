@@ -173,8 +173,8 @@ class Joints(Basic):
 
             batch_ids.append(torch.full_like(labels, i))
             anchor_ids.append(self._select_anchor(labels))
-            row_ids.append(self._select_row(boxes))
-            column_ids.append(self._select_column(boxes))
+            row_ids.append(self._select_row(boxes, image.shape[1]))
+            column_ids.append(self._select_column(boxes, image.shape[2]))
 
         inputs = torch.cat(list_image, dim=0)
         target_labels = torch.cat(list_labels, dim=0)
