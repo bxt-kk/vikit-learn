@@ -24,7 +24,16 @@ def focal_boost_iter(
 
     pred_conf = inputs[..., conf_id]
     targ_conf = torch.zeros_like(pred_conf)
-    targ_conf[target_index] = 1.
+    # targ_conf[target_index] = 1.
+    # Debug code <<<
+    try:
+        targ_conf[target_index] = 1.
+    except Exception as e:
+        print('debug: targ_conf shape=', targ_conf.shape)
+        for t, idxs in enumerate(target_index):
+            print(f'debug: * target_index[{t}]', idxs.min(), idxs.max())
+        raise e
+    # >>>
 
     if sample_mask is None:
         sample_mask = targ_conf >= -1
