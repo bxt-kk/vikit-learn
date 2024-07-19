@@ -118,8 +118,8 @@ class TrimNetSeg(Segment):
             self,
             inputs:  Tensor,
             target:  Tensor,
-            gamma:   float=0.5,
             weights: Dict[str, float] | None=None,
+            gamma:   float=0.5,
         ) -> Dict[str, Any]:
 
         times = inputs.shape[-1]

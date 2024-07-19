@@ -9,6 +9,7 @@ from torchvision.ops import box_convert
 from torchvision.transforms import v2
 
 from torchmetrics.detection import MeanAveragePrecision
+from torchmetrics.segmentation import MeanIoU
 
 from PIL import Image
 
@@ -40,6 +41,8 @@ class Joints(Basic):
             backend='faster_coco_eval',
             max_detection_thresholds=[1, 10, 300],
         )
+        self.m_iou = MeanIoU(
+            num_classes=self.num_classes)
 
     def pred2boxes(
             self,
@@ -81,7 +84,7 @@ class Joints(Basic):
 
     def calc_loss(
             self,
-            inputs:        Tensor,
+            inputs:        Tuple[Tensor, Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -93,7 +96,7 @@ class Joints(Basic):
 
     def calc_score(
             self,
-            inputs:        Tensor,
+            inputs:        Tuple[Tensor, Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -104,7 +107,7 @@ class Joints(Basic):
 
     def update_metric(
             self,
-            inputs:        Tensor,
+            inputs:        Tuple[Tensor, Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -114,7 +117,10 @@ class Joints(Basic):
         assert not 'this is an empty func'
 
     def compute_metric(self) -> Dict[str, Any]:
-        return self.m_ap_metric.compute()
+        miou = self.m_iou.compute() / self.m_iou.update_count
+        metrics = self.m_ap_metric.compute()
+        metrics['miou'] = miou
+        return metrics
 
     def _select_anchor(self, labels:Tensor) -> Tensor:
         anchor_ids = torch.zeros_like(labels)
@@ -169,7 +175,7 @@ class Joints(Basic):
             list_image.append(image.unsqueeze(dim=0))
             list_labels.append(labels)
             list_bboxes.append(boxes)
-            list_masks.append(masks)
+            list_masks.append(masks.unsqueeze(dim=0))
 
             batch_ids.append(torch.full_like(labels, i))
             anchor_ids.append(self._select_anchor(labels))

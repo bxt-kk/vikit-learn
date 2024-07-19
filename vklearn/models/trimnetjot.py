@@ -1,4 +1,5 @@
-from typing import List, Any, Dict, Mapping
+from typing import List, Any, Dict, Mapping, Tuple
+import math
 
 from torch import Tensor
 from torchvision.ops import (
@@ -63,8 +64,7 @@ class TrimNetJot(Joints):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def forward(self, x:Tensor) -> Tensor:
-        hs = self.trimnetx(x)
+    def forward_det(self, hs:List[Tensor]) -> Tensor:
         n, _, rs, cs = hs[0].shape
 
         p = self.det_predict(hs[0])
@@ -77,6 +77,22 @@ class TrimNetJot(Joints):
             ps.append(p[..., :1])
         ps.append(p[..., 1:])
         return torch.cat(ps, dim=-1)
+
+    def forward_seg(self, hs:List[Tensor]) -> Tensor:
+        p = self.seg_predict(hs[0])
+        ps = [p]
+        times = len(hs)
+        for t in range(1, times):
+            a = torch.sigmoid(p)
+            p = self.seg_predict(hs[t]) * a + p * (1 - a)
+            ps.append(p)
+        return torch.cat([p[..., None] for p in ps], dim=-1)
+
+    def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
+        hs = self.trimnetx(x)
+        det_p = self.forward_det(hs)
+        seg_p = self.forward_seg(hs)
+        return det_p, seg_p
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetJot':
@@ -175,13 +191,12 @@ class TrimNetJot(Joints):
             ))
         return result
 
-    def calc_loss(
+    def _calc_det_loss(
             self,
             inputs:        Tensor,
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
-            target_masks:  Tensor,
             weights:       Dict[str, float] | None=None,
             alpha:         float=0.25,
             gamma:         float=2.,
@@ -227,13 +242,106 @@ class TrimNetJot(Joints):
             sampled_loss=sampled_loss,
         )
 
-    def calc_score(
+    def dice_loss(
+            self,
+            inputs: Tensor,
+            target: Tensor,
+            eps:    float=1e-5,
+        ) -> Tensor:
+
+        predict = torch.sigmoid(inputs).flatten(1)
+        ground = target.flatten(1)
+        intersection = predict * ground
+        dice = (
+            intersection.sum(dim=1) * 2 /
+            (predict.sum(dim=1) + ground.sum(dim=1) + eps)
+        )
+        dice_loss = 1 - dice
+        return dice_loss
+
+    def _calc_seg_loss(
+            self,
+            inputs:  Tensor,
+            target:  Tensor,
+            weights: Dict[str, float] | None=None,
+            gamma:   float=0.5,
+        ) -> Dict[str, Any]:
+
+        times = inputs.shape[-1]
+        F_sigma = lambda t: 1 - (math.cos((t + 1) / times * math.pi) + 1) * 0.5
+        target = target.type_as(inputs)
+
+        alpha = (target.mean(dim=(1, 2, 3))**gamma + 1) * 0.5
+        grand_sigma = 0.
+
+        loss = 0.
+        for t in range(times):
+
+            sigma = F_sigma(t)
+            grand_sigma += sigma
+            bce = F.binary_cross_entropy_with_logits(
+                inputs[..., t],
+                target,
+                reduction='none',
+            ).mean(dim=(1, 2, 3))
+            dice = self.dice_loss(
+                inputs[..., t],
+                target)
+            loss_t = alpha * bce + (1 - alpha) * dice
+            loss = loss + loss_t.mean() * sigma
+
+        loss = loss / grand_sigma
+
+        return dict(
+            loss=loss,
+            alpha=alpha.mean(),
+        )
+
+    def calc_loss(
+            self,
+            inputs:        Tuple[Tensor, Tensor],
+            target_index:  List[Tensor],
+            target_labels: Tensor,
+            target_bboxes: Tensor,
+            target_masks:  Tensor,
+            weights:       Dict[str, float] | None=None,
+            alpha:         float=0.25,
+            gamma:         float=2.,
+            seg_gamma:     float=0.5,
+        ) -> Dict[str, Any]:
+
+        det_losses = self._calc_det_loss(
+            inputs[0],
+            target_index,
+            target_labels,
+            target_bboxes,
+            weights,
+            alpha=alpha,
+            gamma=gamma,
+        )
+
+        seg_losses = self._calc_seg_loss(
+            inputs[1],
+            target_masks,
+            weights=weights,
+            gamma=seg_gamma,
+        )
+
+        losses = dict()
+        losses['loss'] = det_losses['loss'] + seg_losses['loss']
+        for _losses in (det_losses, seg_losses):
+            for key in _losses.keys():
+                if key == 'loss': continue
+                losses[key] = _losses[key]
+
+        return losses
+
+    def _calc_det_score(
             self,
             inputs:        Tensor,
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
-            target_masks:  Tensor,
             conf_thresh:   float=0.5,
             recall_thresh: float=0.5,
             eps:           float=1e-5,
@@ -300,13 +408,60 @@ class TrimNetJot(Joints):
             obj_conf_min=obj_conf_min,
         )
 
-    def update_metric(
+    def _calc_seg_score(
+            self,
+            inputs: Tensor,
+            target: Tensor,
+            eps:    float=1e-5,
+        ) -> Dict[str, Any]:
+
+        predicts = torch.sigmoid(inputs[..., -1])
+        distance = torch.abs(predicts - target).mean(dim=(2, 3)).mean()
+
+        return dict(
+            mae=distance,
+        )
+
+    def calc_score(
             self,
             inputs:        Tensor,
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
             target_masks:  Tensor,
+            conf_thresh:   float=0.5,
+            recall_thresh: float=0.5,
+            eps:           float=1e-5,
+        ) -> Dict[str, Any]:
+
+        det_scores = self._calc_det_score(
+            inputs[0],
+            target_index,
+            target_labels,
+            target_bboxes,
+            conf_thresh=conf_thresh,
+            recall_thresh=recall_thresh,
+            eps=eps,
+        )
+
+        seg_scores = self._calc_seg_score(
+            inputs[1],
+            target_masks,
+            eps=eps,
+        )
+
+        scores = dict()
+        for _scores in (det_scores, seg_scores):
+            for key, value in _scores.items():
+                scores[key] = value
+        return scores
+
+    def _update_det_metric(
+            self,
+            inputs:        Tensor,
+            target_index:  List[Tensor],
+            target_labels: Tensor,
+            target_bboxes: Tensor,
             conf_thresh:   float=0.5,
             recall_thresh: float=0.5,
             iou_thresh:    float=0.5,
@@ -347,3 +502,41 @@ class TrimNetJot(Joints):
                 labels=target_labels[target_ids],
             ))
         self.m_ap_metric.update(preds, target)
+
+    def _update_seg_metric(
+            self,
+            inputs:      Tensor,
+            target:      Tensor,
+            conf_thresh: float=0.5,
+        ):
+
+        predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
+        self.m_iou.update(predicts.to(torch.int), target.to(torch.int))
+
+    def update_metric(
+            self,
+            inputs:        Tensor,
+            target_index:  List[Tensor],
+            target_labels: Tensor,
+            target_bboxes: Tensor,
+            target_masks:  Tensor,
+            conf_thresh:   float=0.5,
+            recall_thresh: float=0.5,
+            iou_thresh:    float=0.5,
+        ):
+
+        self._update_det_metric(
+            inputs[0],
+            target_index,
+            target_labels,
+            target_bboxes,
+            conf_thresh=conf_thresh,
+            recall_thresh=recall_thresh,
+            iou_thresh=iou_thresh,
+        )
+
+        self._update_seg_metric(
+            inputs[1],
+            target_masks,
+            conf_thresh=conf_thresh,
+        )
