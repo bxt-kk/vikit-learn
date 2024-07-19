@@ -26,24 +26,16 @@ def focal_boost_iter(
     targ_conf = torch.zeros_like(pred_conf)
     targ_conf[target_index] = 1.
 
-    if sample_mask is None:
-        # sample_mask = targ_conf >= -1
-        sample_mask = torch.full_like(targ_conf, True, dtype=torch.bool)
+    # if sample_mask is None:
+    #     sample_mask = targ_conf >= -1
 
-    try:
+    if sample_mask is not None:
         sampled_pred = torch.masked_select(pred_conf, sample_mask)
-    except Exception as e:
-        print('debug: conf_id=', conf_id)
-        print('debug: pred_conf shape=', pred_conf.shape)
-        print('debug: sample_mask shape=', sample_mask.shape)
-        print('debug: targ_conf shape=', targ_conf.shape)
-        # for i in range(len(target_index)):
-        #     print(f'debug: target_index[{i}]=', target_index[i])
-        for i in range(len(sample_mask)):
-            for j in range(2):
-                print(f'debug: mask[{i},{j}]=', sample_mask[i, j])
-        raise e
-    sampled_targ = torch.masked_select(targ_conf, sample_mask)
+        sampled_targ = torch.masked_select(targ_conf, sample_mask)
+    else:
+        sampled_pred = pred_conf
+        sampled_targ = targ_conf
+
     sampled_loss = sigmoid_focal_loss(
         inputs=sampled_pred,
         targets=sampled_targ,
