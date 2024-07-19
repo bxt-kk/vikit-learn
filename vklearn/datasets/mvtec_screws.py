@@ -108,7 +108,7 @@ class MVTecScrews(VisionDataset):
             pt1 = boxes[i - 1][:2].round().numpy().astype(int)
             pt2 = boxes[i][:2].round().numpy().astype(int)
             cv.line(ground, pt1, pt2, 1, self.LINE_THICKNESS, lineType=cv.LINE_AA)
-        return Mask(ground[None, ...])
+        return Mask(np.expand_dims(ground, 0))
 
     def __getitem__(self, index:int) -> Tuple[Any, Any]:
 
