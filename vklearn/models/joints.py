@@ -124,21 +124,21 @@ class Joints(Basic):
 
     def _select_row(self, boxes:Tensor) -> Tensor:
         cy = (boxes[:, 1] + boxes[:, 3]) * 0.5
-        cell_size = self.cell_size
-        noise = torch.rand_like(cy) * cell_size - cell_size / 2
-        hs = boxes[:, 3] - boxes[:, 1]
-        noise[hs < 2 * cell_size] = 0.
-        cy = cy + noise 
+        # cell_size = self.cell_size
+        # noise = torch.rand_like(cy) * cell_size - cell_size / 2
+        # hs = boxes[:, 3] - boxes[:, 1]
+        # noise[hs < 2 * cell_size] = 0.
+        # cy = cy + noise 
         cell_row = (cy / self.cell_size).type(torch.int64)
         return cell_row
 
     def _select_column(self, boxes:Tensor) -> Tensor:
         cx = (boxes[:, 0] + boxes[:, 2]) * 0.5
-        cell_size = self.cell_size
-        noise = torch.rand_like(cx) * cell_size - cell_size / 2
-        ws = boxes[:, 2] - boxes[:, 0]
-        noise[ws < 2 * cell_size] = 0.
-        cx = cx + noise
+        # cell_size = self.cell_size
+        # noise = torch.rand_like(cx) * cell_size - cell_size / 2
+        # ws = boxes[:, 2] - boxes[:, 0]
+        # noise[ws < 2 * cell_size] = 0.
+        # cx = cx + noise
         cell_col = (cx / self.cell_size).type(torch.int64)
         return cell_col
 
