@@ -47,7 +47,8 @@ def focal_boost_iter(
     obj_loss = 0.
     # obj_mask = targ_conf > 0.5
     obj_mask = targ_conf.to(torch.bool)
-    if obj_mask.sum() > 0:
+    # if obj_mask.sum() > 0:
+    if targ_conf.sum() > 0:
         obj_pred = torch.masked_select(pred_conf, obj_mask)
         obj_targ = torch.masked_select(targ_conf, obj_mask)
         obj_loss = F.binary_cross_entropy_with_logits(
