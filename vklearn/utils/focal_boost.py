@@ -32,6 +32,7 @@ def focal_boost_iter(
     try:
         sampled_pred = torch.masked_select(pred_conf, sample_mask)
     except Exception as e:
+        print('debug: conf_id=', conf_id)
         print('debug: pred_conf shape=', pred_conf.shape)
         print('debug: sample_mask shape=', sample_mask.shape)
         print('debug: targ_conf shape=', targ_conf.shape)
