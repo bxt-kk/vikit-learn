@@ -27,7 +27,8 @@ def focal_boost_iter(
     targ_conf[target_index] = 1.
 
     if sample_mask is None:
-        sample_mask = targ_conf >= -1
+        # sample_mask = targ_conf >= -1
+        sample_mask = torch.full_like(targ_conf, True, dtype=torch.bool)
 
     try:
         sampled_pred = torch.masked_select(pred_conf, sample_mask)
