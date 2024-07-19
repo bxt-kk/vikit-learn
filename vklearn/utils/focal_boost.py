@@ -24,16 +24,7 @@ def focal_boost_iter(
 
     pred_conf = inputs[..., conf_id]
     targ_conf = torch.zeros_like(pred_conf)
-    # targ_conf[target_index] = 1.
-    # Debug code <<<
-    try:
-        targ_conf[target_index] = 1.
-    except Exception as e:
-        print('debug: targ_conf shape=', targ_conf.shape)
-        for t, idxs in enumerate(target_index):
-            print(f'debug: * target_index[{t}]', idxs.min(), idxs.max())
-        raise e
-    # >>>
+    targ_conf[target_index] = 1.
 
     if sample_mask is None:
         sample_mask = targ_conf >= -1
@@ -65,11 +56,13 @@ def focal_boost_iter(
     sigma_T = F_sigma(num_confs - 1)
     scale_r = (1 - sigma_0) / (1 - sigma_T)
     sigma_k = F_sigma(conf_id) * scale_r - scale_r + 1
-    num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).item()
-    num_foreground_per_img = 0 # Note! design a better num
+    # num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).item()
+    sn_ratio = min(1, 2 * targ_conf.sum().item() / targ_conf.numel())
+    an_ratio = 1 - sn_ratio
 
     conf_loss = (
-        obj_loss * sigma_k / max(1, num_foreground_per_img**0.5) +
+        # obj_loss * sigma_k / max(1, num_foreground_per_img**0.5) +
+        obj_loss * sigma_k * an_ratio +
         sampled_loss) / num_confs
 
     return conf_loss, sampled_loss, sample_mask
