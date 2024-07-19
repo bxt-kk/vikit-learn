@@ -66,6 +66,7 @@ def focal_boost_iter(
     scale_r = (1 - sigma_0) / (1 - sigma_T)
     sigma_k = F_sigma(conf_id) * scale_r - scale_r + 1
     num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).item()
+    num_foreground_per_img = 0 # Note! design a better num
 
     conf_loss = (
         obj_loss * sigma_k / max(1, num_foreground_per_img**0.5) +
