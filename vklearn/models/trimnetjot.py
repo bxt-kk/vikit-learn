@@ -63,14 +63,6 @@ class TrimNetJot(Joints):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def eval(self) -> 'TrimNetJot':
-        super().eval()
-        for unit in self.trimnetx.trim_units:
-            m = unit.blocks[-1]
-            if isinstance(m, torch.nn.Dropout):
-                m.train(mode=True)
-        return self
-
     def forward(self, x:Tensor) -> Tensor:
         hs = self.trimnetx(x)
         n, _, rs, cs = hs[0].shape
