@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, List, Tuple, Dict
 import os.path
 from glob import glob
 
@@ -43,7 +43,7 @@ class PlainBBox(VisionDataset):
 
     def _load_image(self, path:str) -> Image.Image:
         return Image.open(
-            os.path.join(self.dataset_dir, 'images', path)).convert("RGB")
+            os.path.join(self.dataset_dir, 'images', path)).convert('RGB')
 
     def _load_anns(self, id:int) -> Tuple[List[Any], str]:
         label_path = self.label_paths[id]
@@ -77,7 +77,7 @@ class PlainBBox(VisionDataset):
             self,
             anns:       List[Any],
             image_size: Tuple[int, int],
-        ) -> dict[str, Any]:
+        ) -> Dict[str, Any]:
         boxes = tv_tensors.BoundingBoxes(
             [self._bndbox2xyxy(ann['bndbox'], image_size) for ann in anns],
             format='XYXY',
