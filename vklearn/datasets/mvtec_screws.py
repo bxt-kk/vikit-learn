@@ -103,12 +103,11 @@ class MVTecScrews(VisionDataset):
 
     def _draw_masks(self, boxes:BoundingBoxes) -> Mask:
         ground = np.zeros(boxes.canvas_size, dtype=np.uint8)
-        # for i in range(boxes.shape[0]):
-        #     if i % 2 == 0: continue
-        #     pt1 = boxes[i - 1][:2].round().numpy().astype(int)
-        #     pt2 = boxes[i][:2].round().numpy().astype(int)
-        #     cv.line(ground, pt1, pt2, 1, self.LINE_THICKNESS, lineType=cv.LINE_AA)
-        ground[:5, :5] = 1 # debug code.
+        for i in range(boxes.shape[0]):
+            if i % 2 == 0: continue
+            pt1 = boxes[i - 1][:2].round().numpy().astype(int)
+            pt2 = boxes[i][:2].round().numpy().astype(int)
+            cv.line(ground, pt1, pt2, 1, self.LINE_THICKNESS, lineType=cv.LINE_AA)
         return Mask(ground[None, ...])
 
     def __getitem__(self, index:int) -> Tuple[Any, Any]:
