@@ -26,16 +26,11 @@ def focal_boost_iter(
     targ_conf = torch.zeros_like(pred_conf)
     targ_conf[target_index] = 1.
 
-    # if sample_mask is None:
-    #     sample_mask = targ_conf >= -1
+    if sample_mask is None:
+        sample_mask = targ_conf >= -1
 
-    if sample_mask is not None:
-        sampled_pred = torch.masked_select(pred_conf, sample_mask)
-        sampled_targ = torch.masked_select(targ_conf, sample_mask)
-    else:
-        sampled_pred = pred_conf
-        sampled_targ = targ_conf
-
+    sampled_pred = torch.masked_select(pred_conf, sample_mask)
+    sampled_targ = torch.masked_select(targ_conf, sample_mask)
     sampled_loss = sigmoid_focal_loss(
         inputs=sampled_pred,
         targets=sampled_targ,
@@ -45,10 +40,8 @@ def focal_boost_iter(
     )
 
     obj_loss = 0.
-    # obj_mask = targ_conf > 0.5
-    obj_mask = targ_conf.to(torch.bool)
-    # if obj_mask.sum() > 0:
-    if targ_conf.sum() > 0:
+    obj_mask = targ_conf > 0.5
+    if obj_mask.sum() > 0:
         obj_pred = torch.masked_select(pred_conf, obj_mask)
         obj_targ = torch.masked_select(targ_conf, obj_mask)
         obj_loss = F.binary_cross_entropy_with_logits(
@@ -64,10 +57,9 @@ def focal_boost_iter(
     scale_r = (1 - sigma_0) / (1 - sigma_T)
     sigma_k = F_sigma(conf_id) * scale_r - scale_r + 1
     num_foreground_per_img = (sampled_targ.sum() / len(pred_conf)).item()
-    num_foreground_per_img = 1 # (sampled_targ.sum() / len(pred_conf)).item()
 
     conf_loss = (
-        obj_loss * sigma_k / max(1, num_foreground_per_img) +
+        obj_loss * sigma_k / max(1, num_foreground_per_img**0.5) +
         sampled_loss) / num_confs
 
     return conf_loss, sampled_loss, sample_mask
