@@ -122,7 +122,7 @@ class Joints(Basic):
         anchor_ids[1::2] = 1
         return anchor_ids
 
-    def _select_row(self, boxes:Tensor) -> Tensor:
+    def _select_row(self, boxes:Tensor, height:int) -> Tensor:
         cy = (boxes[:, 1] + boxes[:, 3]) * 0.5
         # cell_size = self.cell_size
         # noise = torch.rand_like(cy) * cell_size - cell_size / 2
@@ -130,9 +130,12 @@ class Joints(Basic):
         # noise[hs < 2 * cell_size] = 0.
         # cy = cy + noise 
         cell_row = (cy / self.cell_size).type(torch.int64)
+        min_row = 0
+        max_row = height // self.cell_size - 1
+        cell_row = torch.clamp(cell_row, min_row, max_row)
         return cell_row
 
-    def _select_column(self, boxes:Tensor) -> Tensor:
+    def _select_column(self, boxes:Tensor, width:int) -> Tensor:
         cx = (boxes[:, 0] + boxes[:, 2]) * 0.5
         # cell_size = self.cell_size
         # noise = torch.rand_like(cx) * cell_size - cell_size / 2
@@ -140,6 +143,9 @@ class Joints(Basic):
         # noise[ws < 2 * cell_size] = 0.
         # cx = cx + noise
         cell_col = (cx / self.cell_size).type(torch.int64)
+        min_col = 0
+        max_col = width // self.cell_size - 1
+        cell_col = torch.clamp(cell_col, min_col, max_col)
         return cell_col
 
     def collate_fn(

@@ -123,6 +123,7 @@ class MVTecScrews(VisionDataset):
         image = self._load_image(image_id)
         target = self._format_anns(anns, image.size)
 
+        num_boxes = len(target['boxes'])
         if self.transforms is not None:
             max_diameter = target['boxes'][:, 2:].max()
             target['boxes'][:, 2:] /= max_diameter
@@ -130,6 +131,7 @@ class MVTecScrews(VisionDataset):
             target['boxes'][:, 2:] *= max_diameter
         target['masks'] = self._draw_masks(target['boxes'])
         target['boxes'] = box_convert(target['boxes'], 'cxcywh', 'xyxy')
+        assert len(target['boxes']) == num_boxes
 
         return image, target
 
