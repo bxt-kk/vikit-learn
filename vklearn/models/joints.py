@@ -217,7 +217,7 @@ class Joints(Basic):
                     max_size=448,
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
+                # v2.RandomHorizontalFlip(p=0.5),
                 v2.RandomVerticalFlip(p=0.5),
                 v2.RandomCrop(
                     size=(448, 448),
@@ -251,7 +251,7 @@ class Joints(Basic):
                     max_size=640,
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
+                # v2.RandomHorizontalFlip(p=0.5),
                 v2.RandomVerticalFlip(p=0.5),
                 v2.RandomCrop(
                     size=(640, 640),
