@@ -198,21 +198,26 @@ class DetPredictor(nn.Module):
 
         super().__init__()
 
-        object_dim = (1 + bbox_dim + num_classes)
-        predict_dim = object_dim * num_anchors
-        self.predict = nn.Sequential(
+        self.num_anchors = num_anchors
+
+        self.bbox_predict = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1))
+
+        self.clss_predict = nn.Sequential(
             ConvNormActive(in_planes, hidden_planes, 1),
             ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
-            nn.Conv2d(hidden_planes, predict_dim, kernel_size=1))
-
-        self.num_anchors = num_anchors
+            nn.Conv2d(hidden_planes, num_anchors * (1 + num_classes), kernel_size=1))
 
     def forward(self, x:Tensor) -> Tensor:
         bs, _, ny, nx = x.shape
-        x = self.predict(x)
-        x = x.view(bs, self.num_anchors, -1, ny, nx)
-        x = x.permute(0, 1, 3, 4, 2)
-        return x
+        pb = self.bbox_predict(x)
+        pb = pb.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
+        pc = self.clss_predict(x)
+        pc = pc.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
+        return torch.cat([
+            pc[..., :1], pb, pc[..., 1:]], dim=-1)
 
 
 class SegPredictor(nn.Module):
