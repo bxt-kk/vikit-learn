@@ -4,8 +4,10 @@ from torch import Tensor
 from torchvision.ops import (
     generalized_box_iou_loss,
     boxes as box_ops,
+    roi_align,
 )
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from PIL import Image
@@ -59,11 +61,13 @@ class TrimNetDet(Detector):
             num_classes=self.num_classes,
         )
 
+        self.auxi_clf = nn.Linear(merged_dim, self.num_classes)
+
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def forward(self, x:Tensor) -> Tensor:
-        hs = self.trimnetx(x)
+    def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
+        hs, m = self.trimnetx(x)
         n, _, rs, cs = hs[0].shape
 
         p = self.predict(hs[0])
@@ -75,7 +79,7 @@ class TrimNetDet(Detector):
             p = y * a + p * (1 - a)
             ps.append(p[..., :1])
         ps.append(p[..., 1:])
-        return torch.cat(ps, dim=-1)
+        return torch.cat(ps, dim=-1), m
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':
@@ -136,7 +140,7 @@ class TrimNetDet(Detector):
 
         num_confs = self.trimnetx.num_scans
 
-        predicts = self.forward(x)
+        predicts, _ = self.forward(x)
         conf_prob = torch.ones_like(predicts[..., 0])
         for conf_id in range(num_confs - 1):
             conf_prob[torch.sigmoid(predicts[..., conf_id]) < recall_thresh] = 0.
@@ -178,7 +182,7 @@ class TrimNetDet(Detector):
 
     def calc_loss(
             self,
-            inputs:        Tensor,
+            inputs:        List[Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -190,14 +194,16 @@ class TrimNetDet(Detector):
         reduction = 'mean'
         num_confs = self.trimnetx.num_scans
 
-        conf_loss, sampled_loss = focal_boost_loss(
-            inputs, target_index, num_confs, alpha, gamma)
+        inputs_ps, inputs_mx = inputs
 
-        pred_conf = inputs[..., 0]
+        conf_loss, sampled_loss = focal_boost_loss(
+            inputs_ps, target_index, num_confs, alpha, gamma)
+
+        pred_conf = inputs_ps[..., 0]
         targ_conf = torch.zeros_like(pred_conf)
         targ_conf[target_index] = 1.
 
-        objects = inputs[target_index]
+        objects = inputs_ps[target_index]
 
         bbox_loss = torch.zeros_like(conf_loss)
         clss_loss = torch.zeros_like(conf_loss)
@@ -219,7 +225,7 @@ class TrimNetDet(Detector):
             weights.get('clss', 0.33) * clss_loss
         )
 
-        return dict(
+        losses = dict(
             loss=loss,
             conf_loss=conf_loss,
             bbox_loss=bbox_loss,
@@ -227,9 +233,26 @@ class TrimNetDet(Detector):
             sampled_loss=sampled_loss,
         )
 
+        # auxiliary_clss
+        auxi_weight = weights.get('auxi', 0)
+        if auxi_weight == 0:
+            return losses
+        bboxes = torch.cat([
+            target_index[0].unsqueeze(-1).type_as(target_bboxes),
+            target_bboxes], dim=-1)
+        aligned = roi_align(
+            inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
+        auxi_pred = self.auxi_clf(aligned.flatten(start_dim=1))
+        auxi_loss = F.cross_entropy(auxi_pred, target_labels)
+
+        losses['loss'] = loss + auxi_loss * auxi_weight
+        losses['auxi'] = auxi_loss
+
+        return losses
+
     def calc_score(
             self,
-            inputs:        Tensor,
+            inputs:        List[Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -240,11 +263,13 @@ class TrimNetDet(Detector):
 
         num_confs = self.trimnetx.num_scans
 
-        targ_conf = torch.zeros_like(inputs[..., 0])
+        inputs_ps, _ = inputs
+
+        targ_conf = torch.zeros_like(inputs_ps[..., 0])
         targ_conf[target_index] = 1.
 
         pred_obj = focal_boost_positive(
-            inputs, num_confs, conf_thresh, recall_thresh)
+            inputs_ps, num_confs, conf_thresh, recall_thresh)
 
         pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
         conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
@@ -252,7 +277,7 @@ class TrimNetDet(Detector):
         conf_f1 = 2 * conf_precision * conf_recall / torch.clamp_min(conf_precision + conf_recall, eps)
         proposals = pred_obj.sum() / pred_obj.shape[0]
 
-        objects = inputs[target_index]
+        objects = inputs_ps[target_index]
 
         iou_score = torch.ones_like(conf_f1)
         clss_accuracy = torch.ones_like(conf_f1)
@@ -301,7 +326,7 @@ class TrimNetDet(Detector):
 
     def update_metric(
             self,
-            inputs:        Tensor,
+            inputs:        List[Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -312,11 +337,13 @@ class TrimNetDet(Detector):
 
         num_confs = self.trimnetx.num_scans
 
+        inputs_ps, _ = inputs
+
         preds_mask = focal_boost_positive(
-            inputs, num_confs, conf_thresh, recall_thresh)
+            inputs_ps, num_confs, conf_thresh, recall_thresh)
         preds_index = torch.nonzero(preds_mask, as_tuple=True)
 
-        objects = inputs[preds_index]
+        objects = inputs_ps[preds_index]
 
         pred_scores = torch.sigmoid(objects[:, num_confs - 1])
         pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
@@ -325,7 +352,7 @@ class TrimNetDet(Detector):
 
         preds = []
         target = []
-        batch_size = inputs.shape[0]
+        batch_size = inputs_ps.shape[0]
         for batch_id in range(batch_size):
             preds_ids = (preds_index[0] == batch_id).nonzero(as_tuple=True)[0]
             target_ids = (target_index[0] == batch_id).nonzero(as_tuple=True)[0]

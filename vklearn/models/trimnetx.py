@@ -1,11 +1,10 @@
-from typing import List, Mapping, Any, Dict
+from typing import List, Mapping, Any, Dict, Tuple
 import math
 
 from torch import Tensor
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from .component import ConvNormActive, InvertedResidual, CSENet
 from .component import MobileNetFeatures, DinoFeatures
@@ -28,8 +27,13 @@ class TrimUnit(nn.Module):
         modules.append(CSENet(in_planes, out_planes))
         for r in range(scan_range):
             modules.append(InvertedResidual(
-                # out_planes, out_planes, 1, dilation=2**r, activation=None))
-                out_planes, out_planes, 1, dilation=2**r, activation=None, norm_layer=None))
+                out_planes,
+                out_planes,
+                expand_ratio=1,
+                dilation=2**r,
+                norm_layer=None,
+                activation=None,
+            ))
         modules.append(ConvNormActive(out_planes, out_planes, 1))
         if dropout_p > 0:
             modules.append(nn.Dropout(dropout_p))
@@ -104,7 +108,7 @@ class TrimNetX(Basic):
                 dropout_p=sigma,
             ))
 
-    def forward(self, x:Tensor) -> List[Tensor]:
+    def forward(self, x:Tensor) -> Tuple[List[Tensor], Tensor]:
         if not self._keep_features:
             f = self.features(x)
         else:
@@ -119,7 +123,7 @@ class TrimNetX(Basic):
             e = self.project(h)
             h = self.trim_units[t](torch.cat([m, e], dim=1))
             ht.append(h)
-        return ht
+        return ht, m
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetX':
