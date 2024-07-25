@@ -112,15 +112,23 @@ class TrimNetDet(Detector):
             strict:     bool=True,
             assign:     bool=False,
         ):
+
         CLSS_WEIGHT_KEY = 'predict.clss_predict.2.weight'
         CLSS_BIAS_KEY = 'predict.clss_predict.2.bias'
+        AUXI_WEIGHT_KEY = 'auxi_clf.weight'
+        AUXI_BIAS_KEY = 'auxi_clf.bias'
 
         clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
         clss_bias = state_dict.pop(CLSS_BIAS_KEY)
+        auxi_weight = state_dict.pop(AUXI_WEIGHT_KEY)
+        auxi_bias = state_dict.pop(AUXI_BIAS_KEY)
+
         predict_dim = self.predict.clss_predict[-1].bias.shape[0]
         if clss_bias.shape[0] == predict_dim:
             state_dict[CLSS_WEIGHT_KEY] = clss_weight
             state_dict[CLSS_BIAS_KEY] = clss_bias
+            state_dict[AUXI_WEIGHT_KEY] = auxi_weight
+            state_dict[AUXI_BIAS_KEY] = auxi_bias
         super().load_state_dict(state_dict, strict, assign)
 
     def detect(
@@ -246,7 +254,7 @@ class TrimNetDet(Detector):
         auxi_loss = F.cross_entropy(auxi_pred, target_labels)
 
         losses['loss'] = loss + auxi_loss * auxi_weight
-        losses['auxi'] = auxi_loss
+        losses['auxi_loss'] = auxi_loss
 
         return losses
 
