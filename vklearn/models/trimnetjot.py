@@ -1,5 +1,6 @@
 from typing import List, Any, Dict, Mapping, Tuple
 import math
+import time
 
 from torch import Tensor
 from torchvision.ops import (
@@ -10,6 +11,9 @@ import torch
 import torch.nn.functional as F
 
 from PIL import Image
+from numpy import ndarray
+import numpy as np
+import cv2 as cv
 
 from .joints import Joints
 from .trimnetx import TrimNetX
@@ -89,7 +93,7 @@ class TrimNetJot(Joints):
         return torch.cat([p[..., None] for p in ps], dim=-1)
 
     def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
-        hs = self.trimnetx(x)
+        hs, _ = self.trimnetx(x)
         det_p = self.forward_det(hs)
         seg_p = self.forward_seg(hs)
         return det_p, seg_p
@@ -151,12 +155,12 @@ class TrimNetJot(Joints):
 
         num_confs = self.trimnetx.num_scans
 
-        predicts = self.forward(x)
-        conf_prob = torch.ones_like(predicts[..., 0])
+        det_predicts, seg_predicts = self.forward(x)
+        conf_prob = torch.ones_like(det_predicts[..., 0])
         for conf_id in range(num_confs - 1):
-            conf_prob[torch.sigmoid(predicts[..., conf_id]) < recall_thresh] = 0.
-        conf_prob *= torch.sigmoid(predicts[..., num_confs - 1])
-        pred_objs = predicts[..., num_confs:]
+            conf_prob[torch.sigmoid(det_predicts[..., conf_id]) < recall_thresh] = 0.
+        conf_prob *= torch.sigmoid(det_predicts[..., num_confs - 1])
+        pred_objs = det_predicts[..., num_confs:]
 
         index = torch.nonzero(conf_prob > recall_thresh, as_tuple=True)
         if len(index[0]) == 0: return []
@@ -165,22 +169,23 @@ class TrimNetJot(Joints):
 
         raw_w, raw_h = image.size
         boxes = self.pred2boxes(objs[:, :self.bbox_dim], index)
-        boxes[:, 0] = torch.clamp((boxes[:, 0] - pad_x) / scale, 0, raw_w - 1)
-        boxes[:, 1] = torch.clamp((boxes[:, 1] - pad_y) / scale, 0, raw_h - 1)
-        boxes[:, 2] = torch.clamp((boxes[:, 2] - pad_x) / scale, 1, raw_w)
-        boxes[:, 3] = torch.clamp((boxes[:, 3] - pad_y) / scale, 1, raw_h)
+        # boxes[:, 0] = torch.clamp((boxes[:, 0] - pad_x) / scale, 0, raw_w - 1)
+        # boxes[:, 1] = torch.clamp((boxes[:, 1] - pad_y) / scale, 0, raw_h - 1)
+        # boxes[:, 2] = torch.clamp((boxes[:, 2] - pad_x) / scale, 1, raw_w)
+        # boxes[:, 3] = torch.clamp((boxes[:, 3] - pad_y) / scale, 1, raw_h)
 
         clss = torch.softmax(objs[:, self.bbox_dim:], dim=-1).max(dim=-1)
         labels, probs = clss.indices, clss.values
-        scores = conf * probs
+        scores = conf # * probs
         final_ids = box_ops.batched_nms(boxes, scores, labels, iou_thresh)
         boxes = boxes[final_ids]
         labels = labels[final_ids]
         probs = probs[final_ids]
         scores = scores[final_ids]
+        anchors = index[1][final_ids]
 
         result = []
-        for score, box, label, prob in zip(scores, boxes, labels, probs):
+        for score, box, label, prob, anchor in zip(scores, boxes, labels, probs, anchors):
             if score < conf_thresh: continue
             if (box[2:] - box[:2]).min() < mini_side: continue
             result.append(dict(
@@ -188,8 +193,148 @@ class TrimNetJot(Joints):
                 box=box.round().tolist(),
                 label=self.categories[label],
                 prob=round(prob.item(), 5),
+                anchor=anchor.item(),
             ))
-        return result
+
+        # dst_w, dst_h = round(scale * raw_w), round(scale * raw_h)
+        # seg_predicts = torch.sigmoid(seg_predicts[..., pad_y:pad_y + dst_h, pad_x:pad_x + dst_w, -1])
+        # # seg_predicts[seg_predicts < conf_thresh] = 0.
+        # seg_predicts = F.interpolate(seg_predicts, (raw_h, raw_w), mode='bilinear')
+        seg_predicts = torch.sigmoid(seg_predicts[..., -1])
+        seg_result = seg_predicts[0].cpu().numpy()
+
+        clock = time.time()
+        points_list = self.joints(result, seg_result[0])
+        print('joint nodes timedelta:', time.time() - clock)
+
+        return x[0].permute(1, 2, 0).cpu().numpy(), result, seg_result, points_list
+
+    def _joint_for_begin(self, begin_node, end_nodes, mask, lack_begin_nodes, matched_pairs, debug=False):
+        begin_bbox = np.array(begin_node['box'], dtype=np.float32)
+        begin_cxcy = (begin_bbox[:2] + begin_bbox[2:]) * 0.5
+        max_score = 0.5
+        matched_id = -1
+        for end_ix, end_node in enumerate(end_nodes):
+            end_bbox = np.array(end_node['box'], dtype=np.float32)
+            end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
+            steps = round(np.linalg.norm(begin_cxcy - end_cxcy) / 1)
+            cols = np.around(np.linspace(begin_cxcy[0], end_cxcy[0], steps)).astype(int)
+            rows = np.around(np.linspace(begin_cxcy[1], end_cxcy[1], steps)).astype(int)
+            score = mask[rows, cols].mean()
+            if score > max_score:
+                max_score = score
+                matched_id = end_ix
+            if max_score > 0.99: break
+            if debug:
+                print('debug:', score, begin_cxcy, end_cxcy)
+        if matched_id < 0:
+            lack_begin_nodes.append(begin_node)
+        else:
+            end_node = end_nodes.pop(matched_id)
+            matched_pairs.append(dict(
+                begin=begin_node,
+                end=end_node,
+            ))
+
+    def joints(self, nodes:List[Dict[str, Any]], mask:ndarray):
+        begin_nodes = [item for item in nodes if item['anchor'] == 0]
+        end_nodes = [item for item in nodes if item['anchor'] == 1]
+        lack_begin_nodes = []
+        matched_pairs = []
+        for begin_node in begin_nodes:
+            self._joint_for_begin(begin_node, end_nodes, mask, lack_begin_nodes, matched_pairs)
+
+        print('matched:', matched_pairs)
+        print('lack begin:', lack_begin_nodes)
+        print('lack end:', end_nodes)
+
+        points_list = []
+        for pair in matched_pairs:
+            begin_node = pair['begin']
+            begin_bbox = np.array(begin_node['box'], dtype=np.float32)
+            begin_cxcy = (begin_bbox[:2] + begin_bbox[2:]) * 0.5
+            end_node = pair['end']
+            end_bbox = np.array(end_node['box'], dtype=np.float32)
+            end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
+            vector_r = end_cxcy - begin_cxcy
+            length = np.linalg.norm(vector_r)
+            vector = vector_r / length
+            angle = np.rad2deg(np.arccos(vector[0]))
+            if vector[1] < 0: angle = -angle
+            begin_width = max(begin_bbox[2:] - begin_bbox[:2])
+            end_width = max(end_bbox[2:] - end_bbox[:2])
+            diameter = (begin_width + end_width) * 0.5
+            cx, cy = (begin_cxcy + end_cxcy) * 0.5
+            rect = (cx, cy), (length, diameter), angle
+            points = cv.boxPoints(rect)
+            points_list.append(points)
+
+        bin_mask = (mask > 0.5).astype(np.uint8)
+        for pts in points_list:
+            cv.fillPoly(bin_mask, [pts.astype(int)], 0)
+        mask[:] = bin_mask.astype(mask.dtype)
+        for node in end_nodes:
+            bbox = np.array(node['box'], dtype=np.float32)
+            cx, cy = np.around((bbox[:2] + bbox[2:]) * 0.5).astype(int)
+            bias = 0
+            k = 6
+            s = k
+            print('debug:', cx, cy)
+            left_filter = bin_mask[cy-k:cy+k+1, cx-s]
+            print('left:', left_filter)
+            right_filter = bin_mask[cy-k:cy+k+1, cx+s]
+            print('right:', right_filter)
+            sum_left_filter = int(left_filter.sum())
+            sum_right_filter = int(right_filter.sum())
+            if sum_left_filter > sum_right_filter:
+                sum_filter = sum_left_filter
+                filter_vect = left_filter
+                for _ in range(100):
+                    if sum_filter < 1: break
+                    bpcount = 0
+                    epcount = 0
+                    for value in filter_vect:
+                        if value == 1: break
+                        bpcount += 1
+                    for value in filter_vect[::-1]:
+                        if value == 1: break
+                        epcount += 1
+                    bias += round((bpcount - epcount) / 2)
+                    print('bias:', bias, (sum_filter + s) / s)
+                    s += min(3, sum_filter)
+                    print('next k, s:', k, s)
+                    if cx-s < 0: break
+                    filter_vect = bin_mask[cy-k+bias:cy+k+1+bias, cx-s]
+                    print('next vect:', filter_vect)
+                    sum_filter = int(filter_vect.sum())
+                _cx = cx - s
+                _cy = cy + bias
+                print('lack cxcy:', _cx, _cy)
+            else:
+                sum_filter = sum_right_filter
+                filter_vect = right_filter
+                for _ in range(100):
+                    if sum_filter < 1: break
+                    bpcount = 0
+                    epcount = 0
+                    for value in filter_vect:
+                        if value == 1: break
+                        bpcount += 1
+                    for value in filter_vect[::-1]:
+                        if value == 1: break
+                        epcount += 1
+                    bias += round((bpcount - epcount) / 2)
+                    print('debug:', bias)
+                    s += min(3, sum_filter)
+                    if cx-s >= bin_mask.shape[1]: break
+                    print('next k, s:', k, s)
+                    filter_vect = bin_mask[cy-k+bias:cy+k+1+bias, cx+s]
+                    print('next vect:', filter_vect)
+                    sum_filter = int(filter_vect.sum())
+                _cx = cx + s
+                _cy = cy + bias
+                print('src cxcy:', cx, cy, 'lack cxcy:', _cx, _cy)
+        return points_list
 
     def _calc_det_loss(
             self,

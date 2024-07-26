@@ -47,7 +47,7 @@ class TrimNetSeg(Segment):
         self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tensor:
-        hs = self.trimnetx(x)
+        hs, _ = self.trimnetx(x)
         p = self.predict(hs[0])
         ps = [p]
         times = len(hs)
