@@ -190,7 +190,7 @@ class TrimNetDet(Detector):
 
     def calc_loss(
             self,
-            inputs:        List[Tensor],
+            inputs:        Tuple[Tensor, Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -260,7 +260,7 @@ class TrimNetDet(Detector):
 
     def calc_score(
             self,
-            inputs:        List[Tensor],
+            inputs:        Tuple[Tensor, Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -334,7 +334,7 @@ class TrimNetDet(Detector):
 
     def update_metric(
             self,
-            inputs:        List[Tensor],
+            inputs:        Tuple[Tensor, Tensor],
             target_index:  List[Tensor],
             target_labels: Tensor,
             target_bboxes: Tensor,
@@ -353,10 +353,19 @@ class TrimNetDet(Detector):
 
         objects = inputs_ps[preds_index]
 
-        pred_scores = torch.sigmoid(objects[:, num_confs - 1])
+        # <<< Lab code.
+        # pred_scores = torch.sigmoid(objects[:, num_confs - 1])
+        # pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
+        # pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index), 0.)
+        # pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
+
+        pred_confs = torch.sigmoid(objects[:, num_confs - 1])
+        pred_probs = torch.max(torch.softmax(objects[:, num_confs + self.bbox_dim:], dim=-1), dim=-1).values
+        pred_scores = pred_confs * pred_probs
         pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
         pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index), 0.)
         pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
+        # >>>
 
         preds = []
         target = []
