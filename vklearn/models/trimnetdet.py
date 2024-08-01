@@ -197,6 +197,7 @@ class TrimNetDet(Detector):
             weights:       Dict[str, float] | None=None,
             alpha:         float=0.25,
             gamma:         float=2.,
+            clss_gamma:    float=2.,
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
@@ -222,8 +223,15 @@ class TrimNetDet(Detector):
                 pred_xyxy, target_bboxes, reduction=reduction)
 
             pred_clss = objects[:, num_confs + self.bbox_dim:]
-            clss_loss = F.cross_entropy(
-                pred_clss, target_labels, reduction=reduction)
+            # clss_loss = F.cross_entropy(
+            #     pred_clss, target_labels, reduction=reduction)
+            pred_probs = torch.softmax(pred_clss, dim=-1)
+            pred_alpha = 1 - pred_probs[range(len(target_labels)), target_labels]**clss_gamma
+
+            clss_loss = (
+                pred_alpha *
+                F.cross_entropy(pred_clss, target_labels, reduction='none')
+            ).mean()
 
         weights = weights or dict()
 
@@ -251,9 +259,14 @@ class TrimNetDet(Detector):
         aligned = roi_align(
             inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
         auxi_pred = self.auxi_clf(aligned.flatten(start_dim=1))
-        auxi_alpha = (
-            1 - torch.softmax(auxi_pred.detach(), dim=-1)[range(len(target_labels)), target_labels])
-        auxi_loss = (auxi_alpha * F.cross_entropy(auxi_pred, target_labels, reduction='none')).mean()
+
+        auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
+        auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
+
+        auxi_loss = (
+            auxi_alpha *
+            F.cross_entropy(auxi_pred, target_labels, reduction='none')
+        ).mean()
 
         losses['loss'] = loss + auxi_loss * auxi_weight
         losses['auxi_loss'] = auxi_loss
