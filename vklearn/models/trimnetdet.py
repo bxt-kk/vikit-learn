@@ -225,7 +225,7 @@ class TrimNetDet(Detector):
             pred_clss = objects[:, num_confs + self.bbox_dim:]
             # clss_loss = F.cross_entropy(
             #     pred_clss, target_labels, reduction=reduction)
-            pred_probs = torch.softmax(pred_clss, dim=-1)
+            pred_probs = torch.softmax(pred_clss.detach(), dim=-1)
             pred_alpha = 1 - pred_probs[range(len(target_labels)), target_labels]**clss_gamma
 
             clss_loss = (
