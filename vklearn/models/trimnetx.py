@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 from .component import ConvNormActive, InvertedResidual, CSENet
-from .component import MobileNetFeatures, ShuffleNetV2Features, DinoFeatures
+from .component import MobileNetFeatures, DinoFeatures
 from .basic import Basic
 
 
@@ -39,10 +39,10 @@ class TrimUnit(nn.Module):
             modules.append(nn.Dropout(dropout_p))
         self.blocks = nn.Sequential(*modules)
 
-    def train(self, mode:bool=True):
-        super().train(mode)
-        if isinstance(self.blocks[-1], nn.Dropout):
-            self.blocks[-1].train()
+    # def train(self, mode:bool=True):
+    #     super().train(mode)
+    #     if isinstance(self.blocks[-1], nn.Dropout):
+    #         self.blocks[-1].train()
 
     def forward(self, x:Tensor) -> Tensor:
         return self.blocks(x)
@@ -90,11 +90,11 @@ class TrimNetX(Basic):
             self.features_dim = self.features.features_dim
             self.merged_dim   = 320
 
-        elif backbone == 'shufflenet_v2_x1_5':
-            self.features = ShuffleNetV2Features(
+        elif backbone == 'mobilenet_v2':
+            self.features = MobileNetFeatures(
                 backbone, backbone_pretrained)
             self.features_dim = self.features.features_dim
-            self.merged_dim   = 160
+            self.merged_dim   = 320
 
         elif backbone == 'dinov2_vits14':
             self.features     = DinoFeatures(backbone)
