@@ -251,7 +251,8 @@ class TrimNetDet(Detector):
         aligned = roi_align(
             inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
         auxi_pred = self.auxi_clf(aligned.flatten(start_dim=1))
-        auxi_alpha = 1 - torch.softmax(auxi_pred.detach(), dim=-1).max(dim=-1).values
+        auxi_alpha = (
+            1 - torch.softmax(auxi_pred.detach(), dim=-1)[range(len(target_labels)), target_labels])
         auxi_loss = (auxi_alpha * F.cross_entropy(auxi_pred, target_labels, reduction='none')).mean()
 
         losses['loss'] = loss + auxi_loss * auxi_weight
