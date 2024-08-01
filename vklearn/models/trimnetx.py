@@ -39,6 +39,11 @@ class TrimUnit(nn.Module):
             modules.append(nn.Dropout(dropout_p))
         self.blocks = nn.Sequential(*modules)
 
+    def train(self, mode:bool=True):
+        super().train(mode)
+        if isinstance(self.blocks[-1], nn.Dropout):
+            self.blocks[-1].train()
+
     def forward(self, x:Tensor) -> Tensor:
         return self.blocks(x)
 
