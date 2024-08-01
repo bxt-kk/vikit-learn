@@ -7,6 +7,8 @@ import torch.nn.functional as F
 from torchvision.ops.misc import SqueezeExcitation
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
+from torchvision.models.segmentation import deeplabv3_mobilenet_v3_large
+from torchvision.models.segmentation import DeepLabV3_MobileNet_V3_Large_Weights
 
 
 class LayerNorm2d(nn.GroupNorm):
@@ -290,6 +292,18 @@ class MobileNetFeatures(nn.Module):
                 weights=MobileNet_V3_Large_Weights.DEFAULT
                 if pretrained else None,
             ).features
+
+            self.features_dim = 112 + 160
+
+            self.features_d = features[:13] # 112, 32, 32
+            self.features_u = features[13:-1] # 160, 16, 16
+
+        elif arch == 'mobilenet_v3_larges':
+            weights_state = deeplabv3_mobilenet_v3_large(
+                weights=DeepLabV3_MobileNet_V3_Large_Weights.DEFAULT,
+            ).backbone.state_dict()
+            features = mobilenet_v3_large().features
+            features.load_state_dict(weights_state)
 
             self.features_dim = 112 + 160
 

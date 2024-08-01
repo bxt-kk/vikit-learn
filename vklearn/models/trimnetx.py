@@ -79,6 +79,12 @@ class TrimNetX(Basic):
             self.features_dim = self.features.features_dim
             self.merged_dim   = 320
 
+        elif backbone == 'mobilenet_v3_larges':
+            self.features = MobileNetFeatures(
+                backbone, backbone_pretrained)
+            self.features_dim = self.features.features_dim
+            self.merged_dim   = 320
+
         elif backbone == 'dinov2_vits14':
             self.features     = DinoFeatures(backbone)
             self.features_dim = self.features.features_dim
