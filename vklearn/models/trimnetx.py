@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 from .component import ConvNormActive, InvertedResidual, CSENet
-from .component import MobileNetFeatures, DinoFeatures
+from .component import MobileNetFeatures, ShuffleNetV2Features, DinoFeatures
 from .basic import Basic
 
 
@@ -84,6 +84,12 @@ class TrimNetX(Basic):
                 backbone, backbone_pretrained)
             self.features_dim = self.features.features_dim
             self.merged_dim   = 320
+
+        elif backbone == 'shufflenet_v2_x1_5':
+            self.features = ShuffleNetV2Features(
+                backbone, backbone_pretrained)
+            self.features_dim = self.features.features_dim
+            self.merged_dim   = 160
 
         elif backbone == 'dinov2_vits14':
             self.features     = DinoFeatures(backbone)

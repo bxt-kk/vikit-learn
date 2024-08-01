@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torchvision.ops.misc import SqueezeExcitation
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
+from torchvision.models import shufflenet_v2_x1_5, ShuffleNet_V2_X1_5_Weights
 from torchvision.models.segmentation import deeplabv3_mobilenet_v3_large
 from torchvision.models.segmentation import DeepLabV3_MobileNet_V3_Large_Weights
 
@@ -312,6 +313,40 @@ class MobileNetFeatures(nn.Module):
 
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
+
+        self.cell_size = 16
+
+    def forward(self, x:Tensor) -> Tensor:
+        fd = self.features_d(x)
+        fu = self.features_u(fd)
+        return torch.cat([
+            fd, F.interpolate(fu, scale_factor=2, mode='bilinear')], dim=1)
+
+
+class ShuffleNetV2Features(nn.Module):
+
+    def __init__(self, arch:str, pretrained:bool):
+
+        super().__init__()
+
+        if arch == 'shufflenet_v2_x1_5':
+            backbone = shufflenet_v2_x1_5(
+                weights=ShuffleNet_V2_X1_5_Weights.DEFAULT
+                if pretrained else None,
+            )
+
+            self.features_dim = 352 + 704
+
+        else:
+            raise ValueError(f'Unsupported arch `{arch}`')
+
+        self.features_d = nn.Sequential(
+            backbone.conv1,
+            backbone.maxpool,
+            backbone.stage2,
+            backbone.stage3,
+        )
+        self.features_u = backbone.stage4
 
         self.cell_size = 16
 
