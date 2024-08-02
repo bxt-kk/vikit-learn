@@ -188,7 +188,7 @@ class CSENet(nn.Module):
         return self.project(x * self.fusion(x))
 
 
-class DetPredictor(nn.Module):
+class DetPredictor_(nn.Module):
 
     def __init__(
             self,
@@ -225,6 +225,58 @@ class DetPredictor(nn.Module):
         return torch.cat([
             predict(x).view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
             for predict in (self.conf_predict, self.bbox_predict, self.clss_predict)
+        ], dim=-1)
+
+
+class DetPredictor(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            num_anchors:   int,
+            bbox_dim:      int,
+            num_classes:   int,
+            dropout_p:     float,
+        ):
+
+        super().__init__()
+
+        self.num_anchors = num_anchors
+
+        self.conf_predict = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+            nn.Conv2d(in_planes, num_anchors * 1, kernel_size=1))
+
+        self.bbox_predict = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1))
+
+        hidden_planes = in_planes * num_anchors
+
+        self.expansion = nn.Sequential(
+            ConvNormActive(in_planes, hidden_planes, 1),
+            ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes))
+
+        self.dropout2d = nn.Dropout2d(dropout_p, inplace=False)
+
+        self.clss_predict = nn.Conv2d(
+            hidden_planes, num_classes * num_anchors, kernel_size=1, groups=num_anchors)
+
+    def forward(self, x:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+
+        p_conf = self.conf_predict(x)
+        p_bbox = self.bbox_predict(x)
+
+        x = self.expansion(x).view(bs * self.num_anchors, -1, ny, nx)
+        x = self.dropout2d(x).view(bs, -1, ny, nx)
+        p_clss = self.clss_predict(x)
+
+        return torch.cat([
+            part.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
+            for part in (p_conf, p_bbox, p_clss)
         ], dim=-1)
 
 

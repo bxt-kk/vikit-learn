@@ -53,11 +53,11 @@ class TrimNetDet(Detector):
         self.dropout_p = dropout_p
 
         merged_dim = self.trimnetx.merged_dim
-        expanded_dim = merged_dim * 2
+        # expanded_dim = merged_dim * 2
 
         self.predict = DetPredictor(
             in_planes=merged_dim,
-            hidden_planes=expanded_dim,
+            # hidden_planes=expanded_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
             num_classes=self.num_classes,
