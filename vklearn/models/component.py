@@ -197,7 +197,7 @@ class DetPredictor(nn.Module):
             num_anchors:   int,
             bbox_dim:      int,
             num_classes:   int,
-            dropout_p:     float=0.2,
+            dropout_p:     float,
         ):
 
         super().__init__()

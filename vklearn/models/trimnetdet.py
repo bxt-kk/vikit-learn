@@ -36,6 +36,7 @@ class TrimNetDet(Detector):
             categories:          List[str],
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
+            dropout_p:           float=0.2,
             num_scans:           int=3,
             scan_range:          int=4,
             backbone:            str='mobilenet_v3_small',
@@ -49,6 +50,7 @@ class TrimNetDet(Detector):
             num_scans, scan_range, backbone, backbone_pretrained)
 
         self.cell_size = self.trimnetx.cell_size
+        self.dropout_p = dropout_p
 
         merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 2
@@ -59,9 +61,13 @@ class TrimNetDet(Detector):
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
             num_classes=self.num_classes,
+            dropout_p=dropout_p,
         )
 
-        self.auxi_clf = nn.Linear(merged_dim, self.num_classes)
+        self.auxi_clf = nn.Sequential(
+            nn.Dropout(dropout_p, inplace=False),
+            nn.Linear(merged_dim, self.num_classes),
+        )
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
@@ -88,6 +94,7 @@ class TrimNetDet(Detector):
             categories          = hyps['categories'],
             bbox_limit          = hyps['bbox_limit'],
             anchors             = hyps['anchors'],
+            dropout_p           = hyps['dropout_p'],
             num_scans           = hyps['num_scans'],
             scan_range          = hyps['scan_range'],
             backbone            = hyps['backbone'],
@@ -101,6 +108,7 @@ class TrimNetDet(Detector):
             categories = self.categories,
             bbox_limit = self.bbox_limit,
             anchors    = self.anchors,
+            dropout_p  = self.dropout_p,
             num_scans  = self.trimnetx.num_scans,
             scan_range = self.trimnetx.scan_range,
             backbone   = self.trimnetx.backbone,
@@ -113,10 +121,10 @@ class TrimNetDet(Detector):
             assign:     bool=False,
         ):
 
-        CLSS_WEIGHT_KEY = 'predict.clss_predict.2.weight'
-        CLSS_BIAS_KEY = 'predict.clss_predict.2.bias'
-        AUXI_WEIGHT_KEY = 'auxi_clf.weight'
-        AUXI_BIAS_KEY = 'auxi_clf.bias'
+        CLSS_WEIGHT_KEY = 'predict.clss_predict.3.weight'
+        CLSS_BIAS_KEY = 'predict.clss_predict.3.bias'
+        AUXI_WEIGHT_KEY = 'auxi_clf.1.weight'
+        AUXI_BIAS_KEY = 'auxi_clf.1.bias'
 
         clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
         clss_bias = state_dict.pop(CLSS_BIAS_KEY)
