@@ -1,6 +1,7 @@
 from typing import Any, Callable, List, Tuple, Dict
 import os.path
 import math
+from collections import Counter
 
 from PIL import Image
 
@@ -42,6 +43,7 @@ class CocoDetection(VisionDataset):
         sub_categories:   List[str] | None=None,
         lowpoly_size:     int=0,
         max_datas_size:   int=0,
+        dropout_k:        int=0,
         transform:        Callable | None=None,
         target_transform: Callable | None=None,
         transforms:       Callable | None=None,
@@ -85,6 +87,8 @@ class CocoDetection(VisionDataset):
         # self.subcategories = sub_categories + [self.NAME_OTHER]
         self.subcategories = sub_categories
 
+        self.ids = self._drop_topk(self.ids, dropout_k)
+
         if len(sub_categories) > 0:
             self.classes = self.subcategories
             self.coid2class = self.coid2subcategory
@@ -103,6 +107,28 @@ class CocoDetection(VisionDataset):
 
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
+
+    def _drop_topk(self, ids:List[int], k:int) -> List[int]:
+        if k == 0: return ids
+        count = Counter()
+        print('count categories...')
+        for _id in tqdm(ids, ncols=80):
+            anns = self._load_anns(_id)
+            for ann in anns:
+                category_id = ann['category_id']
+                count[category_id] += 1
+        hold_categories = [cid for cid, _ in count.most_common()[k:]]
+        new_ids = []
+        print('drop images...')
+        for _id in tqdm(ids, ncols=80):
+            anns = self._load_anns(_id)
+            for ann in anns:
+                category_id = ann['category_id']
+                if category_id in hold_categories:
+                    new_ids.append(_id)
+                    break
+        print('ids size:', len(ids), ', new_ids size:', len(new_ids))
+        return new_ids
 
     def _drop_other_images(self, ids:List[int]) -> List[int]:
         new_ids = []
