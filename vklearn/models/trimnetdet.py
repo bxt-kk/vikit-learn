@@ -51,7 +51,7 @@ class TrimNetDet(Detector):
         self.cell_size = self.trimnetx.cell_size
 
         merged_dim = self.trimnetx.merged_dim
-        expanded_dim = merged_dim * 4
+        expanded_dim = merged_dim * 2
 
         self.predict = DetPredictor(
             in_planes=merged_dim,

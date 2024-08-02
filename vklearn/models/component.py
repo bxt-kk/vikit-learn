@@ -197,6 +197,7 @@ class DetPredictor(nn.Module):
             num_anchors:   int,
             bbox_dim:      int,
             num_classes:   int,
+            dropout_p:     float=0.2,
         ):
 
         super().__init__()
@@ -216,6 +217,7 @@ class DetPredictor(nn.Module):
         self.clss_predict = nn.Sequential(
             ConvNormActive(in_planes, hidden_planes, 1),
             ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
+            nn.Dropout(dropout_p, inplace=False),
             nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1))
 
     def forward(self, x:Tensor) -> Tensor:
