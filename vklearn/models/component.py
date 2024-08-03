@@ -359,16 +359,24 @@ class DetPredictor2(nn.Module):
         scan_range = 4
         self.clusters = nn.ModuleList()
         for r in range(scan_range):
-            self.clusters.append(nn.Sequential(
-                ConvNormActive(
-                    bboxes_dims,
-                    bboxes_dims,
-                    dilation=2**r,
-                    groups=num_anchors,
-                    norm_layer=None,
-                    activation=None),
-                nn.Conv2d(
-                    bboxes_dims, bboxes_dims, kernel_size=1),
+            # self.clusters.append(nn.Sequential(
+            #     ConvNormActive(
+            #         bboxes_dims,
+            #         bboxes_dims,
+            #         dilation=2**r,
+            #         groups=num_anchors,
+            #         norm_layer=None,
+            #         activation=None),
+            #     nn.Conv2d(
+            #         bboxes_dims, bboxes_dims, kernel_size=1),
+            # ))
+            self.clusters.append(ConvNormActive(
+                bboxes_dims,
+                bboxes_dims,
+                dilation=2**r,
+                groups=num_anchors,
+                norm_layer=None,
+                activation=None,
             ))
 
         self.bbox_predict = nn.Sequential(
