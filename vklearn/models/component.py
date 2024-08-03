@@ -259,23 +259,15 @@ class DetPredictor2(nn.Module):
 
         self.num_anchors = num_anchors
 
-        cluster_dim = int((2 * num_classes)**0.5 + 4 * num_anchors)
+        cluster_dim = int((2 * num_classes)**0.5 + 5 * num_anchors)
 
-        self.conf_predict = nn.Sequential(
-            ConvNormActive(in_planes, in_planes, 1),
-            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Conv2d(in_planes, num_anchors, kernel_size=1))
-
-        bboxes_dims = bbox_dim * num_anchors
-        bbox_hidden = bboxes_dims * 2
-
-        self.bbox_dense = nn.Sequential(
-            ConvNormActive(in_planes, cluster_dim, 1),
+        self.cluster_dense = nn.Sequential(
+            ConvNormActive(in_planes, cluster_dim, 1, activation=None),
         )
-        self.bbox_clusters = nn.ModuleList()
+        self.clusters = nn.ModuleList()
         scan_range = 4
         for r in range(scan_range):
-            self.bbox_clusters.append(InvertedResidual(
+            self.clusters.append(InvertedResidual(
                 cluster_dim,
                 cluster_dim,
                 expand_ratio=1,
@@ -284,8 +276,18 @@ class DetPredictor2(nn.Module):
                 activation=None,
             ))
 
+        merged_dim = cluster_dim * scan_range
+
+        self.conf_predict = nn.Sequential(
+            ConvNormActive(merged_dim, merged_dim, 1),
+            ConvNormActive(merged_dim, merged_dim, 3, groups=merged_dim),
+            nn.Conv2d(merged_dim, num_anchors, kernel_size=1))
+
+        bboxes_dims = bbox_dim * num_anchors
+        bbox_hidden = bboxes_dims * 2
+
         self.bbox_predict = nn.Sequential(
-            ConvNormActive(cluster_dim * scan_range, bbox_hidden, 1),
+            ConvNormActive(merged_dim, bbox_hidden, 1),
             nn.Conv2d(bbox_hidden, bboxes_dims, kernel_size=1, groups=num_anchors))
 
         clss_hidden = in_planes * num_anchors
@@ -302,14 +304,14 @@ class DetPredictor2(nn.Module):
     def forward(self, x:Tensor) -> Tensor:
         bs, _, ny, nx = x.shape
 
-        p_conf = self.conf_predict(x)
-
-        c = self.bbox_dense(x)
+        c = self.cluster_dense(x)
         cs = []
-        for cluster in self.bbox_clusters:
+        for cluster in self.clusters:
             c = cluster(c)
             cs.append(c)
         cc = torch.cat(cs, dim=1)
+
+        p_conf = self.conf_predict(cc)
         p_bbox = self.bbox_predict(cc)
 
         x = self.expansion(x).view(bs * self.num_anchors, -1, ny, nx)
