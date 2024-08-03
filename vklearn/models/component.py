@@ -259,11 +259,15 @@ class DetPredictor2(nn.Module):
 
         self.num_anchors = num_anchors
 
-        cluster_dim = int((2 * num_classes)**0.5 + 5 * num_anchors)
+        clss_dense_dim = int((2 * num_classes)**0.5)
+        bbox_dense_dim = 5 * num_anchors
+        cluster_dim = clss_dense_dim + bbox_dense_dim
 
-        self.cluster_dense = nn.Sequential(
-            ConvNormActive(in_planes, cluster_dim, 1, activation=None),
-        )
+        self.clss_dense = ConvNormActive(
+            num_classes, clss_dense_dim, 1, activation=None)
+        self.bbox_dense = ConvNormActive(
+            in_planes, bbox_dense_dim, 1, activation=None)
+
         self.clusters = nn.ModuleList()
         scan_range = 4
         for r in range(scan_range):
@@ -304,7 +308,15 @@ class DetPredictor2(nn.Module):
     def forward(self, x:Tensor) -> Tensor:
         bs, _, ny, nx = x.shape
 
-        c = self.cluster_dense(x)
+        e = self.expansion(x).view(bs * self.num_anchors, -1, ny, nx)
+        e = self.dropout2d(e).view(bs, -1, ny, nx)
+        p_clss = self.clss_predict(e)
+
+        m_clss = p_clss.view(bs, self.num_anchors, -1, ny, nx).mean(dim=1)
+        c = torch.cat([
+            self.clss_dense(m_clss),
+            self.bbox_dense(x),
+        ], dim=1)
         cs = []
         for cluster in self.clusters:
             c = cluster(c)
@@ -313,10 +325,6 @@ class DetPredictor2(nn.Module):
 
         p_conf = self.conf_predict(cc)
         p_bbox = self.bbox_predict(cc)
-
-        x = self.expansion(x).view(bs * self.num_anchors, -1, ny, nx)
-        x = self.dropout2d(x).view(bs, -1, ny, nx)
-        p_clss = self.clss_predict(x)
 
         return torch.cat([
             part.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
