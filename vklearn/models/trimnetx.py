@@ -6,15 +6,9 @@ from torch import Tensor
 import torch
 import torch.nn as nn
 
-from .component import ConvNormActive, InvertedResidual, CSENet
+from .component import ConvNormActive, ConvNormActiveRes, CSENet
 from .component import MobileNetFeatures, DinoFeatures
 from .basic import Basic
-
-
-class ConvNormActiveRes(ConvNormActive):
-
-    def forward(self, x:Tensor) -> Tensor:
-        return super().forward(x) + x
 
 
 class TrimUnit(nn.Module):
@@ -23,26 +17,19 @@ class TrimUnit(nn.Module):
             self,
             in_planes:  int,
             out_planes: int,
+            head_dim:   int,
             scan_range: int=4,
-            dropout_p:  float=0,
+            dropout_p:  float=0.,
         ):
 
         super().__init__()
 
+        assert out_planes % head_dim == 0
+        groups = out_planes // head_dim
+
         modules = []
         modules.append(CSENet(in_planes, out_planes))
         for r in range(scan_range):
-            # modules.append(InvertedResidual(
-            #     out_planes,
-            #     out_planes,
-            #     expand_ratio=1,
-            #     dilation=2**r,
-            #     norm_layer=None,
-            #     activation=None,
-            # ))
-            # Lab code <<<
-            assert out_planes % 16 == 0
-            groups = out_planes // 16
             modules.append(ConvNormActiveRes(
                 out_planes,
                 out_planes,
@@ -51,7 +38,6 @@ class TrimUnit(nn.Module):
                 norm_layer=None,
                 activation=None,
             ))
-            # >>>
         modules.append(ConvNormActive(out_planes, out_planes, 1))
         if dropout_p > 0:
             modules.append(nn.Dropout(dropout_p))
@@ -139,6 +125,7 @@ class TrimNetX(Basic):
             self.trim_units.append(TrimUnit(
                 in_planes,
                 self.merged_dim,
+                head_dim=16,
                 scan_range=scan_range,
                 dropout_p=sigma,
             ))
