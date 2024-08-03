@@ -259,8 +259,8 @@ class DetPredictor2(nn.Module):
 
         self.num_anchors = num_anchors
 
-        clss_dense_dim = int((2 * num_classes)**0.5)
-        bbox_dense_dim = 5 * num_anchors
+        clss_dense_dim = int(num_classes**0.5)
+        bbox_dense_dim = int((2 * num_classes)**0.5 - clss_dense_dim) + 5 * num_anchors
         cluster_dim = clss_dense_dim + bbox_dense_dim
 
         self.clss_dense = ConvNormActive(
