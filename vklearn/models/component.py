@@ -244,6 +244,84 @@ class DetPredictor(nn.Module):
         ], dim=-1)
 
 
+class DetPredictor2(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            num_anchors:   int,
+            bbox_dim:      int,
+            num_classes:   int,
+            dropout_p:     float,
+        ):
+
+        super().__init__()
+
+        self.num_anchors = num_anchors
+
+        cluster_dim = int((2 * num_classes)**0.5 + 4 * num_anchors)
+
+        self.conf_predict = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+            nn.Conv2d(in_planes, num_anchors, kernel_size=1))
+
+        bboxes_dims = bbox_dim * num_anchors
+        bbox_hidden = bboxes_dims * 2
+
+        self.bbox_dense = nn.Sequential(
+            ConvNormActive(in_planes, cluster_dim, 1),
+        )
+        self.bbox_clusters = nn.ModuleList()
+        scan_range = 4
+        for r in range(scan_range):
+            self.bbox_clusters.append(InvertedResidual(
+                cluster_dim,
+                cluster_dim,
+                expand_ratio=1,
+                dilation=2**r,
+                norm_layer=None,
+                activation=None,
+            ))
+
+        self.bbox_predict = nn.Sequential(
+            ConvNormActive(cluster_dim * scan_range, bbox_hidden, 1),
+            nn.Conv2d(bbox_hidden, bboxes_dims, kernel_size=1, groups=num_anchors))
+
+        clss_hidden = in_planes * num_anchors
+
+        self.expansion = nn.Sequential(
+            ConvNormActive(in_planes, clss_hidden, 1),
+            ConvNormActive(clss_hidden, clss_hidden, 3, groups=clss_hidden))
+
+        self.dropout2d = nn.Dropout2d(dropout_p, inplace=False)
+
+        self.clss_predict = nn.Conv2d(
+            clss_hidden, num_classes * num_anchors, kernel_size=1, groups=num_anchors)
+
+    def forward(self, x:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+
+        p_conf = self.conf_predict(x)
+
+        c = self.bbox_dense(x)
+        cs = []
+        for cluster in self.bbox_clusters:
+            c = cluster(c)
+            cs.append(c)
+        cc = torch.cat(cs, dim=1)
+        p_bbox = self.bbox_predict(cc)
+
+        x = self.expansion(x).view(bs * self.num_anchors, -1, ny, nx)
+        x = self.dropout2d(x).view(bs, -1, ny, nx)
+        p_clss = self.clss_predict(x)
+
+        return torch.cat([
+            part.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
+            for part in (p_conf, p_bbox, p_clss)
+        ], dim=-1)
+
+
 class SegPredictor(nn.Module):
 
     def __init__(

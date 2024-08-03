@@ -14,7 +14,7 @@ from PIL import Image
 
 from .detector import Detector
 from .trimnetx import TrimNetX
-from .component import DetPredictor
+from .component import DetPredictor2 as DetPredictor
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
