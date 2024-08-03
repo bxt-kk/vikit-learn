@@ -26,14 +26,26 @@ class TrimUnit(nn.Module):
         modules = []
         modules.append(CSENet(in_planes, out_planes))
         for r in range(scan_range):
-            modules.append(InvertedResidual(
+            # modules.append(InvertedResidual(
+            #     out_planes,
+            #     out_planes,
+            #     expand_ratio=1,
+            #     dilation=2**r,
+            #     norm_layer=None,
+            #     activation=None,
+            # ))
+            # Lab code <<<
+            assert out_planes % 16 == 0
+            groups = out_planes // 16
+            modules.append(ConvNormActive(
                 out_planes,
                 out_planes,
-                expand_ratio=1,
                 dilation=2**r,
+                groups=groups,
                 norm_layer=None,
                 activation=None,
             ))
+            # >>>
         modules.append(ConvNormActive(out_planes, out_planes, 1))
         if dropout_p > 0:
             modules.append(nn.Dropout(dropout_p))
