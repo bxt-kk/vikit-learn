@@ -244,7 +244,7 @@ class DetPredictor(nn.Module):
         ], dim=-1)
 
 
-class DetPredictor2(nn.Module):
+class DetPredictor2_(nn.Module):
 
     def __init__(
             self,
@@ -323,6 +323,82 @@ class DetPredictor2(nn.Module):
             cs.append(c)
         cc = torch.cat(cs, dim=1)
         p_bbox = self.bbox_predict(cc)
+
+        return torch.cat([
+            part.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
+            for part in (p_conf, p_bbox, p_clss)
+        ], dim=-1)
+
+
+class DetPredictor2(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            num_anchors:   int,
+            bbox_dim:      int,
+            num_classes:   int,
+            dropout_p:     float,
+        ):
+
+        super().__init__()
+
+        self.num_anchors = num_anchors
+
+        self.conf_predict = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+            nn.Conv2d(in_planes, num_anchors, kernel_size=1))
+
+        bboxes_dims = bbox_dim * num_anchors
+        bbox_hidden = bboxes_dims * 2
+
+        self.bbox_dense = nn.Conv2d(
+            in_planes, bboxes_dims, kernel_size=1)
+
+        scan_range = 4
+        self.clusters = nn.ModuleList()
+        for r in range(scan_range):
+            self.clusters.append(ConvNormActive(
+                bboxes_dims,
+                bboxes_dims,
+                dilation=2**r,
+                groups=num_anchors,
+                norm_layer=None,
+                activation=None,
+            ))
+
+        self.bbox_predict = nn.Sequential(
+            ConvNormActive(bboxes_dims * scan_range, bbox_hidden, 1),
+            nn.Conv2d(bbox_hidden, bboxes_dims, kernel_size=1, groups=num_anchors))
+
+        clss_hidden = in_planes * num_anchors
+
+        self.expansion = nn.Sequential(
+            ConvNormActive(in_planes, clss_hidden, 1),
+            ConvNormActive(clss_hidden, clss_hidden, 3, groups=clss_hidden))
+
+        self.dropout2d = nn.Dropout2d(dropout_p, inplace=False)
+
+        self.clss_predict = nn.Conv2d(
+            clss_hidden, num_classes * num_anchors, kernel_size=1, groups=num_anchors)
+
+    def forward(self, x:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+
+        p_conf = self.conf_predict(x)
+
+        c = self.bbox_dense(x)
+        cs = []
+        for cluster in self.clusters:
+            c = c + cluster(c)
+            cs.append(c)
+        cc = torch.cat(cs, dim=1)
+        p_bbox = self.bbox_predict(cc)
+
+        e = self.expansion(x).view(bs * self.num_anchors, -1, ny, nx)
+        e = self.dropout2d(e).view(bs, -1, ny, nx)
+        p_clss = self.clss_predict(e)
 
         return torch.cat([
             part.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
