@@ -312,7 +312,7 @@ class DetPredictor2(nn.Module):
         e = self.dropout2d(e).view(bs, -1, ny, nx)
         p_clss = self.clss_predict(e)
 
-        m_clss = p_clss.view(bs, self.num_anchors, -1, ny, nx).mean(dim=1)
+        m_clss = p_clss.detach().view(bs, self.num_anchors, -1, ny, nx).mean(dim=1)
         c = torch.cat([
             self.clss_dense(m_clss),
             self.bbox_dense(x),
