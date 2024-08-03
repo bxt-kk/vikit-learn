@@ -53,11 +53,9 @@ class TrimNetDet(Detector):
         self.dropout_p = dropout_p
 
         merged_dim = self.trimnetx.merged_dim
-        # expanded_dim = merged_dim * 2
 
         self.predict = DetPredictor(
             in_planes=merged_dim,
-            # hidden_planes=expanded_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
             num_classes=self.num_classes,
@@ -121,8 +119,8 @@ class TrimNetDet(Detector):
             assign:     bool=False,
         ):
 
-        CLSS_WEIGHT_KEY = 'predict.clss_predict.3.weight'
-        CLSS_BIAS_KEY = 'predict.clss_predict.3.bias'
+        CLSS_WEIGHT_KEY = 'predict.clss_predict.weight'
+        CLSS_BIAS_KEY = 'predict.clss_predict.bias'
         AUXI_WEIGHT_KEY = 'auxi_clf.1.weight'
         AUXI_BIAS_KEY = 'auxi_clf.1.bias'
 
@@ -131,7 +129,7 @@ class TrimNetDet(Detector):
         auxi_weight = state_dict.pop(AUXI_WEIGHT_KEY)
         auxi_bias = state_dict.pop(AUXI_BIAS_KEY)
 
-        predict_dim = self.predict.clss_predict[-1].bias.shape[0]
+        predict_dim = self.predict.clss_predict.bias.shape[0]
         if clss_bias.shape[0] == predict_dim:
             state_dict[CLSS_WEIGHT_KEY] = clss_weight
             state_dict[CLSS_BIAS_KEY] = clss_bias

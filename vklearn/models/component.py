@@ -188,46 +188,6 @@ class CSENet(nn.Module):
         return self.project(x * self.fusion(x))
 
 
-class DetPredictor_(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:     int,
-            hidden_planes: int,
-            num_anchors:   int,
-            bbox_dim:      int,
-            num_classes:   int,
-            dropout_p:     float,
-        ):
-
-        super().__init__()
-
-        self.num_anchors = num_anchors
-
-        self.conf_predict = nn.Sequential(
-            ConvNormActive(in_planes, in_planes, 1),
-            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Conv2d(in_planes, num_anchors * 1, kernel_size=1))
-
-        self.bbox_predict = nn.Sequential(
-            ConvNormActive(in_planes, in_planes, 1),
-            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1))
-
-        self.clss_predict = nn.Sequential(
-            ConvNormActive(in_planes, hidden_planes, 1),
-            ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes),
-            nn.Dropout2d(dropout_p, inplace=False),
-            nn.Conv2d(hidden_planes, num_anchors * num_classes, kernel_size=1))
-
-    def forward(self, x:Tensor) -> Tensor:
-        bs, _, ny, nx = x.shape
-        return torch.cat([
-            predict(x).view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
-            for predict in (self.conf_predict, self.bbox_predict, self.clss_predict)
-        ], dim=-1)
-
-
 class DetPredictor(nn.Module):
 
     def __init__(
@@ -246,23 +206,27 @@ class DetPredictor(nn.Module):
         self.conf_predict = nn.Sequential(
             ConvNormActive(in_planes, in_planes, 1),
             ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Conv2d(in_planes, num_anchors * 1, kernel_size=1))
+            nn.Conv2d(in_planes, num_anchors, kernel_size=1))
+
+        bboxes_dims = bbox_dim * num_anchors
+        bbox_hidden = bboxes_dims * 2
 
         self.bbox_predict = nn.Sequential(
-            ConvNormActive(in_planes, in_planes, 1),
-            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Conv2d(in_planes, num_anchors * bbox_dim, kernel_size=1))
+            ConvNormActive(in_planes, bbox_hidden, 1),
+            ConvNormActive(bbox_hidden, bbox_hidden, 3, groups=bbox_hidden),
+            ConvNormActive(bbox_hidden, bboxes_dims, 1, groups=num_anchors),
+            nn.Conv2d(bboxes_dims, bboxes_dims, kernel_size=1, groups=num_anchors))
 
-        hidden_planes = in_planes * num_anchors
+        clss_hidden = in_planes * num_anchors
 
         self.expansion = nn.Sequential(
-            ConvNormActive(in_planes, hidden_planes, 1),
-            ConvNormActive(hidden_planes, hidden_planes, 3, groups=hidden_planes))
+            ConvNormActive(in_planes, clss_hidden, 1),
+            ConvNormActive(clss_hidden, clss_hidden, 3, groups=clss_hidden))
 
         self.dropout2d = nn.Dropout2d(dropout_p, inplace=False)
 
         self.clss_predict = nn.Conv2d(
-            hidden_planes, num_classes * num_anchors, kernel_size=1, groups=num_anchors)
+            clss_hidden, num_classes * num_anchors, kernel_size=1, groups=num_anchors)
 
     def forward(self, x:Tensor) -> Tensor:
         bs, _, ny, nx = x.shape
