@@ -11,6 +11,12 @@ from .component import MobileNetFeatures, DinoFeatures
 from .basic import Basic
 
 
+class ConvNormActiveRes(ConvNormActive):
+
+    def forward(self, x:Tensor) -> Tensor:
+        return super().forward(x) + x
+
+
 class TrimUnit(nn.Module):
 
     def __init__(
@@ -37,7 +43,7 @@ class TrimUnit(nn.Module):
             # Lab code <<<
             assert out_planes % 16 == 0
             groups = out_planes // 16
-            modules.append(ConvNormActive(
+            modules.append(ConvNormActiveRes(
                 out_planes,
                 out_planes,
                 dilation=2**r,
