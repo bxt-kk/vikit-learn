@@ -214,13 +214,10 @@ class DetPredictor(nn.Module):
             ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
             nn.Conv2d(in_planes, num_anchors, kernel_size=1))
 
-        bboxes_dims = bbox_dim * num_anchors
-        bbox_hidden = bboxes_dims * 2
-
         self.bbox_predict = nn.Sequential(
-            ConvNormActive(in_planes, bbox_hidden, 1),
-            ConvNormActive(bbox_hidden, bbox_hidden, 3, groups=bbox_hidden),
-            nn.Conv2d(bbox_hidden, bboxes_dims, kernel_size=1, groups=num_anchors))
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+            nn.Conv2d(in_planes, bbox_dim * num_anchors, kernel_size=1))
 
         clss_hidden = in_planes * num_anchors
 
