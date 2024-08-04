@@ -388,13 +388,12 @@ class DinoFeatures(nn.Module):
             self.features = torch.hub.load(
                 'facebookresearch/dinov2', arch)
             self.features_dim = 384
-            self.cell_size    = 16
+            self.cell_size    = 14
 
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
 
     def forward(self, x:Tensor) -> Tensor:
-        fr, fc = x.shape[2] // 14, x.shape[3] // 14
+        dr, dc = x.shape[2] // self.cell_size, x.shape[3] // self.cell_size
         x = self.features.forward_features(x)['x_norm_patchtokens']
-        x = x.transpose(1, 2).view(-1, self.features_dim, fr, fc)
-        return F.interpolate(x, scale_factor=14 / 16, mode='bilinear')
+        return x.transpose(1, 2).view(-1, self.features_dim, dr, dc)
