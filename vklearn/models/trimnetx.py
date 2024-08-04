@@ -80,30 +80,30 @@ class TrimNetX(Basic):
             self.features = MobileNetFeatures(
                 backbone, backbone_pretrained)
             self.features_dim = self.features.features_dim
-            self.merged_dim   = 96
+            self.merged_dim   = 128
 
         elif backbone == 'mobilenet_v3_large':
             self.features = MobileNetFeatures(
                 backbone, backbone_pretrained)
             self.features_dim = self.features.features_dim
-            self.merged_dim   = 160
+            self.merged_dim   = 256
 
         elif backbone == 'mobilenet_v3_larges':
             self.features = MobileNetFeatures(
                 backbone, backbone_pretrained)
             self.features_dim = self.features.features_dim
-            self.merged_dim   = 160
+            self.merged_dim   = 256
 
         elif backbone == 'mobilenet_v2':
             self.features = MobileNetFeatures(
                 backbone, backbone_pretrained)
             self.features_dim = self.features.features_dim
-            self.merged_dim   = 160
+            self.merged_dim   = 256
 
         elif backbone == 'dinov2_vits14':
             self.features     = DinoFeatures(backbone)
             self.features_dim = self.features.features_dim
-            self.merged_dim   = self.features_dim
+            self.merged_dim   = self.features_dim # 384
 
         else:
             raise ValueError(f'Unsupported backbone `{backbone}`')
