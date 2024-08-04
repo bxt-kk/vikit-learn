@@ -233,7 +233,7 @@ class Detector(Basic):
                     size=(448, 448),
                     pad_if_needed=True,
                     fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.SanitizeBoundingBoxes(min_size=5),
+                v2.SanitizeBoundingBoxes(min_size=3),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -250,7 +250,7 @@ class Detector(Basic):
                     padding=448 // 4,
                     fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(448),
-                v2.SanitizeBoundingBoxes(min_size=5),
+                v2.SanitizeBoundingBoxes(min_size=3),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -284,6 +284,9 @@ class Detector(Basic):
                     size=383,
                     max_size=384,
                     antialias=True),
+                v2.Pad(
+                    padding=384 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(384),
                 v2.SanitizeBoundingBoxes(min_size=3),
                 v2.ToDtype(torch.float32, scale=True),
@@ -298,7 +301,7 @@ class Detector(Basic):
                 v2.ToImage(),
                 v2.ScaleJitter(
                     target_size=(512, 512),
-                    scale_range=(0.8, 1.25),
+                    scale_range=(384 / 512, 1.1),
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
@@ -306,7 +309,7 @@ class Detector(Basic):
                     size=(512, 512),
                     pad_if_needed=True,
                     fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.SanitizeBoundingBoxes(min_size=7),
+                v2.SanitizeBoundingBoxes(min_size=3),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -319,8 +322,11 @@ class Detector(Basic):
                     size=511,
                     max_size=512,
                     antialias=True),
+                v2.Pad(
+                    padding=512 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(512),
-                v2.SanitizeBoundingBoxes(min_size=7),
+                v2.SanitizeBoundingBoxes(min_size=3),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -333,7 +339,7 @@ class Detector(Basic):
                 v2.ToImage(),
                 v2.ScaleJitter(
                     target_size=(640, 640),
-                    scale_range=(0.8, 1.25),
+                    scale_range=(384 / 640, 1.1),
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
@@ -341,7 +347,7 @@ class Detector(Basic):
                     size=(640, 640),
                     pad_if_needed=True,
                     fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.SanitizeBoundingBoxes(min_size=10),
+                v2.SanitizeBoundingBoxes(min_size=3),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -354,8 +360,11 @@ class Detector(Basic):
                     size=639,
                     max_size=640,
                     antialias=True),
+                v2.Pad(
+                    padding=640 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(640),
-                v2.SanitizeBoundingBoxes(min_size=10),
+                v2.SanitizeBoundingBoxes(min_size=3),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
