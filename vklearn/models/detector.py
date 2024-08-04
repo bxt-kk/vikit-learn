@@ -246,6 +246,9 @@ class Detector(Basic):
                     size=447,
                     max_size=448,
                     antialias=True),
+                v2.Pad(
+                    padding=448 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(448),
                 v2.SanitizeBoundingBoxes(min_size=5),
                 v2.ToDtype(torch.float32, scale=True),
