@@ -217,23 +217,9 @@ class DetPredictor(nn.Module):
         bboxes_dims = bbox_dim * num_anchors
         bbox_hidden = bboxes_dims * 2
 
-        self.bbox_dense = nn.Conv2d(
-            in_planes, bboxes_dims, kernel_size=1)
-
-        scan_range = 4
-        self.clusters = nn.ModuleList()
-        for r in range(scan_range):
-            self.clusters.append(ConvNormActiveRes(
-                bboxes_dims,
-                bboxes_dims,
-                dilation=2**r,
-                groups=num_anchors,
-                norm_layer=None,
-                activation=None,
-            ))
-
         self.bbox_predict = nn.Sequential(
-            ConvNormActive(bboxes_dims * scan_range, bbox_hidden, 1),
+            ConvNormActive(in_planes, bbox_hidden, 1),
+            ConvNormActive(bbox_hidden, bbox_hidden, 3, groups=bbox_hidden),
             nn.Conv2d(bbox_hidden, bboxes_dims, kernel_size=1, groups=num_anchors))
 
         clss_hidden = in_planes * num_anchors
@@ -251,14 +237,7 @@ class DetPredictor(nn.Module):
         bs, _, ny, nx = x.shape
 
         p_conf = self.conf_predict(x)
-
-        c = self.bbox_dense(x)
-        cs = []
-        for cluster in self.clusters:
-            c = cluster(c)
-            cs.append(c)
-        cc = torch.cat(cs, dim=1)
-        p_bbox = self.bbox_predict(cc)
+        p_bbox = self.bbox_predict(x)
 
         e = self.expansion(x).view(bs * self.num_anchors, -1, ny, nx)
         e = self.dropout2d(e).view(bs, -1, ny, nx)
