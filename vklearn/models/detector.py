@@ -225,7 +225,7 @@ class Detector(Basic):
                 v2.ToImage(),
                 v2.ScaleJitter(
                     target_size=(448, 448),
-                    scale_range=(0.9, 1.1),
+                    scale_range=(384 / 448, 1.),
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
