@@ -103,7 +103,7 @@ class TrimNetX(Basic):
         elif backbone == 'dinov2_vits14':
             self.features     = DinoFeatures(backbone)
             self.features_dim = self.features.features_dim
-            self.merged_dim   = 160
+            self.merged_dim   = self.features_dim
 
         else:
             raise ValueError(f'Unsupported backbone `{backbone}`')
