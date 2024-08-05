@@ -366,12 +366,13 @@ class MobileNetFeatures(nn.Module):
                 if pretrained else None,
             ).features
 
+            f0_dim = 16
             fd_dim = 24
             fm_dim = 48
             fu_dim = 96
-            self.features_dim = fd_dim + fm_dim + fu_dim
 
-            self.features_d = features[:3] # 24, 64, 64
+            self.features_0 = features[:2] # 16, 128, 128
+            self.features_d = features[2:3] # 24, 64, 64
             self.features_m = features[3:8] # 48, 32, 32
             self.features_u = features[8:-1] # 96, 16, 16
 
@@ -381,12 +382,13 @@ class MobileNetFeatures(nn.Module):
                 if pretrained else None,
             ).features
 
+            f0_dim = 24
             fd_dim = 40
             fm_dim = 112
             fu_dim = 160
-            self.features_dim = fd_dim + fm_dim + fu_dim
 
-            self.features_d = features[:5] # 40, 64, 64
+            self.features_0 = features[:3] # 24, 128, 128
+            self.features_d = features[3:5] # 40, 64, 64
             self.features_m = features[5:12] # 112, 32, 32
             self.features_u = features[12:-1] # 160, 16, 16
 
@@ -397,12 +399,13 @@ class MobileNetFeatures(nn.Module):
             features = mobilenet_v3_large().features
             features.load_state_dict(weights_state)
 
+            f0_dim = 24
             fd_dim = 40
             fm_dim = 112
             fu_dim = 160
-            self.features_dim = fd_dim + fm_dim + fu_dim
 
-            self.features_d = features[:5] # 40, 64, 64
+            self.features_0 = features[:3] # 24, 128, 128
+            self.features_d = features[3:5] # 40, 64, 64
             self.features_m = features[5:12] # 112, 32, 32
             self.features_u = features[12:-1] # 160, 16, 16
 
@@ -412,17 +415,20 @@ class MobileNetFeatures(nn.Module):
                 if pretrained else None,
             ).features
 
+            f0_dim = 24
             fd_dim = 32
             fm_dim = 96
             fu_dim = 160
-            self.features_dim = fd_dim + fm_dim + fu_dim
 
-            self.features_d = features[:5] # 32, 64, 64
+            self.features_0 = features[:3] # 24, 128, 128
+            self.features_d = features[3:5] # 32, 64, 64
             self.features_m = features[5:12] # 96, 32, 32
             self.features_u = features[12:-2] # 160, 16, 16
 
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
+
+        self.features_dim = fd_dim + fm_dim + fu_dim
 
         # fum_dim = fu_dim + fm_dim
         # self.merge_um = nn.Sequential(
@@ -445,13 +451,19 @@ class MobileNetFeatures(nn.Module):
             for p in m.parameters():
                 p.requires_grad = False
 
-        self.features_c = nn.Sequential(
+        self.features_dc = nn.Sequential(
+            ConvNormActive(f0_dim, fd_dim, kernel_size=1),
+            ConvNormActive(fd_dim, fd_dim, stride=2, groups=fd_dim),
+            nn.Conv2d(fd_dim, fd_dim, kernel_size=1))
+
+        self.features_mc = nn.Sequential(
             ConvNormActive(fd_dim, fm_dim, kernel_size=1),
             ConvNormActive(fm_dim, fm_dim, stride=2, groups=fm_dim),
             nn.Conv2d(fm_dim, fm_dim, kernel_size=1))
 
-        self.features_c[-1].weight.data.fill_(0)
-        self.features_c[-1].bias.data.fill_(0)
+        for m in (self.features_dc, self.features_mc):
+            m[-1].weight.data.fill_(0)
+            m[-1].bias.data.fill_(0)
 
     def forward(self, x:Tensor) -> Tensor:
         # with torch.no_grad():
@@ -459,8 +471,9 @@ class MobileNetFeatures(nn.Module):
         #     fm = self.features_m(fd)
         #     fu = self.features_u(fm)
 
-        fd = self.features_d(x)
-        fm = self.features_m(fd) + self.features_c(fd)
+        f0 = self.features_0(x)
+        fd = self.features_d(f0) + self.features_dc(f0)
+        fm = self.features_m(fd) + self.features_mc(fd)
         fu = self.features_u(fm)
 
         # # Lab code <<<
