@@ -291,7 +291,7 @@ class SegPredictor(nn.Module):
         return self.classifier(self.norm_layer(x))
 
 
-class MobileNetFeatures(nn.Module):
+class MobileNetFeatures_(nn.Module):
 
     def __init__(self, arch:str, pretrained:bool):
 
@@ -352,6 +352,113 @@ class MobileNetFeatures(nn.Module):
         fu = self.features_u(fd)
         return torch.cat([
             fd, F.interpolate(fu, scale_factor=2, mode='bilinear')], dim=1)
+
+
+class MobileNetFeatures(nn.Module):
+
+    def __init__(self, arch:str, pretrained:bool):
+
+        super().__init__()
+
+        if arch == 'mobilenet_v3_small':
+            features = mobilenet_v3_small(
+                weights=MobileNet_V3_Small_Weights.DEFAULT
+                if pretrained else None,
+            ).features
+
+            fd_dim = 24
+            fm_dim = 48
+            fu_dim = 96
+            self.features_dim = fd_dim + fm_dim + fu_dim
+
+            self.features_d = features[:3] # 24, 64, 64
+            self.features_m = features[3:8] # 48, 32, 32
+            self.features_u = features[8:-1] # 96, 16, 16
+
+        elif arch == 'mobilenet_v3_large':
+            features = mobilenet_v3_large(
+                weights=MobileNet_V3_Large_Weights.DEFAULT
+                if pretrained else None,
+            ).features
+
+            fd_dim = 40
+            fm_dim = 112
+            fu_dim = 160
+            self.features_dim = fd_dim + fm_dim + fu_dim
+
+            self.features_d = features[:5] # 40, 64, 64
+            self.features_m = features[5:12] # 112, 32, 32
+            self.features_u = features[12:-1] # 160, 16, 16
+
+        elif arch == 'mobilenet_v3_larges':
+            weights_state = deeplabv3_mobilenet_v3_large(
+                weights=DeepLabV3_MobileNet_V3_Large_Weights.DEFAULT,
+            ).backbone.state_dict()
+            features = mobilenet_v3_large().features
+            features.load_state_dict(weights_state)
+
+            fd_dim = 40
+            fm_dim = 112
+            fu_dim = 160
+            self.features_dim = fd_dim + fm_dim + fu_dim
+
+            self.features_d = features[:5] # 40, 64, 64
+            self.features_m = features[5:12] # 112, 32, 32
+            self.features_u = features[12:-1] # 160, 16, 16
+
+        elif arch == 'mobilenet_v2':
+            features = mobilenet_v2(
+                weights=MobileNet_V2_Weights.DEFAULT
+                if pretrained else None,
+            ).features
+
+            fd_dim = 32
+            fm_dim = 96
+            fu_dim = 160
+            self.features_dim = fd_dim + fm_dim + fu_dim
+
+            self.features_d = features[:5] # 32, 64, 64
+            self.features_m = features[5:12] # 96, 32, 32
+            self.features_u = features[12:-2] # 160, 16, 16
+
+        else:
+            raise ValueError(f'Unsupported arch `{arch}`')
+
+        fum_dim = fu_dim + fm_dim
+        self.merge_um = nn.Sequential(
+            ConvNormActive(fum_dim, fum_dim, groups=fum_dim),
+            nn.Conv2d(fum_dim, fm_dim, kernel_size=1))
+
+        fmd_dim = fm_dim + fd_dim
+        self.merge_md = nn.Sequential(
+            ConvNormActive(fmd_dim, fmd_dim, groups=fmd_dim),
+            nn.Conv2d(fmd_dim, fd_dim, kernel_size=1))
+
+        self.merge_um[-1].weight.data.fill_(0)
+        self.merge_um[-1].bias.data.fill_(0)
+        self.merge_md[-1].weight.data.fill_(0)
+        self.merge_md[-1].bias.data.fill_(0)
+
+        self.cell_size = 16
+
+    def forward(self, x:Tensor) -> Tensor:
+        with torch.no_grad():
+            fd = self.features_d(x)
+            fm = self.features_m(fd)
+            fu = self.features_u(fm)
+
+        # Lab code <<<
+        ufu = F.interpolate(fu, scale_factor=2, mode='nearest')
+        fm = fm + self.merge_um(torch.cat([fm, ufu], dim=1))
+        ufm = F.interpolate(fm, scale_factor=2, mode='nearest')
+        fd = fd + self.merge_md(torch.cat([fd, ufm], dim=1))
+        # >>>
+
+        return torch.cat([
+            F.max_pool2d(fd, kernel_size=3, stride=2, padding=1),
+            fm,
+            F.interpolate(fu, scale_factor=2, mode='nearest'),
+        ], dim=1)
 
 
 class DinoFeatures(nn.Module):
