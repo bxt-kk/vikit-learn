@@ -445,19 +445,13 @@ class MobileNetFeatures(nn.Module):
             for p in m.parameters():
                 p.requires_grad = False
 
-        self.features_e_d = nn.Sequential(
-            ConvNormActive(fd_dim + 3, fd_dim, kernel_size=1),
-            ConvNormActive(fd_dim, fd_dim, groups=fd_dim),
-            nn.Conv2d(fd_dim, fd_dim, kernel_size=1))
-
-        self.features_e_m = nn.Sequential(
-            ConvNormActive(fm_dim + 3, fm_dim, kernel_size=1),
-            ConvNormActive(fm_dim, fm_dim, groups=fm_dim),
+        self.features_c = nn.Sequential(
+            ConvNormActive(fd_dim, fm_dim, kernel_size=1),
+            ConvNormActive(fm_dim, fm_dim, stride=2, groups=fm_dim),
             nn.Conv2d(fm_dim, fm_dim, kernel_size=1))
 
-        for m in (self.features_e_d, self.features_e_m):
-            m[-1].weight.data.fill_(0)
-            m[-1].bias.data.fill_(0)
+        self.features_c[-1].weight.data.fill_(0)
+        self.features_c[-1].bias.data.fill_(0)
 
     def forward(self, x:Tensor) -> Tensor:
         # with torch.no_grad():
@@ -465,13 +459,8 @@ class MobileNetFeatures(nn.Module):
         #     fm = self.features_m(fd)
         #     fu = self.features_u(fm)
 
-        p8 = F.interpolate(x, scale_factor=1 / 8, mode='bilinear')
-        p16 = F.interpolate(p8, scale_factor=0.5, mode='bilinear')
-
         fd = self.features_d(x)
-        fd = fd + self.features_e_d(torch.cat([fd, p8], dim=1))
-        fm = self.features_m(fd)
-        fm = fm + self.features_e_m(torch.cat([fm, p16], dim=1))
+        fm = self.features_m(fd) + self.features_c(fd)
         fu = self.features_u(fm)
 
         # # Lab code <<<
