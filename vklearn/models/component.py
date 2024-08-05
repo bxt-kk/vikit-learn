@@ -446,10 +446,12 @@ class MobileNetFeatures(nn.Module):
                 p.requires_grad = False
 
         self.features_e_d = nn.Sequential(
+            ConvNormActive(fd_dim + 3, fd_dim, kernel_size=1),
             ConvNormActive(fd_dim, fd_dim, groups=fd_dim),
             nn.Conv2d(fd_dim, fd_dim, kernel_size=1))
 
         self.features_e_m = nn.Sequential(
+            ConvNormActive(fm_dim + 3, fm_dim, kernel_size=1),
             ConvNormActive(fm_dim, fm_dim, groups=fm_dim),
             nn.Conv2d(fm_dim, fm_dim, kernel_size=1))
 
@@ -463,10 +465,13 @@ class MobileNetFeatures(nn.Module):
         #     fm = self.features_m(fd)
         #     fu = self.features_u(fm)
 
+        p8 = F.interpolate(x, scale_factor=1 / 8, mode='bilinear')
+        p16 = F.interpolate(p8, scale_factor=0.5, mode='bilinear')
+
         fd = self.features_d(x)
-        fd = fd + self.features_e_d(fd)
+        fd = fd + self.features_e_d(torch.cat([fd, p8], dim=1))
         fm = self.features_m(fd)
-        fm = fm + self.features_e_m(fm)
+        fm = fm + self.features_e_m(torch.cat([fm, p16], dim=1))
         fu = self.features_u(fm)
 
         # # Lab code <<<
