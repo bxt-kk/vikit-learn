@@ -430,26 +430,7 @@ class MobileNetFeatures(nn.Module):
 
         self.features_dim = fd_dim + fm_dim + fu_dim
 
-        # fum_dim = fu_dim + fm_dim
-        # self.merge_um = nn.Sequential(
-        #     ConvNormActive(fum_dim, fum_dim, groups=fum_dim),
-        #     nn.Conv2d(fum_dim, fm_dim, kernel_size=1))
-        #
-        # fmd_dim = fm_dim + fd_dim
-        # self.merge_md = nn.Sequential(
-        #     ConvNormActive(fmd_dim, fmd_dim, groups=fmd_dim),
-        #     nn.Conv2d(fmd_dim, fd_dim, kernel_size=1))
-        #
-        # self.merge_um[-1].weight.data.fill_(0)
-        # self.merge_um[-1].bias.data.fill_(0)
-        # self.merge_md[-1].weight.data.fill_(0)
-        # self.merge_md[-1].bias.data.fill_(0)
-
         self.cell_size = 16
-
-        for m in (self.features_d, self.features_m, self.features_u):
-            for p in m.parameters():
-                p.requires_grad = False
 
         self.features_dc = nn.Sequential(
             ConvNormActive(f0_dim, fd_dim, kernel_size=1),
@@ -465,23 +446,27 @@ class MobileNetFeatures(nn.Module):
             m[-1].weight.data.fill_(0)
             m[-1].bias.data.fill_(0)
 
-    def forward(self, x:Tensor) -> Tensor:
-        # with torch.no_grad():
-        #     fd = self.features_d(x)
-        #     fm = self.features_m(fd)
-        #     fu = self.features_u(fm)
+        self.finetune(mode='full')
 
+    def finetune(self, mode:str='full'):
+        if mode == 'full':
+            flag = True
+        elif mode == 'lora':
+            flag = False
+        else:
+            raise ValueError(f'Unsupported finetune mode `{mode}`!')
+
+        for p in self.parameters():
+            p.requires_grad = flag
+        for m in (self.features_dc, self.features_mc):
+            for p in m.parameters():
+                p.requires_grad = not flag
+
+    def forward(self, x:Tensor) -> Tensor:
         f0 = self.features_0(x)
         fd = self.features_d(f0) + self.features_dc(f0)
         fm = self.features_m(fd) + self.features_mc(fd)
         fu = self.features_u(fm)
-
-        # # Lab code <<<
-        # ufu = F.interpolate(fu, scale_factor=2, mode='nearest')
-        # fm = fm + self.merge_um(torch.cat([fm, ufu], dim=1))
-        # ufm = F.interpolate(fm, scale_factor=2, mode='nearest')
-        # fd = fd + self.merge_md(torch.cat([fd, ufm], dim=1))
-        # # >>>
 
         return torch.cat([
             F.max_pool2d(fd, kernel_size=3, stride=2, padding=1),
@@ -504,6 +489,9 @@ class DinoFeatures(nn.Module):
 
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
+
+    def finetune(self, mode:str='full'):
+        assert not 'this is an empty function'
 
     def forward(self, x:Tensor) -> Tensor:
         dr, dc = x.shape[2] // self.cell_size, x.shape[3] // self.cell_size
