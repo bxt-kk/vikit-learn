@@ -424,35 +424,57 @@ class MobileNetFeatures(nn.Module):
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
 
-        fum_dim = fu_dim + fm_dim
-        self.merge_um = nn.Sequential(
-            ConvNormActive(fum_dim, fum_dim, groups=fum_dim),
-            nn.Conv2d(fum_dim, fm_dim, kernel_size=1))
-
-        fmd_dim = fm_dim + fd_dim
-        self.merge_md = nn.Sequential(
-            ConvNormActive(fmd_dim, fmd_dim, groups=fmd_dim),
-            nn.Conv2d(fmd_dim, fd_dim, kernel_size=1))
-
-        self.merge_um[-1].weight.data.fill_(0)
-        self.merge_um[-1].bias.data.fill_(0)
-        self.merge_md[-1].weight.data.fill_(0)
-        self.merge_md[-1].bias.data.fill_(0)
+        # fum_dim = fu_dim + fm_dim
+        # self.merge_um = nn.Sequential(
+        #     ConvNormActive(fum_dim, fum_dim, groups=fum_dim),
+        #     nn.Conv2d(fum_dim, fm_dim, kernel_size=1))
+        #
+        # fmd_dim = fm_dim + fd_dim
+        # self.merge_md = nn.Sequential(
+        #     ConvNormActive(fmd_dim, fmd_dim, groups=fmd_dim),
+        #     nn.Conv2d(fmd_dim, fd_dim, kernel_size=1))
+        #
+        # self.merge_um[-1].weight.data.fill_(0)
+        # self.merge_um[-1].bias.data.fill_(0)
+        # self.merge_md[-1].weight.data.fill_(0)
+        # self.merge_md[-1].bias.data.fill_(0)
 
         self.cell_size = 16
 
-    def forward(self, x:Tensor) -> Tensor:
-        with torch.no_grad():
-            fd = self.features_d(x)
-            fm = self.features_m(fd)
-            fu = self.features_u(fm)
+        for m in (self.features_d, self.features_m, self.features_u):
+            for p in m.parameters():
+                p.requires_grad = False
 
-        # Lab code <<<
-        ufu = F.interpolate(fu, scale_factor=2, mode='nearest')
-        fm = fm + self.merge_um(torch.cat([fm, ufu], dim=1))
-        ufm = F.interpolate(fm, scale_factor=2, mode='nearest')
-        fd = fd + self.merge_md(torch.cat([fd, ufm], dim=1))
-        # >>>
+        self.features_e_d = nn.Sequential(
+            ConvNormActive(fd_dim, fd_dim, groups=fd_dim),
+            nn.Conv2d(fd_dim, fd_dim, kernel_size=1))
+
+        self.features_e_m = nn.Sequential(
+            ConvNormActive(fm_dim, fm_dim, groups=fm_dim),
+            nn.Conv2d(fm_dim, fm_dim, kernel_size=1))
+
+        for m in (self.features_e_d, self.features_e_m):
+            m[-1].weight.data.fill_(0)
+            m[-1].bias.data.fill_(0)
+
+    def forward(self, x:Tensor) -> Tensor:
+        # with torch.no_grad():
+        #     fd = self.features_d(x)
+        #     fm = self.features_m(fd)
+        #     fu = self.features_u(fm)
+
+        fd = self.features_d(x)
+        fd = fd + self.features_e_d(fd)
+        fm = self.features_m(fd)
+        fm = fm + self.features_e_m(fm)
+        fu = self.features_u(fm)
+
+        # # Lab code <<<
+        # ufu = F.interpolate(fu, scale_factor=2, mode='nearest')
+        # fm = fm + self.merge_um(torch.cat([fm, ufu], dim=1))
+        # ufm = F.interpolate(fm, scale_factor=2, mode='nearest')
+        # fd = fd + self.merge_md(torch.cat([fd, ufm], dim=1))
+        # # >>>
 
         return torch.cat([
             F.max_pool2d(fd, kernel_size=3, stride=2, padding=1),
