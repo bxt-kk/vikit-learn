@@ -73,10 +73,10 @@ class Detector(Basic):
         x0 = (col_index.type_as(inputs) + 0.5) * self.cell_size
         y0 = (row_index.type_as(inputs) + 0.5) * self.cell_size
         bboxes = torch.cat([
-            x0 - paddings[0],
-            y0 - paddings[1],
-            x0 + paddings[2],
-            y0 + paddings[3],
+            (x0 - paddings[0]).unsqueeze(-1),
+            (y0 - paddings[1]).unsqueeze(-1),
+            (x0 + paddings[2]).unsqueeze(-1),
+            (y0 + paddings[3]).unsqueeze(-1),
         ], dim=-1)
         return box_convert(bboxes, 'xyxy', fmt)
 
