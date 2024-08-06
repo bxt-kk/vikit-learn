@@ -161,8 +161,9 @@ class TrimNetX(Basic):
 
         self.cell_size = self.features.cell_size
 
-        self.merge = ConvNormActive(
-            self.features_dim, self.merged_dim, 1, activation=None)
+        # self.merge = ConvNormActive(
+        #     self.features_dim, self.merged_dim, 1, activation=None)
+        self.merge = CSENet(self.features_dim, self.merged_dim)
 
         self.project = ConvNormActive(
             self.merged_dim, self.merged_dim, 1, activation=None)
