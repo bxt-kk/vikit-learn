@@ -52,7 +52,8 @@ class TrimNetDet(Detector):
         self.cell_size = self.trimnetx.cell_size
         self.dropout_p = dropout_p
 
-        merged_dim = self.trimnetx.merged_dim
+        merged_dim   = self.trimnetx.merged_dim
+        features_dim = self.trimnetx.features_dim
 
         self.predicts = nn.ModuleList([DetPredictor(
             in_planes=merged_dim,
@@ -64,7 +65,8 @@ class TrimNetDet(Detector):
 
         self.auxi_clf = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
-            nn.Linear(merged_dim, self.num_classes),
+            # nn.Linear(merged_dim, self.num_classes),
+            nn.Linear(features_dim, self.num_classes),
         )
 
     def train_features(self, flag:bool):
