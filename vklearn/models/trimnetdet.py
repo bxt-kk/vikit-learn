@@ -54,13 +54,13 @@ class TrimNetDet(Detector):
 
         merged_dim = self.trimnetx.merged_dim
 
-        self.predict = DetPredictor(
+        self.predicts = nn.ModuleList([DetPredictor(
             in_planes=merged_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
             num_classes=self.num_classes,
             dropout_p=dropout_p,
-        )
+        ) for _ in range(num_scans)])
 
         self.auxi_clf = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
@@ -74,11 +74,11 @@ class TrimNetDet(Detector):
         hs, m = self.trimnetx(x)
         n, _, rs, cs = hs[0].shape
 
-        p = self.predict(hs[0])
+        p = self.predicts[0](hs[0])
         ps = [p[..., :1]]
         times = len(hs)
         for t in range(1, times):
-            y = self.predict(hs[t])
+            y = self.predicts[t](hs[t])
             a = torch.sigmoid(ps[-1])
             p = y * a + p * (1 - a)
             ps.append(p[..., :1])
@@ -119,22 +119,22 @@ class TrimNetDet(Detector):
             assign:     bool=False,
         ):
 
-        CLSS_WEIGHT_KEY = 'predict.clss_predict.weight'
-        CLSS_BIAS_KEY = 'predict.clss_predict.bias'
-        AUXI_WEIGHT_KEY = 'auxi_clf.1.weight'
-        AUXI_BIAS_KEY = 'auxi_clf.1.bias'
-
-        clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
-        clss_bias = state_dict.pop(CLSS_BIAS_KEY)
-        auxi_weight = state_dict.pop(AUXI_WEIGHT_KEY)
-        auxi_bias = state_dict.pop(AUXI_BIAS_KEY)
-
-        predict_dim = self.predict.clss_predict.bias.shape[0]
-        if clss_bias.shape[0] == predict_dim:
-            state_dict[CLSS_WEIGHT_KEY] = clss_weight
-            state_dict[CLSS_BIAS_KEY] = clss_bias
-            state_dict[AUXI_WEIGHT_KEY] = auxi_weight
-            state_dict[AUXI_BIAS_KEY] = auxi_bias
+        # CLSS_WEIGHT_KEY = 'predict.clss_predict.weight'
+        # CLSS_BIAS_KEY = 'predict.clss_predict.bias'
+        # AUXI_WEIGHT_KEY = 'auxi_clf.1.weight'
+        # AUXI_BIAS_KEY = 'auxi_clf.1.bias'
+        #
+        # clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
+        # clss_bias = state_dict.pop(CLSS_BIAS_KEY)
+        # auxi_weight = state_dict.pop(AUXI_WEIGHT_KEY)
+        # auxi_bias = state_dict.pop(AUXI_BIAS_KEY)
+        #
+        # predict_dim = self.predict.clss_predict.bias.shape[0]
+        # if clss_bias.shape[0] == predict_dim:
+        #     state_dict[CLSS_WEIGHT_KEY] = clss_weight
+        #     state_dict[CLSS_BIAS_KEY] = clss_bias
+        #     state_dict[AUXI_WEIGHT_KEY] = auxi_weight
+        #     state_dict[AUXI_BIAS_KEY] = auxi_bias
         super().load_state_dict(state_dict, strict, assign)
 
     def detect(

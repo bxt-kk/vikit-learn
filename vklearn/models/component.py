@@ -366,7 +366,7 @@ class MobileNetFeatures(nn.Module):
                 if pretrained else None,
             ).features
 
-            f0_dim = 16
+            # f0_dim = 16
             fd_dim = 24
             fm_dim = 48
             fu_dim = 96
@@ -382,7 +382,7 @@ class MobileNetFeatures(nn.Module):
                 if pretrained else None,
             ).features
 
-            f0_dim = 24
+            # f0_dim = 24
             fd_dim = 40
             fm_dim = 112
             fu_dim = 160
@@ -399,7 +399,7 @@ class MobileNetFeatures(nn.Module):
             features = mobilenet_v3_large().features
             features.load_state_dict(weights_state)
 
-            f0_dim = 24
+            # f0_dim = 24
             fd_dim = 40
             fm_dim = 112
             fu_dim = 160
@@ -415,7 +415,7 @@ class MobileNetFeatures(nn.Module):
                 if pretrained else None,
             ).features
 
-            f0_dim = 24
+            # f0_dim = 24
             fd_dim = 32
             fm_dim = 96
             fu_dim = 160
@@ -432,40 +432,40 @@ class MobileNetFeatures(nn.Module):
 
         self.cell_size = 16
 
-        self.features_dc = nn.Sequential(
-            ConvNormActive(f0_dim, fd_dim, kernel_size=1),
-            ConvNormActive(fd_dim, fd_dim, stride=2, groups=fd_dim),
-            nn.Conv2d(fd_dim, fd_dim, kernel_size=1))
-
-        self.features_mc = nn.Sequential(
-            ConvNormActive(fd_dim, fm_dim, kernel_size=1),
-            ConvNormActive(fm_dim, fm_dim, stride=2, groups=fm_dim),
-            nn.Conv2d(fm_dim, fm_dim, kernel_size=1))
-
-        for m in (self.features_dc, self.features_mc):
-            m[-1].weight.data.fill_(0)
-            m[-1].bias.data.fill_(0)
-
-        self.finetune(mode='full')
-
-    def finetune(self, mode:str='full'):
-        if mode == 'full':
-            flag = True
-        elif mode == 'lora':
-            flag = False
-        else:
-            raise ValueError(f'Unsupported finetune mode `{mode}`!')
-
-        for p in self.parameters():
-            p.requires_grad = flag
-        for m in (self.features_dc, self.features_mc):
-            for p in m.parameters():
-                p.requires_grad = not flag
+    #     self.features_dc = nn.Sequential(
+    #         ConvNormActive(f0_dim, fd_dim, kernel_size=1),
+    #         ConvNormActive(fd_dim, fd_dim, stride=2, groups=fd_dim),
+    #         nn.Conv2d(fd_dim, fd_dim, kernel_size=1))
+    #
+    #     self.features_mc = nn.Sequential(
+    #         ConvNormActive(fd_dim, fm_dim, kernel_size=1),
+    #         ConvNormActive(fm_dim, fm_dim, stride=2, groups=fm_dim),
+    #         nn.Conv2d(fm_dim, fm_dim, kernel_size=1))
+    #
+    #     for m in (self.features_dc, self.features_mc):
+    #         m[-1].weight.data.fill_(0)
+    #         m[-1].bias.data.fill_(0)
+    #
+    #     self.finetune(mode='full')
+    #
+    # def finetune(self, mode:str='full'):
+    #     if mode == 'full':
+    #         flag = True
+    #     elif mode == 'lora':
+    #         flag = False
+    #     else:
+    #         raise ValueError(f'Unsupported finetune mode `{mode}`!')
+    #
+    #     for p in self.parameters():
+    #         p.requires_grad = flag
+    #     for m in (self.features_dc, self.features_mc):
+    #         for p in m.parameters():
+    #             p.requires_grad = not flag
 
     def forward(self, x:Tensor) -> Tensor:
         f0 = self.features_0(x)
-        fd = self.features_d(f0) + self.features_dc(f0)
-        fm = self.features_m(fd) + self.features_mc(fd)
+        fd = self.features_d(f0) # + self.features_dc(f0)
+        fm = self.features_m(fd) # + self.features_mc(fd)
         fu = self.features_u(fm)
 
         return torch.cat([
@@ -490,8 +490,8 @@ class DinoFeatures(nn.Module):
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
 
-    def finetune(self, mode:str='full'):
-        assert not 'this is an empty function'
+    # def finetune(self, mode:str='full'):
+    #     assert not 'this is an empty function'
 
     def forward(self, x:Tensor) -> Tensor:
         dr, dc = x.shape[2] // self.cell_size, x.shape[3] // self.cell_size
