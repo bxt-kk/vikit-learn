@@ -163,16 +163,18 @@ class TrimNetX(Basic):
 
         # self.merge = ConvNormActive(
         #     self.features_dim, self.merged_dim, 1, activation=None)
-        self.merge = CSENet(self.features_dim, self.merged_dim)
+        # self.merge = CSENet(self.features_dim, self.merged_dim)
 
         self.project = ConvNormActive(
             self.merged_dim, self.merged_dim, 1, activation=None)
 
         self.trim_units = nn.ModuleList()
         for t in range(num_scans):
-            in_planes = self.merged_dim
+            # in_planes = self.merged_dim
+            in_planes = self.features_dim
             if t > 0:
-                in_planes = 2 * self.merged_dim
+                # in_planes = 2 * self.merged_dim
+                in_planes = self.features_dim + self.merged_dim
             sigma = (math.cos((t + 1) / num_scans * math.pi) + 1) / 4
             self.trim_units.append(TrimUnit2(
                 in_planes,
@@ -189,7 +191,8 @@ class TrimNetX(Basic):
             with torch.no_grad():
                 f = self.features(x)
 
-        m = self.merge(f)
+        # m = self.merge(f)
+        m = f
         h = self.trim_units[0](m)
         ht = [h]
         times = len(self.trim_units)
