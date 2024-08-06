@@ -3,7 +3,7 @@ from typing import List, Any, Dict, Tuple, Mapping
 from torch import Tensor
 from torchvision.ops import (
     # generalized_box_iou_loss,
-    complete_box_iou_loss
+    complete_box_iou_loss,
     boxes as box_ops,
     roi_align,
 )
