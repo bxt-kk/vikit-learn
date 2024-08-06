@@ -44,7 +44,7 @@ class Detector(Basic):
 
         self.register_buffer(
             'regions', torch.tensor([[2**k for k in range(5)]]))
-        self.bbox_dim    = (self.regions.shape[1] + 1) * 4
+        self.bbox_dim    = (self.regions.shape[1] + 1) * 4 - 2
         self.anchors     = anchors
         self.num_anchors = len(anchors)
         self.cell_size   = 16
@@ -63,20 +63,30 @@ class Detector(Basic):
             fmt:       str='xyxy',
         ) -> Tensor:
 
-        paddings = []
-        for i in range(4):
-            ptr = i * 6
-            paddings.append((
+        offsets = []
+        for i in range(2):
+            ptr = i * 5
+            offsets.append((
+                torch.tanh(inputs[:, ptr]) *
+                (inputs[:, ptr + 1:ptr + 5].softmax(dim=-1) * self.regions[..., :5]).sum(dim=-1)
+            ) * self.region_scale)
+        for i in range(2):
+            ptr = i * 6 + 10
+            offsets.append((
                 torch.tanh(inputs[:, ptr]) +
                 (inputs[:, ptr + 1:ptr + 6].softmax(dim=-1) * self.regions).sum(dim=-1)
             ) * self.region_scale)
-        x0 = (col_index.type_as(inputs) + 0.5) * self.cell_size
-        y0 = (row_index.type_as(inputs) + 0.5) * self.cell_size
+        ox = (col_index.type_as(inputs) + 0.5) * self.cell_size
+        oy = (row_index.type_as(inputs) + 0.5) * self.cell_size
+        ltx = ox + offsets[0] - offsets[2]
+        lty = oy + offsets[1] - offsets[3]
+        rbx = ox + offsets[0] + offsets[2]
+        rby = oy + offsets[1] + offsets[3]
         bboxes = torch.cat([
-            (x0 - paddings[0]).unsqueeze(-1),
-            (y0 - paddings[1]).unsqueeze(-1),
-            (x0 + paddings[2]).unsqueeze(-1),
-            (y0 + paddings[3]).unsqueeze(-1),
+            ltx.unsqueeze(-1),
+            lty.unsqueeze(-1),
+            rbx.unsqueeze(-1),
+            rby.unsqueeze(-1),
         ], dim=-1)
         return box_convert(bboxes, 'xyxy', fmt)
 
