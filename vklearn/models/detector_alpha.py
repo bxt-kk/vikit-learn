@@ -68,7 +68,7 @@ class Detector(Basic):
             ptr = i * 5
             offsets.append((
                 torch.tanh(inputs[:, ptr]) *
-                (inputs[:, ptr + 1:ptr + 5].softmax(dim=-1) * self.regions[..., :5]).sum(dim=-1)
+                (inputs[:, ptr + 1:ptr + 5].softmax(dim=-1) * self.regions[..., :4]).sum(dim=-1)
             ) * self.region_scale)
         for i in range(2):
             ptr = i * 6 + 10
