@@ -220,6 +220,30 @@ class TrimNetDet(Detector):
             ))
         return result
 
+    def _random_offset_index(
+            self,
+            index: List[Tensor],
+            xyxys: Tensor,
+            scale: float=0.2,
+        ) -> List[Tensor]:
+
+        cr_w = (xyxys[:, 2] - xyxys[:, 0]) * scale
+        cr_x = (
+            (xyxys[:, 2] + xyxys[:, 0]) * 0.5 +
+            cr_w * torch.randn_like(cr_w)
+        )
+        cr_x = torch.clamp(cr_x, xyxys[:, 0], xyxys[:, 2])
+        row_index = (cr_x / self.cell_size).type(torch.int64)
+
+        cr_h = (xyxys[:, 3] - xyxys[:, 1]) * scale
+        cr_y = (
+            (xyxys[:, 3] + xyxys[:, 1]) * 0.5 + 
+            cr_h * torch.randn_like(cr_h)
+        )
+        cr_y = torch.clamp(cr_y, xyxys[:, 1], xyxys[:, 3])
+        col_index = (cr_y / self.cell_size).type(torch.int64)
+        return [index[0], index[1], row_index, col_index]
+
     def calc_loss(
             self,
             inputs:        Tuple[Tensor, Tensor],
@@ -244,13 +268,18 @@ class TrimNetDet(Detector):
         targ_conf = torch.zeros_like(pred_conf)
         targ_conf[target_index] = 1.
 
-        objects = inputs_ps[target_index]
+        # Lab code <<<
+        offset_index = self._random_offset_index(target_index, target_bboxes)
+        # >>>
+        # objects = inputs_ps[target_index]
+        objects = inputs_ps[offset_index]
 
         bbox_loss = torch.zeros_like(conf_loss)
         clss_loss = torch.zeros_like(conf_loss)
         if objects.shape[0] > 0:
             pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
+            # pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
+            pred_xyxy = self.pred2boxes(pred_cxcywh, offset_index[2], offset_index[3])
             bbox_loss = generalized_box_iou_loss(
                 pred_xyxy, target_bboxes, reduction=reduction)
 
