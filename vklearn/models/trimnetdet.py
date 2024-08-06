@@ -69,8 +69,10 @@ class TrimNetDet(Detector):
             nn.Linear(features_dim, self.num_classes),
         )
 
-        self.alphas = nn.Parameter(
-            torch.full((num_scans, ), fill_value=0.1))
+        obj_dim = self.bbox_dim + self.num_classes
+        self.alphas = nn.Parameter(torch.full(
+            (1, self.num_anchors, 1, 1, obj_dim, num_scans),
+            fill_value=0.1))
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
@@ -97,8 +99,8 @@ class TrimNetDet(Detector):
         preds = [predict(h) for predict, h in zip(self.predicts, hs)]
         confs = [preds[0][..., :1]]
         # objvs = preds[0][..., 1:]
-        alphas = torch.softmax(self.alphas, dim=0)
-        objvs = preds[0][..., 1:] * alphas[0]
+        alphas = torch.softmax(self.alphas, dim=-1)
+        objvs = preds[0][..., 1:] * alphas[..., 0]
         times = len(preds)
         for t in range(1, times):
             c_t = preds[t][..., :1]
@@ -106,7 +108,7 @@ class TrimNetDet(Detector):
             confs.append(c_t * a_1 + confs[-1] * (1 - a_1))
             # a_2 = torch.sigmoid(c_t)
             # objvs = preds[t][..., 1:] * a_2 + objvs * (1 - a_2)
-            objvs = objvs + preds[t][..., 1:] * alphas[t]
+            objvs = objvs + preds[t][..., 1:] * alphas[..., t]
         return torch.cat(confs + [objvs], dim=-1), m
 
     @classmethod
