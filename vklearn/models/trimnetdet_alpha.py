@@ -3,7 +3,8 @@ from typing import List, Any, Dict, Tuple, Mapping
 from torch import Tensor
 from torchvision.ops import (
     # generalized_box_iou_loss,
-    complete_box_iou_loss,
+    # complete_box_iou_loss,
+    distance_box_iou_loss,
     boxes as box_ops,
     roi_align,
 )
@@ -284,7 +285,8 @@ class TrimNetDet(Detector):
             # pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
             pred_xyxy = self.pred2boxes(pred_cxcywh, offset_index[2], offset_index[3])
             # bbox_loss = generalized_box_iou_loss(
-            bbox_loss = complete_box_iou_loss(
+            # bbox_loss = complete_box_iou_loss(
+            bbox_loss = distance_box_iou_loss(
                 pred_xyxy, target_bboxes, reduction=reduction)
 
             pred_clss = objects[:, num_confs + self.bbox_dim:]
