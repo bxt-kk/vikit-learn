@@ -224,7 +224,7 @@ class TrimNetDet(Detector):
             self,
             index: List[Tensor],
             xyxys: Tensor,
-            scale: float=0.1,
+            scale: float=0.2,
         ) -> List[Tensor]:
 
         if index[0].shape[0] == 0: return index
