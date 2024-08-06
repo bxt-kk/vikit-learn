@@ -235,7 +235,7 @@ class TrimNetDet(Detector):
             cr_w * torch.randn_like(cr_w)
         )
         cr_x = torch.clamp(cr_x, xyxys[:, 0], xyxys[:, 2])
-        row_index = (cr_x / self.cell_size).type(torch.int64)
+        col_index = (cr_x / self.cell_size).type(torch.int64)
 
         cr_h = (xyxys[:, 3] - xyxys[:, 1]) * scale
         cr_y = (
@@ -243,7 +243,7 @@ class TrimNetDet(Detector):
             cr_h * torch.randn_like(cr_h)
         )
         cr_y = torch.clamp(cr_y, xyxys[:, 1], xyxys[:, 3])
-        col_index = (cr_y / self.cell_size).type(torch.int64)
+        row_index = (cr_y / self.cell_size).type(torch.int64)
         return [index[0], index[1], row_index, col_index]
 
     def calc_loss(
