@@ -72,7 +72,7 @@ class TrimNetDet(Detector):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
+    def forward_old(self, x:Tensor) -> Tuple[Tensor, Tensor]:
         hs, m = self.trimnetx(x)
         n, _, rs, cs = hs[0].shape
 
@@ -86,6 +86,22 @@ class TrimNetDet(Detector):
             ps.append(p[..., :1])
         ps.append(p[..., 1:])
         return torch.cat(ps, dim=-1), m
+
+    def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
+        hs, m = self.trimnetx(x)
+        n, _, rs, cs = hs[0].shape
+
+        preds = [predict(h) for predict, h in zip(self.predicts, hs)]
+        confs = [preds[0][..., :1]]
+        objvs = preds[0][..., 1:]
+        times = len(preds)
+        for t in range(1, times):
+            c_t = preds[t][..., :1]
+            a_1 = torch.sigmoid(confs[-1])
+            confs.append(c_t * a_1 + confs[-1] * (1 - a_1))
+            a_2 = torch.sigmoid(c_t)
+            objvs = preds[t][..., 1:] * a_2 + objvs * (1 - a_2)
+        return torch.cat(confs + [objvs], dim=-1), m
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':

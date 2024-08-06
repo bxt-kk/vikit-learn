@@ -84,8 +84,8 @@ class TrimUnit2(nn.Module):
             self.denses.append(ConvNormActive(out_planes, dense_dim, 1))
         modules = []
         modules.append(ConvNormActive(dense_dim * scan_range, out_planes, 1))
-        if dropout_p > 0:
-            modules.append(nn.Dropout(dropout_p))
+        # if dropout_p > 0:
+        #     modules.append(nn.Dropout(dropout_p))
         self.merge = nn.Sequential(*modules)
 
     # def train(self, mode:bool=True):
