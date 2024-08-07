@@ -410,7 +410,7 @@ class TrimNetDet(Detector):
             #         obj_conf_min = torch.zeros_like(proposals)
             # Lab code <<<
             conf_min = obj_conf[:, -1].min()
-            recall_min = obj_conf[:, :max(1, num_confs - 1)]
+            recall_min = obj_conf[:, :max(1, num_confs - 1)].min()
             # >>>
 
         return dict(
