@@ -226,23 +226,23 @@ class TrimNetDet(Detector):
             self,
             index: List[Tensor],
             xyxys: Tensor,
-            scale: float=0.1,
+            scale: float=0.5,
         ) -> List[Tensor]:
 
         if index[0].shape[0] == 0: return index
 
-        cr_w = (xyxys[:, 2] - xyxys[:, 0]) * scale
+        cr_w = (xyxys[:, 2] - xyxys[:, 0])
         cr_x = (
             (xyxys[:, 2] + xyxys[:, 0]) * 0.5 +
-            cr_w * torch.randn_like(cr_w)
+            cr_w * (torch.rand_like(cr_w) - 0.5) * scale
         )
         cr_x = torch.clamp(cr_x, xyxys[:, 0], xyxys[:, 2])
         col_index = (cr_x / self.cell_size).type(torch.int64)
 
-        cr_h = (xyxys[:, 3] - xyxys[:, 1]) * scale
+        cr_h = (xyxys[:, 3] - xyxys[:, 1])
         cr_y = (
             (xyxys[:, 3] + xyxys[:, 1]) * 0.5 + 
-            cr_h * torch.randn_like(cr_h)
+            cr_h * (torch.rand_like(cr_h) - 0.5) * scale
         )
         cr_y = torch.clamp(cr_y, xyxys[:, 1], xyxys[:, 3])
         row_index = (cr_y / self.cell_size).type(torch.int64)
