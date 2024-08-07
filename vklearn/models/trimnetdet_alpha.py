@@ -474,7 +474,7 @@ class TrimNetDet(Detector):
             center_regions], dim=-1)
         average_clss = roi_align(clss_map, batch_regions, 1, spatial_scale=1 / self.cell_size)
         pred_labels_2stage = torch.argmax(average_clss.flatten(start_dim=1), dim=-1)
-        mask_2stage = (center_regions[: 2:] - center_regions[:, :2]).max(dim=-1).values > self.cell_size
+        mask_2stage = (center_regions[:, 2:] - center_regions[:, :2]).max(dim=-1).values > self.cell_size
         pred_labels[mask_2stage] = pred_labels_2stage[mask_2stage]
         # >>>
 
