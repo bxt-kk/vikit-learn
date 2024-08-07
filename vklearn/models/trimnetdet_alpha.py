@@ -229,6 +229,7 @@ class TrimNetDet(Detector):
             scale: float=0.33,
         ) -> List[Tensor]:
 
+        if not self.training: return index
         if index[0].shape[0] == 0: return index
 
         cr_w = (xyxys[:, 2] - xyxys[:, 0])
