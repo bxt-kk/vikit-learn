@@ -374,7 +374,9 @@ class TrimNetDet(Detector):
 
         iou_score = torch.ones_like(conf_f1)
         clss_accuracy = torch.ones_like(conf_f1)
-        obj_conf_min = torch.zeros_like(conf_f1)
+        # obj_conf_min = torch.zeros_like(conf_f1)
+        conf_min = torch.zeros_like(conf_f1)
+        recall_min = torch.zeros_like(conf_f1)
         if objects.shape[0] > 0:
             pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
             pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
@@ -395,17 +397,21 @@ class TrimNetDet(Detector):
             clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
 
             obj_conf = torch.sigmoid(objects[:, :num_confs])
-            if num_confs == 1:
-                obj_conf_min = obj_conf[:, 0].min()
-            else:
-                sample_mask = obj_conf[:, 0] > conf_thresh
-                for conf_id in range(1, num_confs - 1):
-                    sample_mask = torch.logical_and(
-                        sample_mask, obj_conf[:, conf_id] > conf_thresh)
-                if sample_mask.sum() > 0:
-                    obj_conf_min = torch.masked_select(obj_conf[:, -1], sample_mask).min()
-                else:
-                    obj_conf_min = torch.zeros_like(proposals)
+            # if num_confs == 1:
+            #     obj_conf_min = obj_conf[:, 0].min()
+            # else:
+            #     sample_mask = obj_conf[:, 0] > conf_thresh
+            #     for conf_id in range(1, num_confs - 1):
+            #         sample_mask = torch.logical_and(
+            #             sample_mask, obj_conf[:, conf_id] > conf_thresh)
+            #     if sample_mask.sum() > 0:
+            #         obj_conf_min = torch.masked_select(obj_conf[:, -1], sample_mask).min()
+            #     else:
+            #         obj_conf_min = torch.zeros_like(proposals)
+            # Lab code <<<
+            conf_min = obj_conf[:, -1].min()
+            recall_min = obj_conf[:, :max(1, num_confs - 1)]
+            # >>>
 
         return dict(
             conf_precision=conf_precision,
@@ -414,7 +420,9 @@ class TrimNetDet(Detector):
             iou_score=iou_score,
             clss_accuracy=clss_accuracy,
             proposals=proposals,
-            obj_conf_min=obj_conf_min,
+            # obj_conf_min=obj_conf_min,
+            conf_min=conf_min,
+            recall_min=recall_min,
         )
 
     def _calc_center_regions(
