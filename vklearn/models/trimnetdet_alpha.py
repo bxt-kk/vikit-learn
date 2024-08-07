@@ -417,6 +417,23 @@ class TrimNetDet(Detector):
             obj_conf_min=obj_conf_min,
         )
 
+    def _calc_center_regions(
+            self,
+            boxes: Tensor,
+            scale: float=0.33,
+        ) -> Tensor:
+
+        pw = (boxes[:, 2] - boxes[:, 0]) * 0.5 * scale
+        ph = (boxes[:, 3] - boxes[:, 1]) * 0.5 * scale
+        cx = (boxes[:, 0] + boxes[:, 2]) * 0.5
+        cy = (boxes[:, 1] + boxes[:, 3]) * 0.5
+        regions = torch.zeros_like(boxes)
+        regions[:, 0] = cx - pw
+        regions[:, 1] = cy - ph
+        regions[:, 2] = cx + pw
+        regions[:, 3] = cy + ph
+        return regions
+
     def update_metric(
             self,
             inputs:        Tuple[Tensor, Tensor],
@@ -438,18 +455,24 @@ class TrimNetDet(Detector):
 
         objects = inputs_ps[preds_index]
 
-        # <<< Lab code.
-        # pred_scores = torch.sigmoid(objects[:, num_confs - 1])
-        # pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-        # pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index), 0.)
-        # pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
-
         pred_confs = torch.sigmoid(objects[:, num_confs - 1])
         pred_probs = torch.max(torch.softmax(objects[:, num_confs + self.bbox_dim:], dim=-1), dim=-1).values
         pred_scores = pred_confs * pred_probs
         pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-        pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index[2], preds_index[3]), 0.)
+        # pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index[2], preds_index[3]), 0.)
+        # pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
+        # Lab code <<<
+        pred_bboxes = torch.clamp(
+                self.pred2boxes(pred_cxcywh, preds_index[2], preds_index[3]),
+                0.,
+                self.cell_size * (inputs_ps.shape[2] + 1))
         pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
+        clss_map = inputs_ps[preds_index[0], preds_index[1]][..., num_confs + self.bbox_dim:]
+        center_regions = self._calc_center_regions(pred_bboxes)
+        average_clss = roi_align(clss_map, center_regions, 1, spatial_scale=1 / self.cell_size)
+        pred_labels_2stage = torch.argmax(average_clss.flatten(start_dim=1), dim=-1)
+        mask_2stage = (center_regions[: 2:] - center_regions[:, :2]).max(dim=-1).values > self.cell_size
+        pred_labels[mask_2stage] = pred_labels_2stage[mask_2stage]
         # >>>
 
         preds = []
