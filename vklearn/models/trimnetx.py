@@ -8,6 +8,7 @@ import torch.nn as nn
 
 from .component import ConvNormActive, ConvNormActiveRes, CSENet
 from .component import MobileNetFeatures, DinoFeatures
+from .component import CBANet
 from .basic import Basic
 
 
@@ -70,7 +71,8 @@ class TrimUnit2(nn.Module):
         dense_dim = out_planes // scan_range
 
         self.dropout = nn.Dropout2d(dropout_p) # Lab code
-        self.csenet = CSENet(in_planes, out_planes)
+        # self.csenet = CSENet(in_planes, out_planes)
+        self.csenet = CBANet(in_planes, out_planes)
         self.convs = nn.ModuleList()
         self.denses = nn.ModuleList()
         for r in range(scan_range):
