@@ -4,7 +4,7 @@ from typing import Callable
 from dataclasses import dataclass
 import math
 
-from torch.optim import Optimizer, Adam
+from torch.optim import Optimizer, Adam, AdamW
 from torch.optim.lr_scheduler import LambdaLR
 
 import torch
@@ -23,12 +23,12 @@ class Trainer:
 
     valid_loader:      DataLoader=None
     test_loader:       DataLoader=None
-    checkpoint:        str=None
+    checkpoint:        str | None=None
     drop_optim:        bool=False
     drop_lr_scheduler: bool=False
     optim_method:      Callable[..., Optimizer]=Adam
     lr:                float=1e-3
-    weight_decay:      float=0.
+    weight_decay:      float | None=None
     lrf:               float=1.
     T_num:             float=1.
     grad_steps:        int=1
@@ -54,6 +54,11 @@ class Trainer:
         print('device:', self.device)
 
         self.model:nn.Module = self.task.model.to(self.device)
+
+        if self.weight_decay is None:
+            self.weight_decay = 0.
+            if self.optim_method is AdamW:
+                self.weight_decay = 0.01
 
         self.optimizer:Optimizer = self.optim_method(
             self.model.parameters(),
