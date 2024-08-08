@@ -18,7 +18,7 @@ class LayerNorm2d(nn.GroupNorm):
         super().__init__(1, num_channels)
 
 
-DEFAULT_NORM_LAYER = LayerNorm2d # nn.BatchNorm2d
+DEFAULT_NORM_LAYER = nn.BatchNorm2d # LayerNorm2d
 DEFAULT_ACTIVATION = nn.Hardswish
 DEFAULT_SIGMOID    = nn.Hardsigmoid
 
