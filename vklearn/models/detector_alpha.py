@@ -233,6 +233,10 @@ class Detector(Basic):
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                ]),
                 v2.RandomCrop(
                     size=(448, 448),
                     pad_if_needed=True,
