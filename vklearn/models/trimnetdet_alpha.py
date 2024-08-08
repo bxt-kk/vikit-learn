@@ -253,14 +253,15 @@ class TrimNetDet(Detector):
 
     def calc_loss(
             self,
-            inputs:        Tuple[Tensor, Tensor],
-            target_index:  List[Tensor],
-            target_labels: Tensor,
-            target_bboxes: Tensor,
-            weights:       Dict[str, float] | None=None,
-            alpha:         float=0.25,
-            gamma:         float=2.,
-            clss_gamma:    float=2.,
+            inputs:          Tuple[Tensor, Tensor],
+            target_index:    List[Tensor],
+            target_labels:   Tensor,
+            target_bboxes:   Tensor,
+            weights:         Dict[str, float] | None=None,
+            alpha:           float=0.25,
+            gamma:           float=2.,
+            clss_gamma:      float=2.,
+            label_smoothing: float=0.,
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
@@ -300,7 +301,11 @@ class TrimNetDet(Detector):
 
             clss_loss = (
                 pred_alpha *
-                F.cross_entropy(pred_clss, target_labels, reduction='none')
+                F.cross_entropy(
+                    pred_clss,
+                    target_labels,
+                    label_smoothing=label_smoothing,
+                    reduction='none')
             ).mean()
 
         weights = weights or dict()
@@ -335,7 +340,11 @@ class TrimNetDet(Detector):
 
         auxi_loss = (
             auxi_alpha *
-            F.cross_entropy(auxi_pred, target_labels, reduction='none')
+            F.cross_entropy(
+                auxi_pred,
+                target_labels,
+                label_smoothing=label_smoothing,
+                reduction='none')
         ).mean()
 
         losses['loss'] = loss + auxi_loss * auxi_weight
