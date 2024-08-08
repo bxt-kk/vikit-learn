@@ -207,10 +207,10 @@ class ChannelAttention(nn.Module):
         shrink_dim = in_planes // shrink_factor
         self.dense = nn.Sequential(
             nn.Conv2d(in_planes, shrink_dim, 1),
-            DEFAULT_ACTIVATION(inplace=True),
+            DEFAULT_ACTIVATION(inplace=False),
             nn.Conv2d(shrink_dim, in_planes, 1),
         )
-        self.sigmoid = DEFAULT_SIGMOID(inplace=True)
+        self.sigmoid = DEFAULT_SIGMOID(inplace=False)
 
     def forward(self, x:Tensor) -> Tensor:
         fa = self.dense(F.adaptive_avg_pool2d(x, 1))
