@@ -72,7 +72,7 @@ class TrimUnit2(nn.Module):
 
         self.dropout = nn.Dropout2d(dropout_p) # Lab code
         # self.csenet = CSENet(in_planes, out_planes)
-        self.csenet = CBANet(in_planes, out_planes)
+        self.cbanet = CBANet(in_planes, out_planes)
         self.convs = nn.ModuleList()
         self.denses = nn.ModuleList()
         for r in range(scan_range):
@@ -89,7 +89,7 @@ class TrimUnit2(nn.Module):
 
     def forward(self, x:Tensor) -> Tensor:
         x = self.dropout(x) # Lab code
-        x = self.csenet(x)
+        x = self.cbanet(x)
         ds = []
         for conv, dense in zip(self.convs, self.denses):
             x = x + conv(x)
@@ -177,6 +177,7 @@ class TrimNetX(Basic):
                 head_dim=16,
                 scan_range=scan_range,
                 # dropout_p=sigma,
+                dropout_p=0.1,
             ))
 
     def forward(self, x:Tensor) -> Tuple[List[Tensor], Tensor]:
