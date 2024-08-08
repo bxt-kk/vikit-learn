@@ -1,5 +1,5 @@
 from typing import List, Mapping, Any, Dict, Tuple
-import math
+# import math
 
 from torch import Tensor
 
@@ -69,6 +69,7 @@ class TrimUnit2(nn.Module):
         groups = out_planes // head_dim
         dense_dim = out_planes // scan_range
 
+        self.dropout = nn.Dropout2d(dropout_p) # Lab code
         self.csenet = CSENet(in_planes, out_planes)
         self.convs = nn.ModuleList()
         self.denses = nn.ModuleList()
@@ -82,18 +83,10 @@ class TrimUnit2(nn.Module):
                 activation=None,
             ))
             self.denses.append(ConvNormActive(out_planes, dense_dim, 1))
-        modules = []
-        modules.append(ConvNormActive(dense_dim * scan_range, out_planes, 1))
-        # if dropout_p > 0:
-        #     modules.append(nn.Dropout(dropout_p))
-        self.merge = nn.Sequential(*modules)
-
-    # def train(self, mode:bool=True):
-    #     super().train(mode)
-    #     if isinstance(self.blocks[-1], nn.Dropout):
-    #         self.blocks[-1].train()
+        self.merge = ConvNormActive(dense_dim * scan_range, out_planes, 1)
 
     def forward(self, x:Tensor) -> Tensor:
+        x = self.dropout(x) # Lab code
         x = self.csenet(x)
         ds = []
         for conv, dense in zip(self.convs, self.denses):
@@ -175,13 +168,13 @@ class TrimNetX(Basic):
             if t > 0:
                 # in_planes = 2 * self.merged_dim
                 in_planes = self.features_dim + self.merged_dim
-            sigma = (math.cos((t + 1) / num_scans * math.pi) + 1) / 4
+            # sigma = (math.cos((t + 1) / num_scans * math.pi) + 1) / 4
             self.trim_units.append(TrimUnit2(
                 in_planes,
                 self.merged_dim,
                 head_dim=16,
                 scan_range=scan_range,
-                dropout_p=sigma,
+                # dropout_p=sigma,
             ))
 
     def forward(self, x:Tensor) -> Tuple[List[Tensor], Tensor]:
