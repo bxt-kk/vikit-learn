@@ -194,6 +194,73 @@ class CSENet(nn.Module):
         return self.project(x * self.fusion(x))
 
 
+class ChannelAttention(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            shrink_factor: int=4,
+        ):
+
+        super().__init__()
+
+        shrink_dim = in_planes // shrink_factor
+        self.dense = nn.Sequential(
+            nn.Conv2d(in_planes, shrink_dim, 1),
+            DEFAULT_ACTIVATION(inplace=True),
+            nn.Conv2d(shrink_dim, in_planes, 1),
+        )
+        self.sigmoid = DEFAULT_SIGMOID(inplace=True)
+
+    def forward(self, x:Tensor) -> Tensor:
+        fa = self.dense(F.adaptive_avg_pool2d(x, 1))
+        fm = self.dense(F.adaptive_max_pool2d(x, 1))
+        return self.sigmoid(fa + fm) * x
+
+
+class SpatialAttention(nn.Module):
+
+    def __init__(
+            self,
+            kernel_size: int=7,
+        ):
+
+        super().__init__()
+
+        self.dense = ConvNormActive(
+            2, 1, kernel_size, norm_layer=None, activation=DEFAULT_SIGMOID)
+
+    def forward(self, x:Tensor) -> Tensor:
+        f = torch.cat([
+            x.mean(dim=1, keepdim=True),
+            x.max(dim=1, keepdim=True).values,
+        ], dim=1)
+        return self.dense(f) * x
+
+
+class CBANet(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            out_planes:    int,
+            kernel_size:   int=7,
+            shrink_factor: int=4,
+        ):
+
+        super().__init__()
+
+        self.channel_attention = ChannelAttention(in_planes, shrink_factor)
+        self.spatial_attention = SpatialAttention(kernel_size)
+        self.project = ConvNormActive(
+            in_planes, out_planes, 1, activation=None)
+
+    def forward(self, x:Tensor) -> Tensor:
+        x = self.channel_attention(x)
+        x = self.spatial_attention(x)
+        return self.project(x)
+
+
 class DetPredictor(nn.Module):
 
     def __init__(
