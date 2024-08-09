@@ -166,6 +166,32 @@ class UpSample(nn.Sequential):
         )
 
 
+class PoolWithPosCode(nn.Module):
+
+    def __init__(self, stride:int):
+        super().__init__()
+
+        self.stride = stride
+
+    def forward(self, x:Tensor) -> Tensor:
+        in_planes = x.shape[1]
+
+        l = (x * x).sum(dim=1, keepdim=True)
+        u = F.pixel_unshuffle(l, self.stride)
+        I = u.max(dim=1, keepdim=True).indices
+        cr = (I // self.stride).type_as(x) / (self.stride - 1)
+        cc = (I % self.stride).type_as(x) / (self.stride - 1)
+
+        x = F.pixel_unshuffle(x, self.stride)
+        x = x.transpose(1, 3).reshape(-1, in_planes, self.stride**2)
+        J = I.transpose(1, 3).flatten(0, -1)
+        x = x[range(len(J)), ..., J]
+
+        bs, _, ny, nx = u.shape
+        x = x.reshape(bs, nx, ny, in_planes).transpose(1, 3)
+        return torch.cat([cr, cc, x], dim=1)
+
+
 class CSENet(nn.Module):
 
     def __init__(
