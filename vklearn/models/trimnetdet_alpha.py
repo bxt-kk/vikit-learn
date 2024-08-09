@@ -283,6 +283,9 @@ class TrimNetDet(Detector):
         # objects = inputs_ps[target_index]
         objects = inputs_ps[offset_index]
 
+        if label_weight is not None:
+            label_weight = label_weight.type_as(inputs_ps)
+
         bbox_loss = torch.zeros_like(conf_loss)
         clss_loss = torch.zeros_like(conf_loss)
         if objects.shape[0] > 0:
@@ -330,25 +333,28 @@ class TrimNetDet(Detector):
         auxi_weight = weights.get('auxi', 0)
         if auxi_weight == 0:
             return losses
-        bboxes = torch.cat([
-            target_index[0].unsqueeze(-1).type_as(target_bboxes),
-            target_bboxes], dim=-1)
-        aligned = roi_align(
-            inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
-        auxi_pred = self.auxi_clf(aligned.flatten(start_dim=1))
 
-        auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
-        auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
+        auxi_loss = torch.zeros_like(conf_loss)
+        if objects.shape[0] > 0:
+            bboxes = torch.cat([
+                target_index[0].unsqueeze(-1).type_as(target_bboxes),
+                target_bboxes], dim=-1)
+            aligned = roi_align(
+                inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
+            auxi_pred = self.auxi_clf(aligned.flatten(start_dim=1))
 
-        auxi_loss = (
-            auxi_alpha *
-            F.cross_entropy(
-                auxi_pred,
-                target_labels,
-                label_smoothing=label_smoothing,
-                weight=label_weight,
-                reduction='none')
-        ).mean()
+            auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
+            auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
+
+            auxi_loss = (
+                auxi_alpha *
+                F.cross_entropy(
+                    auxi_pred,
+                    target_labels,
+                    label_smoothing=label_smoothing,
+                    weight=label_weight,
+                    reduction='none')
+            ).mean()
 
         losses['loss'] = loss + auxi_loss * auxi_weight
         losses['auxi_loss'] = auxi_loss
