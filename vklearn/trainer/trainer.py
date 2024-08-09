@@ -4,7 +4,7 @@ from typing import Callable
 from dataclasses import dataclass
 import math
 
-from torch.optim import Optimizer, Adam, AdamW
+from torch.optim import Optimizer, AdamW
 from torch.optim.lr_scheduler import LambdaLR
 
 import torch
@@ -26,7 +26,7 @@ class Trainer:
     checkpoint:        str | None=None
     drop_optim:        bool=False
     drop_lr_scheduler: bool=False
-    optim_method:      Callable[..., Optimizer]=Adam
+    optim_method:      Callable[..., Optimizer]=AdamW
     lr:                float=1e-3
     weight_decay:      float | None=None
     lrf:               float=1.
