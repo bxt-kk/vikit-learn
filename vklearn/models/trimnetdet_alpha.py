@@ -261,7 +261,8 @@ class TrimNetDet(Detector):
             alpha:           float=0.25,
             gamma:           float=2.,
             clss_gamma:      float=2.,
-            label_smoothing: float=0.,
+            label_smoothing: float=0.1,
+            label_weight:    Tensor | None=None,
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
@@ -305,6 +306,7 @@ class TrimNetDet(Detector):
                     pred_clss,
                     target_labels,
                     label_smoothing=label_smoothing,
+                    weight=label_weight,
                     reduction='none')
             ).mean()
 
@@ -344,6 +346,7 @@ class TrimNetDet(Detector):
                 auxi_pred,
                 target_labels,
                 label_smoothing=label_smoothing,
+                weight=label_weight,
                 reduction='none')
         ).mean()
 
