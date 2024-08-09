@@ -126,7 +126,9 @@ class CocoDetection(VisionDataset):
             label_id = self.classes.index(name)
             proportional = count / total
             weight[label_id] = proportional
-        return weight**gamma
+        weight = weight**gamma
+        weight /= weight.mean()
+        return weight
 
     def _drop_topk(self, ids:List[int], k:int) -> List[int]:
         if k == 0: return ids
