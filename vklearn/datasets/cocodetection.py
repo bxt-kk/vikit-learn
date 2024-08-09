@@ -5,6 +5,7 @@ from collections import Counter
 
 from PIL import Image
 
+from torch import Tensor
 import torch
 from torchvision.datasets.vision import VisionDataset
 from torchvision import tv_tensors
@@ -107,6 +108,25 @@ class CocoDetection(VisionDataset):
 
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
+
+    def calc_balance_weight(self, gamma:float=0.5) -> Tensor:
+        weight = torch.zeros(len(self.classes))
+        counter = Counter()
+        print('count categories...')
+        for _id in tqdm(self.ids, ncols=80):
+            anns = self._load_anns(_id)
+            for ann in anns:
+                category_id = ann['category_id']
+                classname = self.coid2class[category_id]
+                counter[classname] += 1
+        names_desc = [name for name, _ in counter.most_common()]
+        count_asc = [count for _, count in counter.most_common()][::-1]
+        total = counter.total()
+        for name, count in zip(names_desc, count_asc):
+            label_id = self.classes.index(name)
+            proportional = count / total
+            weight[label_id] = proportional
+        return weight**gamma
 
     def _drop_topk(self, ids:List[int], k:int) -> List[int]:
         if k == 0: return ids
