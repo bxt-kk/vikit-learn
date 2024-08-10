@@ -160,8 +160,11 @@ class TrimNetX(Basic):
         #     self.features_dim, self.merged_dim, 1, activation=None)
         # self.merge = CSENet(self.features_dim, self.merged_dim)
 
-        self.project = ConvNormActive(
-            self.merged_dim, self.merged_dim, 1, activation=None)
+        # self.project = ConvNormActive(
+        #     self.merged_dim, self.merged_dim, 1, activation=None)
+        self.projects = nn.ModuleList([
+            ConvNormActive(self.merged_dim, self.merged_dim, 1, activation=None)
+            for _ in range(num_scans - 1)])
 
         self.trim_units = nn.ModuleList()
         for t in range(num_scans):
@@ -193,7 +196,8 @@ class TrimNetX(Basic):
         ht = [h]
         times = len(self.trim_units)
         for t in range(1, times):
-            e = self.project(h)
+            # e = self.project(h)
+            e = self.projects[t - 1](h)
             h = self.trim_units[t](torch.cat([m, e], dim=1))
             ht.append(h)
         return ht, m
