@@ -262,12 +262,13 @@ class SpatialAttention(nn.Module):
         super().__init__()
 
         self.dense = ConvNormActive(
-            2, 1, kernel_size, norm_layer=None, activation=DEFAULT_SIGMOID)
+            3, 1, kernel_size, norm_layer=None, activation=DEFAULT_SIGMOID)
 
     def forward(self, x:Tensor) -> Tensor:
         f = torch.cat([
             x.mean(dim=1, keepdim=True),
             x.max(dim=1, keepdim=True).values,
+            x.min(dim=1, keepdim=True).values,
         ], dim=1)
         return self.dense(f) * x
 
