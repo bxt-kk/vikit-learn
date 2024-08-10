@@ -179,8 +179,10 @@ class PoolWithPosCode(nn.Module):
         l = (x * x).sum(dim=1, keepdim=True)
         u = F.pixel_unshuffle(l, self.stride)
         I = u.argmax(dim=1, keepdim=True)
-        cr = (I // self.stride).type_as(x) / (self.stride - 1)
-        cc = (I % self.stride).type_as(x) / (self.stride - 1)
+        # cr = (I // self.stride).type_as(x) / (self.stride - 1)
+        # cc = (I % self.stride).type_as(x) / (self.stride - 1)
+        cr = (I // self.stride).type_as(x) / (0.5 * (self.stride - 1)) - 1
+        cc = (I % self.stride).type_as(x) / (0.5 * (self.stride - 1)) - 1
 
         # x = F.pixel_unshuffle(x, self.stride)
         # x = x.transpose(1, 3).reshape(-1, in_planes, self.stride**2)
