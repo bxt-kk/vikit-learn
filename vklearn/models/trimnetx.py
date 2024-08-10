@@ -61,7 +61,7 @@ class TrimUnit2(nn.Module):
             out_planes: int,
             head_dim:   int,
             scan_range: int=4,
-            dropout_p:  float=0.,
+            # dropout_p:  float=0.,
         ):
 
         super().__init__()
@@ -70,7 +70,7 @@ class TrimUnit2(nn.Module):
         groups = out_planes // head_dim
         dense_dim = out_planes // scan_range
 
-        self.dropout = nn.Dropout2d(dropout_p) # Lab code
+        # self.dropout = nn.Dropout2d(dropout_p) # Lab code
         # self.csenet = CSENet(in_planes, out_planes)
         self.cbanet = CBANet(in_planes, out_planes)
         self.convs = nn.ModuleList()
@@ -88,7 +88,7 @@ class TrimUnit2(nn.Module):
         self.merge = ConvNormActive(dense_dim * scan_range, out_planes, 1)
 
     def forward(self, x:Tensor) -> Tensor:
-        x = self.dropout(x) # Lab code
+        # x = self.dropout(x) # Lab code
         x = self.cbanet(x)
         ds = []
         for conv, dense in zip(self.convs, self.denses):
@@ -177,7 +177,7 @@ class TrimNetX(Basic):
                 head_dim=16,
                 scan_range=scan_range,
                 # dropout_p=sigma,
-                dropout_p=0.1,
+                # dropout_p=0.1,
             ))
 
     def forward(self, x:Tensor) -> Tuple[List[Tensor], Tensor]:
