@@ -256,18 +256,21 @@ class SpatialAttention(nn.Module):
 
     def __init__(
             self,
+            in_planes:   int,
             kernel_size: int=7,
         ):
 
         super().__init__()
 
+        self.fc = ConvNormActive(in_planes, 1, 1, norm_layer=None)
         self.dense = ConvNormActive(
             2, 1, kernel_size, norm_layer=None, activation=DEFAULT_SIGMOID)
 
     def forward(self, x:Tensor) -> Tensor:
         f = torch.cat([
             x.mean(dim=1, keepdim=True),
-            x.abs().max(dim=1, keepdim=True).values,
+            # x.abs().max(dim=1, keepdim=True).values,
+            self.fc(x),
         ], dim=1)
         return self.dense(f) * x
 
@@ -285,7 +288,7 @@ class CBANet(nn.Module):
         super().__init__()
 
         self.channel_attention = ChannelAttention(in_planes, shrink_factor)
-        self.spatial_attention = SpatialAttention(kernel_size)
+        self.spatial_attention = SpatialAttention(in_planes, kernel_size)
         self.project = ConvNormActive(
             in_planes, out_planes, 1, activation=None)
 
