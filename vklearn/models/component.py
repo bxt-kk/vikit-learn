@@ -228,7 +228,7 @@ class CSENet(nn.Module):
         return self.project(x * self.fusion(x))
 
 
-class ChannelAttention(nn.Module):
+class ChannelAttention_(nn.Module):
 
     def __init__(
             self,
@@ -250,6 +250,29 @@ class ChannelAttention(nn.Module):
         fa = self.dense(F.adaptive_avg_pool2d(x, 1))
         fm = self.dense(F.adaptive_max_pool2d(x, 1))
         return self.sigmoid(fa + fm) * x
+
+
+class ChannelAttention(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:     int,
+            shrink_factor: int=4,
+        ):
+
+        super().__init__()
+
+        shrink_dim = in_planes // shrink_factor
+        self.dense = nn.Sequential(
+            nn.Conv2d(in_planes, shrink_dim, 1),
+            DEFAULT_ACTIVATION(inplace=False),
+            nn.Conv2d(shrink_dim, in_planes, 1),
+            DEFAULT_SIGMOID(inplace=False),
+        )
+
+    def forward(self, x:Tensor) -> Tensor:
+        f = F.adaptive_avg_pool2d(x, 1)
+        return self.dense(f) * x
 
 
 class SpatialAttention(nn.Module):
