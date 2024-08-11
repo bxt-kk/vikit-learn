@@ -102,6 +102,9 @@ class Segment(Basic):
                     size=447,
                     max_size=448,
                     antialias=True),
+                v2.Pad(
+                    padding=448 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(448),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
@@ -139,6 +142,9 @@ class Segment(Basic):
                     size=383,
                     max_size=384,
                     antialias=True),
+                v2.Pad(
+                    padding=384 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(384),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
@@ -176,6 +182,9 @@ class Segment(Basic):
                     size=511,
                     max_size=512,
                     antialias=True),
+                v2.Pad(
+                    padding=512 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(512),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
@@ -213,6 +222,9 @@ class Segment(Basic):
                     size=639,
                     max_size=640,
                     antialias=True),
+                v2.Pad(
+                    padding=640 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(640),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
