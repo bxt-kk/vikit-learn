@@ -4,6 +4,7 @@ from torch import Tensor
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from torchvision.ops.misc import SqueezeExcitation
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
@@ -184,14 +185,6 @@ class PoolWithPosCode(nn.Module):
         cr = (I // self.stride).type_as(x) / (0.5 * (self.stride - 1)) - 1
         cc = (I % self.stride).type_as(x) / (0.5 * (self.stride - 1)) - 1
 
-        # x = F.pixel_unshuffle(x, self.stride)
-        # x = x.transpose(1, 3).reshape(-1, in_planes, self.stride**2)
-        # J = I.transpose(1, 3).flatten(0, -1)
-        # x = x[range(len(J)), ..., J]
-        #
-        # bs, _, ny, nx = u.shape
-        # x = x.reshape(bs, nx, ny, in_planes).transpose(1, 3)
-        # return torch.cat([cr, cc, x], dim=1)
         bs, _, ny, nx = u.shape
         x = F.pixel_unshuffle(x, self.stride)
         x = x.reshape(bs, in_planes, -1, ny, nx)
@@ -226,30 +219,6 @@ class CSENet(nn.Module):
 
     def forward(self, x:Tensor) -> Tensor:
         return self.project(x * self.fusion(x))
-
-
-# class ChannelAttention(nn.Module):
-#
-#     def __init__(
-#             self,
-#             in_planes:     int,
-#             shrink_factor: int=4,
-#         ):
-#
-#         super().__init__()
-#
-#         shrink_dim = in_planes // shrink_factor
-#         self.dense = nn.Sequential(
-#             nn.Conv2d(in_planes, shrink_dim, 1),
-#             DEFAULT_ACTIVATION(inplace=False),
-#             nn.Conv2d(shrink_dim, in_planes, 1),
-#         )
-#         self.sigmoid = DEFAULT_SIGMOID(inplace=False)
-#
-#     def forward(self, x:Tensor) -> Tensor:
-#         fa = self.dense(F.adaptive_avg_pool2d(x, 1))
-#         fm = self.dense(F.adaptive_max_pool2d(x, 1))
-#         return self.sigmoid(fa + fm) * x
 
 
 class ChannelAttention(nn.Module):
@@ -292,7 +261,6 @@ class SpatialAttention(nn.Module):
     def forward(self, x:Tensor) -> Tensor:
         f = torch.cat([
             x.mean(dim=1, keepdim=True),
-            # x.abs().max(dim=1, keepdim=True).values,
             self.fc(x),
         ], dim=1)
         return self.dense(f) * x
@@ -416,87 +384,6 @@ class SegPredictor(nn.Module):
             p = F.interpolate(p, scale_factor=2, mode='bilinear')
         x = p + self.projects[-1](x)
         return self.classifier(self.norm_layer(x))
-
-
-# class MobileNetFeatures_(nn.Module):
-#
-#     def __init__(self, arch:str, pretrained:bool):
-#
-#         super().__init__()
-#
-#         if arch == 'mobilenet_v3_small':
-#             features = mobilenet_v3_small(
-#                 weights=MobileNet_V3_Small_Weights.DEFAULT
-#                 if pretrained else None,
-#             ).features
-#
-#             fd_dim = 24
-#             fm_dim = 48
-#             fu_dim = 96
-#
-#             self.features_d = features[:3] # 24, 64, 64
-#             self.features_m = features[3:8] # 48, 32, 32
-#             self.features_u = features[8:-1] # 96, 16, 16
-#
-#         elif arch == 'mobilenet_v3_large':
-#             features = mobilenet_v3_large(
-#                 weights=MobileNet_V3_Large_Weights.DEFAULT
-#                 if pretrained else None,
-#             ).features
-#
-#             fd_dim = 40
-#             fm_dim = 112
-#             fu_dim = 160
-#
-#             self.features_d = features[:5] # 40, 64, 64
-#             self.features_m = features[5:12] # 112, 32, 32
-#             self.features_u = features[12:-1] # 160, 16, 16
-#
-#         elif arch == 'mobilenet_v3_larges':
-#             weights_state = deeplabv3_mobilenet_v3_large(
-#                 weights=DeepLabV3_MobileNet_V3_Large_Weights.DEFAULT,
-#             ).backbone.state_dict()
-#             features = mobilenet_v3_large().features
-#             features.load_state_dict(weights_state)
-#
-#             fd_dim = 40
-#             fm_dim = 112
-#             fu_dim = 160
-#
-#             self.features_d = features[:5] # 40, 64, 64
-#             self.features_m = features[5:12] # 112, 32, 32
-#             self.features_u = features[12:-1] # 160, 16, 16
-#
-#         elif arch == 'mobilenet_v2':
-#             features = mobilenet_v2(
-#                 weights=MobileNet_V2_Weights.DEFAULT
-#                 if pretrained else None,
-#             ).features
-#
-#             fd_dim = 32
-#             fm_dim = 96
-#             fu_dim = 160
-#
-#             self.features_d = features[:5] # 32, 64, 64
-#             self.features_m = features[5:12] # 96, 32, 32
-#             self.features_u = features[12:-2] # 160, 16, 16
-#
-#         else:
-#             raise ValueError(f'Unsupported arch `{arch}`')
-#
-#         self.features_dim = fd_dim + fm_dim + fu_dim
-#         self.cell_size    = 16
-#
-#     def forward(self, x:Tensor) -> Tensor:
-#         fd = self.features_d(x)
-#         fm = self.features_m(fd)
-#         fu = self.features_u(fm)
-#
-#         return torch.cat([
-#             F.max_pool2d(fd, kernel_size=3, stride=2, padding=1),
-#             fm,
-#             F.interpolate(fu, scale_factor=2, mode='nearest'),
-#         ], dim=1)
 
 
 class MobileNetFeatures(nn.Module):
