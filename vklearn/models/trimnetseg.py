@@ -4,13 +4,15 @@ import math
 from torch import Tensor
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from PIL import Image
 
 from .segment import Segment
 from .trimnetx import TrimNetX
-from .component import SegPredictor
+# from .component import SegPredictor
+from .component import UpSample, ConvNormActive
 
 
 class TrimNetSeg(Segment):
@@ -40,22 +42,62 @@ class TrimNetSeg(Segment):
         merged_dim = self.trimnetx.merged_dim
 
         # self.predict = SegPredictor(merged_dim, self.num_classes, upscale_factor=16)
-        self.predict = SegPredictor(
-            merged_dim, self.num_classes, num_layers=4)
+        # self.predict = SegPredictor(
+        #     merged_dim, self.num_classes, num_layers=4)
+
+        embeded_dim = int((self.num_classes + 2)**0.5)
+        self.decoder = nn.Conv2d(embeded_dim, self.num_classes, 1)
+        self.upsamples = nn.ModuleDict()
+        self.predicts = nn.ModuleList()
+        for t in range(num_scans):
+            in_planes = merged_dim
+            out_planes = max(in_planes // 2, embeded_dim)
+            if t > 0:
+                self.upsamples[f'{t}'] = nn.Sequential(
+                    UpSample(in_planes),
+                    ConvNormActive(in_planes, out_planes, 1),
+                )
+            for k in range(t - 1):
+                in_planes = out_planes + embeded_dim
+                out_planes = max(out_planes // 2, embeded_dim)
+                self.upsamples[f'{t}_{k}'] = nn.Sequential(
+                    UpSample(in_planes),
+                    ConvNormActive(in_planes, out_planes, 1),
+                )
+            if t > 0:
+                in_planes = out_planes + embeded_dim
+                out_planes = max(out_planes // 2, embeded_dim)
+            self.predicts.append(nn.Sequential(
+                UpSample(in_planes),
+                ConvNormActive(in_planes, out_planes, 1),
+                ConvNormActive(out_planes, out_planes, groups=out_planes),
+                ConvNormActive(out_planes, embeded_dim, kernel_size=1),
+            ))
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tensor:
         hs, _ = self.trimnetx(x)
-        p = self.predict(hs[0])
-        ps = [p]
+        pt = self.predicts[0](hs[0])
+        ps = [pt]
         times = len(hs)
         for t in range(1, times):
-            a = torch.sigmoid(p)
-            p = self.predict(hs[t]) * a + p * (1 - a)
-            ps.append(p)
-        return torch.cat([p[..., None] for p in ps], dim=-1)
+            u = self.upsamples[f'{t}'](hs[t])
+            for k in range(t - 1):
+                u = self.upsamples[f'{t}_{k}'](torch.cat([
+                    u, ps[k]], dim=1))
+            pt = (
+                self.predicts[t](torch.cat([u, pt], dim=1)) +
+                F.interpolate(pt, scale_factor=2, mode='nearest')
+            )
+            ps.append(pt)
+        ps = [self.decoder(p) for p in ps]
+        for t in range(times):
+            scale_factor = 2**(3 - t)
+            if scale_factor <= 1: break
+            ps[t] = F.interpolate(ps[t], scale_factor=scale_factor, mode='bilinear')
+        return torch.cat([p[..., None] for p in ps], dim=-1) # , hs[0]
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetSeg':
@@ -131,7 +173,6 @@ class TrimNetSeg(Segment):
 
         loss = 0.
         for t in range(times):
-
             sigma = F_sigma(t)
             grand_sigma += sigma
             bce = F.binary_cross_entropy_with_logits(
