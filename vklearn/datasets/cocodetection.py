@@ -109,7 +109,7 @@ class CocoDetection(VisionDataset):
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
 
-    def calc_balance_weight(self, gamma:float=0.5) -> Tensor:
+    def calc_balance_weight(self, gamma:float=0.2) -> Tensor:
         weight = torch.zeros(len(self.classes))
         counter = Counter()
         print('count categories...')
