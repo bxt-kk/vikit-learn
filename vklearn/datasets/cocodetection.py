@@ -109,7 +109,7 @@ class CocoDetection(VisionDataset):
     def __len__(self) -> int:
         return min(self.max_datas_size, len(self.ids))
 
-    def calc_balance_weight(self, gamma:float=0.2) -> Tensor:
+    def calc_balance_weight(self, gamma:float=0.1) -> Tensor:
         weight = torch.zeros(len(self.classes))
         counter = Counter()
         print('count categories...')
@@ -119,13 +119,9 @@ class CocoDetection(VisionDataset):
                 category_id = ann['category_id']
                 classname = self.coid2class[category_id]
                 counter[classname] += 1
-        names_desc = [name for name, _ in counter.most_common()]
-        count_asc = [count for _, count in counter.most_common()][::-1]
-        total = counter.total()
-        for name, count in zip(names_desc, count_asc):
+        for name, count in counter.items():
             label_id = self.classes.index(name)
-            proportional = count / total
-            weight[label_id] = proportional
+            weight[label_id] = 1 / count
         weight = weight**gamma
         weight /= weight.mean()
         return weight
