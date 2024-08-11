@@ -43,8 +43,8 @@ class Detector(Basic):
             anchors, dtype=torch.float32).reshape(3, -1, 2)
 
         self.register_buffer(
-            'regions', torch.tensor([[2**k for k in range(6)]]))
-        self.bbox_dim    = 2 + (self.regions.shape[1] + 1) * 2
+            'regions', torch.tensor([[2**k for k in range(5)]]))
+        self.bbox_dim    = (self.regions.shape[1] + 1) * 4 - 2
         self.anchors     = anchors
         self.num_anchors = len(anchors)
         self.cell_size   = 16
@@ -57,34 +57,38 @@ class Detector(Basic):
 
     def pred2boxes(
             self,
-            cxcywh: Tensor,
-            index:  List[Tensor],
-            fmt:    str='xyxy',
+            inputs:    Tensor,
+            row_index: Tensor,
+            col_index: Tensor,
+            fmt:       str='xyxy',
         ) -> Tensor:
 
-        boxes_x = (
-            torch.tanh(cxcywh[:, 0]) + 0.5 +
-            index[3].type_as(cxcywh)
-        ) * self.cell_size
-        boxes_y = (
-            torch.tanh(cxcywh[:, 1]) + 0.5 +
-            index[2].type_as(cxcywh)
-        ) * self.cell_size
-        boxes_w = (
-            torch.tanh(cxcywh[:, 2 + 0]) +
-            (cxcywh[:, 2 + 1:2 + 7].softmax(dim=-1) * self.regions).sum(dim=-1)
-        ) * self.region_scale
-        boxes_h = (
-            torch.tanh(cxcywh[:, 2 + 7]) +
-            (cxcywh[:, 2 + 8:2 + 14].softmax(dim=-1) * self.regions).sum(dim=-1)
-        ) * self.region_scale
+        offsets = []
+        for i in range(2):
+            ptr = i * 5
+            offsets.append((
+                torch.tanh(inputs[:, ptr]) *
+                (inputs[:, ptr + 1:ptr + 5].softmax(dim=-1) * self.regions[..., :4]).sum(dim=-1)
+            ) * self.region_scale)
+        for i in range(2):
+            ptr = i * 6 + 10
+            offsets.append((
+                torch.tanh(inputs[:, ptr]) +
+                (inputs[:, ptr + 1:ptr + 6].softmax(dim=-1) * self.regions).sum(dim=-1)
+            ) * self.region_scale)
+        ox = (col_index.type_as(inputs) + 0.5) * self.cell_size
+        oy = (row_index.type_as(inputs) + 0.5) * self.cell_size
+        ltx = ox + offsets[0] - offsets[2]
+        lty = oy + offsets[1] - offsets[3]
+        rbx = ox + offsets[0] + offsets[2]
+        rby = oy + offsets[1] + offsets[3]
         bboxes = torch.cat([
-            boxes_x.unsqueeze(-1),
-            boxes_y.unsqueeze(-1),
-            boxes_w.unsqueeze(-1),
-            boxes_h.unsqueeze(-1),
-            ], dim=-1)
-        return box_convert(bboxes, 'cxcywh', fmt)
+            ltx.unsqueeze(-1),
+            lty.unsqueeze(-1),
+            rbx.unsqueeze(-1),
+            rby.unsqueeze(-1),
+        ], dim=-1)
+        return box_convert(bboxes, 'xyxy', fmt)
 
     def detect(
             self,
@@ -151,11 +155,11 @@ class Detector(Basic):
 
     def _select_row(self, boxes:Tensor, height:int) -> Tensor:
         cy = (boxes[:, 1] + boxes[:, 3]) * 0.5
-        cell_size = self.cell_size
-        noise = torch.rand_like(cy) * cell_size - cell_size / 2
-        hs = boxes[:, 3] - boxes[:, 1]
-        noise[hs < 2 * cell_size] = 0.
-        cy = cy + noise 
+        # cell_size = self.cell_size
+        # noise = torch.rand_like(cy) * cell_size - cell_size / 2
+        # hs = boxes[:, 3] - boxes[:, 1]
+        # noise[hs < 2 * cell_size] = 0.
+        # cy = cy + noise 
         cell_row = (cy / self.cell_size).type(torch.int64)
         min_row = 0
         max_row = height // self.cell_size - 1
@@ -164,11 +168,11 @@ class Detector(Basic):
 
     def _select_column(self, boxes:Tensor, width:int) -> Tensor:
         cx = (boxes[:, 0] + boxes[:, 2]) * 0.5
-        cell_size = self.cell_size
-        noise = torch.rand_like(cx) * cell_size - cell_size / 2
-        ws = boxes[:, 2] - boxes[:, 0]
-        noise[ws < 2 * cell_size] = 0.
-        cx = cx + noise
+        # cell_size = self.cell_size
+        # noise = torch.rand_like(cx) * cell_size - cell_size / 2
+        # ws = boxes[:, 2] - boxes[:, 0]
+        # noise[ws < 2 * cell_size] = 0.
+        # cx = cx + noise
         cell_col = (cx / self.cell_size).type(torch.int64)
         min_col = 0
         max_col = width // self.cell_size - 1
@@ -229,6 +233,11 @@ class Detector(Basic):
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
                 v2.RandomCrop(
                     size=(448, 448),
                     pad_if_needed=True,
@@ -267,6 +276,11 @@ class Detector(Basic):
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
                 v2.RandomCrop(
                     size=(384, 384),
                     pad_if_needed=True,
@@ -305,6 +319,11 @@ class Detector(Basic):
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
                 v2.RandomCrop(
                     size=(512, 512),
                     pad_if_needed=True,
@@ -343,6 +362,11 @@ class Detector(Basic):
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
                 v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
                 v2.RandomCrop(
                     size=(640, 640),
                     pad_if_needed=True,

@@ -418,85 +418,85 @@ class SegPredictor(nn.Module):
         return self.classifier(self.norm_layer(x))
 
 
-class MobileNetFeatures_(nn.Module):
-
-    def __init__(self, arch:str, pretrained:bool):
-
-        super().__init__()
-
-        if arch == 'mobilenet_v3_small':
-            features = mobilenet_v3_small(
-                weights=MobileNet_V3_Small_Weights.DEFAULT
-                if pretrained else None,
-            ).features
-
-            fd_dim = 24
-            fm_dim = 48
-            fu_dim = 96
-
-            self.features_d = features[:3] # 24, 64, 64
-            self.features_m = features[3:8] # 48, 32, 32
-            self.features_u = features[8:-1] # 96, 16, 16
-
-        elif arch == 'mobilenet_v3_large':
-            features = mobilenet_v3_large(
-                weights=MobileNet_V3_Large_Weights.DEFAULT
-                if pretrained else None,
-            ).features
-
-            fd_dim = 40
-            fm_dim = 112
-            fu_dim = 160
-
-            self.features_d = features[:5] # 40, 64, 64
-            self.features_m = features[5:12] # 112, 32, 32
-            self.features_u = features[12:-1] # 160, 16, 16
-
-        elif arch == 'mobilenet_v3_larges':
-            weights_state = deeplabv3_mobilenet_v3_large(
-                weights=DeepLabV3_MobileNet_V3_Large_Weights.DEFAULT,
-            ).backbone.state_dict()
-            features = mobilenet_v3_large().features
-            features.load_state_dict(weights_state)
-
-            fd_dim = 40
-            fm_dim = 112
-            fu_dim = 160
-
-            self.features_d = features[:5] # 40, 64, 64
-            self.features_m = features[5:12] # 112, 32, 32
-            self.features_u = features[12:-1] # 160, 16, 16
-
-        elif arch == 'mobilenet_v2':
-            features = mobilenet_v2(
-                weights=MobileNet_V2_Weights.DEFAULT
-                if pretrained else None,
-            ).features
-
-            fd_dim = 32
-            fm_dim = 96
-            fu_dim = 160
-
-            self.features_d = features[:5] # 32, 64, 64
-            self.features_m = features[5:12] # 96, 32, 32
-            self.features_u = features[12:-2] # 160, 16, 16
-
-        else:
-            raise ValueError(f'Unsupported arch `{arch}`')
-
-        self.features_dim = fd_dim + fm_dim + fu_dim
-        self.cell_size    = 16
-
-    def forward(self, x:Tensor) -> Tensor:
-        fd = self.features_d(x)
-        fm = self.features_m(fd)
-        fu = self.features_u(fm)
-
-        return torch.cat([
-            F.max_pool2d(fd, kernel_size=3, stride=2, padding=1),
-            fm,
-            F.interpolate(fu, scale_factor=2, mode='nearest'),
-        ], dim=1)
+# class MobileNetFeatures_(nn.Module):
+#
+#     def __init__(self, arch:str, pretrained:bool):
+#
+#         super().__init__()
+#
+#         if arch == 'mobilenet_v3_small':
+#             features = mobilenet_v3_small(
+#                 weights=MobileNet_V3_Small_Weights.DEFAULT
+#                 if pretrained else None,
+#             ).features
+#
+#             fd_dim = 24
+#             fm_dim = 48
+#             fu_dim = 96
+#
+#             self.features_d = features[:3] # 24, 64, 64
+#             self.features_m = features[3:8] # 48, 32, 32
+#             self.features_u = features[8:-1] # 96, 16, 16
+#
+#         elif arch == 'mobilenet_v3_large':
+#             features = mobilenet_v3_large(
+#                 weights=MobileNet_V3_Large_Weights.DEFAULT
+#                 if pretrained else None,
+#             ).features
+#
+#             fd_dim = 40
+#             fm_dim = 112
+#             fu_dim = 160
+#
+#             self.features_d = features[:5] # 40, 64, 64
+#             self.features_m = features[5:12] # 112, 32, 32
+#             self.features_u = features[12:-1] # 160, 16, 16
+#
+#         elif arch == 'mobilenet_v3_larges':
+#             weights_state = deeplabv3_mobilenet_v3_large(
+#                 weights=DeepLabV3_MobileNet_V3_Large_Weights.DEFAULT,
+#             ).backbone.state_dict()
+#             features = mobilenet_v3_large().features
+#             features.load_state_dict(weights_state)
+#
+#             fd_dim = 40
+#             fm_dim = 112
+#             fu_dim = 160
+#
+#             self.features_d = features[:5] # 40, 64, 64
+#             self.features_m = features[5:12] # 112, 32, 32
+#             self.features_u = features[12:-1] # 160, 16, 16
+#
+#         elif arch == 'mobilenet_v2':
+#             features = mobilenet_v2(
+#                 weights=MobileNet_V2_Weights.DEFAULT
+#                 if pretrained else None,
+#             ).features
+#
+#             fd_dim = 32
+#             fm_dim = 96
+#             fu_dim = 160
+#
+#             self.features_d = features[:5] # 32, 64, 64
+#             self.features_m = features[5:12] # 96, 32, 32
+#             self.features_u = features[12:-2] # 160, 16, 16
+#
+#         else:
+#             raise ValueError(f'Unsupported arch `{arch}`')
+#
+#         self.features_dim = fd_dim + fm_dim + fu_dim
+#         self.cell_size    = 16
+#
+#     def forward(self, x:Tensor) -> Tensor:
+#         fd = self.features_d(x)
+#         fm = self.features_m(fd)
+#         fu = self.features_u(fm)
+#
+#         return torch.cat([
+#             F.max_pool2d(fd, kernel_size=3, stride=2, padding=1),
+#             fm,
+#             F.interpolate(fu, scale_factor=2, mode='nearest'),
+#         ], dim=1)
 
 
 class MobileNetFeatures(nn.Module):

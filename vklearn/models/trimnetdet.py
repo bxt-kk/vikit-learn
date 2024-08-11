@@ -2,7 +2,9 @@ from typing import List, Any, Dict, Tuple, Mapping
 
 from torch import Tensor
 from torchvision.ops import (
-    generalized_box_iou_loss,
+    # generalized_box_iou_loss,
+    # complete_box_iou_loss,
+    distance_box_iou_loss,
     boxes as box_ops,
     roi_align,
 )
@@ -193,7 +195,7 @@ class TrimNetDet(Detector):
         objs = pred_objs[index[0], index[1], index[2], index[3]]
 
         raw_w, raw_h = image.size
-        boxes = self.pred2boxes(objs[:, :self.bbox_dim], index)
+        boxes = self.pred2boxes(objs[:, :self.bbox_dim], index[2], index[3])
         boxes[:, 0] = torch.clamp((boxes[:, 0] - pad_x) / scale, 0, raw_w - 1)
         boxes[:, 1] = torch.clamp((boxes[:, 1] - pad_y) / scale, 0, raw_h - 1)
         boxes[:, 2] = torch.clamp((boxes[:, 2] - pad_x) / scale, 1, raw_w)
@@ -220,16 +222,47 @@ class TrimNetDet(Detector):
             ))
         return result
 
+    def _random_offset_index(
+            self,
+            index: List[Tensor],
+            xyxys: Tensor,
+            scale: float=0.5,
+        ) -> List[Tensor]:
+
+        if not self.training: return index
+        if index[0].shape[0] == 0: return index
+
+        cr_w = (xyxys[:, 2] - xyxys[:, 0])
+        cr_x = (
+            (xyxys[:, 2] + xyxys[:, 0]) * 0.5 +
+            # cr_w * (torch.rand_like(cr_w) - 0.5) * scale
+            cr_w * scale * torch.clamp(torch.randn_like(cr_w) * 0.25, -0.5, 0.5)
+        )
+        cr_x = torch.clamp(cr_x, xyxys[:, 0], xyxys[:, 2])
+        col_index = (cr_x / self.cell_size).type(torch.int64)
+
+        cr_h = (xyxys[:, 3] - xyxys[:, 1])
+        cr_y = (
+            (xyxys[:, 3] + xyxys[:, 1]) * 0.5 + 
+            # cr_h * (torch.rand_like(cr_h) - 0.5) * scale
+            cr_h * scale * torch.clamp(torch.randn_like(cr_h) * 0.25, -0.5, 0.5)
+        )
+        cr_y = torch.clamp(cr_y, xyxys[:, 1], xyxys[:, 3])
+        row_index = (cr_y / self.cell_size).type(torch.int64)
+        return [index[0], index[1], row_index, col_index]
+
     def calc_loss(
             self,
-            inputs:        Tuple[Tensor, Tensor],
-            target_index:  List[Tensor],
-            target_labels: Tensor,
-            target_bboxes: Tensor,
-            weights:       Dict[str, float] | None=None,
-            alpha:         float=0.25,
-            gamma:         float=2.,
-            clss_gamma:    float=2.,
+            inputs:          Tuple[Tensor, Tensor],
+            target_index:    List[Tensor],
+            target_labels:   Tensor,
+            target_bboxes:   Tensor,
+            weights:         Dict[str, float] | None=None,
+            alpha:           float=0.25,
+            gamma:           float=2.,
+            clss_gamma:      float=2.,
+            label_smoothing: float=0.1,
+            label_weight:    Tensor | None=None,
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
@@ -244,14 +277,24 @@ class TrimNetDet(Detector):
         targ_conf = torch.zeros_like(pred_conf)
         targ_conf[target_index] = 1.
 
-        objects = inputs_ps[target_index]
+        # Lab code <<<
+        offset_index = self._random_offset_index(target_index, target_bboxes)
+        # >>>
+        # objects = inputs_ps[target_index]
+        objects = inputs_ps[offset_index]
+
+        if label_weight is not None:
+            label_weight = label_weight.type_as(inputs_ps)
 
         bbox_loss = torch.zeros_like(conf_loss)
         clss_loss = torch.zeros_like(conf_loss)
         if objects.shape[0] > 0:
             pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index)
-            bbox_loss = generalized_box_iou_loss(
+            # pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
+            pred_xyxy = self.pred2boxes(pred_cxcywh, offset_index[2], offset_index[3])
+            # bbox_loss = generalized_box_iou_loss(
+            # bbox_loss = complete_box_iou_loss(
+            bbox_loss = distance_box_iou_loss(
                 pred_xyxy, target_bboxes, reduction=reduction)
 
             pred_clss = objects[:, num_confs + self.bbox_dim:]
@@ -262,7 +305,12 @@ class TrimNetDet(Detector):
 
             clss_loss = (
                 pred_alpha *
-                F.cross_entropy(pred_clss, target_labels, reduction='none')
+                F.cross_entropy(
+                    pred_clss,
+                    target_labels,
+                    label_smoothing=label_smoothing,
+                    weight=label_weight,
+                    reduction='none')
             ).mean()
 
         weights = weights or dict()
@@ -285,20 +333,28 @@ class TrimNetDet(Detector):
         auxi_weight = weights.get('auxi', 0)
         if auxi_weight == 0:
             return losses
-        bboxes = torch.cat([
-            target_index[0].unsqueeze(-1).type_as(target_bboxes),
-            target_bboxes], dim=-1)
-        aligned = roi_align(
-            inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
-        auxi_pred = self.auxi_clf(aligned.flatten(start_dim=1))
 
-        auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
-        auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
+        auxi_loss = torch.zeros_like(conf_loss)
+        if objects.shape[0] > 0:
+            bboxes = torch.cat([
+                target_index[0].unsqueeze(-1).type_as(target_bboxes),
+                target_bboxes], dim=-1)
+            aligned = roi_align(
+                inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
+            auxi_pred = self.auxi_clf(aligned.flatten(start_dim=1))
 
-        auxi_loss = (
-            auxi_alpha *
-            F.cross_entropy(auxi_pred, target_labels, reduction='none')
-        ).mean()
+            auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
+            auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
+
+            auxi_loss = (
+                auxi_alpha *
+                F.cross_entropy(
+                    auxi_pred,
+                    target_labels,
+                    label_smoothing=label_smoothing,
+                    weight=label_weight,
+                    reduction='none')
+            ).mean()
 
         losses['loss'] = loss + auxi_loss * auxi_weight
         losses['auxi_loss'] = auxi_loss
@@ -336,10 +392,12 @@ class TrimNetDet(Detector):
 
         iou_score = torch.ones_like(conf_f1)
         clss_accuracy = torch.ones_like(conf_f1)
-        obj_conf_min = torch.zeros_like(conf_f1)
+        # obj_conf_min = torch.zeros_like(conf_f1)
+        conf_min = torch.zeros_like(conf_f1)
+        recall_min = torch.zeros_like(conf_f1)
         if objects.shape[0] > 0:
             pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index)
+            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
             targ_xyxy = target_bboxes
 
             max_x1y1 = torch.maximum(pred_xyxy[:, :2], targ_xyxy[:, :2])
@@ -357,17 +415,21 @@ class TrimNetDet(Detector):
             clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
 
             obj_conf = torch.sigmoid(objects[:, :num_confs])
-            if num_confs == 1:
-                obj_conf_min = obj_conf[:, 0].min()
-            else:
-                sample_mask = obj_conf[:, 0] > conf_thresh
-                for conf_id in range(1, num_confs - 1):
-                    sample_mask = torch.logical_and(
-                        sample_mask, obj_conf[:, conf_id] > conf_thresh)
-                if sample_mask.sum() > 0:
-                    obj_conf_min = torch.masked_select(obj_conf[:, -1], sample_mask).min()
-                else:
-                    obj_conf_min = torch.zeros_like(proposals)
+            # if num_confs == 1:
+            #     obj_conf_min = obj_conf[:, 0].min()
+            # else:
+            #     sample_mask = obj_conf[:, 0] > conf_thresh
+            #     for conf_id in range(1, num_confs - 1):
+            #         sample_mask = torch.logical_and(
+            #             sample_mask, obj_conf[:, conf_id] > conf_thresh)
+            #     if sample_mask.sum() > 0:
+            #         obj_conf_min = torch.masked_select(obj_conf[:, -1], sample_mask).min()
+            #     else:
+            #         obj_conf_min = torch.zeros_like(proposals)
+            # Lab code <<<
+            conf_min = obj_conf[:, -1].min()
+            recall_min = obj_conf[:, :max(1, num_confs - 1)].min()
+            # >>>
 
         return dict(
             conf_precision=conf_precision,
@@ -376,8 +438,27 @@ class TrimNetDet(Detector):
             iou_score=iou_score,
             clss_accuracy=clss_accuracy,
             proposals=proposals,
-            obj_conf_min=obj_conf_min,
+            # obj_conf_min=obj_conf_min,
+            conf_min=conf_min,
+            recall_min=recall_min,
         )
+
+    def _calc_center_regions(
+            self,
+            boxes: Tensor,
+            scale: float=0.33,
+        ) -> Tensor:
+
+        pw = (boxes[:, 2] - boxes[:, 0]) * 0.5 * scale
+        ph = (boxes[:, 3] - boxes[:, 1]) * 0.5 * scale
+        cx = (boxes[:, 0] + boxes[:, 2]) * 0.5
+        cy = (boxes[:, 1] + boxes[:, 3]) * 0.5
+        regions = torch.zeros_like(boxes)
+        regions[:, 0] = cx - pw
+        regions[:, 1] = cy - ph
+        regions[:, 2] = cx + pw
+        regions[:, 3] = cy + ph
+        return regions
 
     def update_metric(
             self,
@@ -400,19 +481,28 @@ class TrimNetDet(Detector):
 
         objects = inputs_ps[preds_index]
 
-        # <<< Lab code.
-        # pred_scores = torch.sigmoid(objects[:, num_confs - 1])
-        # pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-        # pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index), 0.)
-        # pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
-
         pred_confs = torch.sigmoid(objects[:, num_confs - 1])
         pred_probs = torch.max(torch.softmax(objects[:, num_confs + self.bbox_dim:], dim=-1), dim=-1).values
         pred_scores = pred_confs * pred_probs
         pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-        pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index), 0.)
+        pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index[2], preds_index[3]), 0.)
         pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
-        # >>>
+        # # Lab code <<<
+        # pred_bboxes = torch.clamp(
+        #         self.pred2boxes(pred_cxcywh, preds_index[2], preds_index[3]),
+        #         0.,
+        #         self.cell_size * (inputs_ps.shape[2] + 1))
+        # pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
+        # clss_map = inputs_ps[preds_index[0], preds_index[1]][..., num_confs + self.bbox_dim:].permute(0, 3, 1, 2)
+        # center_regions = self._calc_center_regions(pred_bboxes)
+        # batch_regions = torch.cat([
+        #     torch.arange(len(center_regions)).unsqueeze(-1).type_as(center_regions),
+        #     center_regions], dim=-1)
+        # average_clss = roi_align(clss_map, batch_regions, 1, spatial_scale=1 / self.cell_size)
+        # pred_labels_2stage = torch.argmax(average_clss.flatten(start_dim=1), dim=-1)
+        # mask_2stage = (center_regions[:, 2:] - center_regions[:, :2]).max(dim=-1).values > self.cell_size
+        # pred_labels[mask_2stage] = pred_labels_2stage[mask_2stage]
+        # # >>>
 
         preds = []
         target = []
