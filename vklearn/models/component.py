@@ -341,49 +341,49 @@ class DetPredictor(nn.Module):
         ], dim=-1)
 
 
-class SegPredictor(nn.Module):
-
-    def __init__(
-            self,
-            in_planes:   int,
-            num_classes: int,
-            num_layers:  int,
-        ):
-
-        super().__init__()
-
-        self.num_layers = num_layers
-
-        project_dim = min(
-            max(in_planes // 2**num_layers, num_classes**0.5),
-            num_classes,
-        )
-
-        self.projects = nn.ModuleList()
-        self.upsamples = nn.ModuleList()
-        for t in range(num_layers):
-            self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
-            out_planes = in_planes
-            if out_planes > num_classes**0.5:
-                out_planes //= 2
-            self.upsamples.append(nn.Sequential(
-                ConvNormActive(in_planes + project_dim, out_planes, 1),
-                UpSample(out_planes),
-            ))
-            in_planes = out_planes
-        self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
-
-        self.norm_layer = DEFAULT_NORM_LAYER(project_dim)
-        self.classifier = nn.Conv2d(project_dim, num_classes, 1)
-
-    def forward(self, x:Tensor) -> Tensor:
-        p = 0.
-        for t in range(self.num_layers):
-            p = p + self.projects[t](x)
-            x = self.upsamples[t](torch.cat([x, p], dim=1))
-            p = F.interpolate(p, scale_factor=2, mode='bilinear')
-        x = p + self.projects[-1](x)
-        return self.classifier(self.norm_layer(x))
+# class SegPredictor(nn.Module):
+#
+#     def __init__(
+#             self,
+#             in_planes:   int,
+#             num_classes: int,
+#             num_layers:  int,
+#         ):
+#
+#         super().__init__()
+#
+#         self.num_layers = num_layers
+#
+#         project_dim = min(
+#             max(in_planes // 2**num_layers, num_classes**0.5),
+#             num_classes,
+#         )
+#
+#         self.projects = nn.ModuleList()
+#         self.upsamples = nn.ModuleList()
+#         for t in range(num_layers):
+#             self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
+#             out_planes = in_planes
+#             if out_planes > num_classes**0.5:
+#                 out_planes //= 2
+#             self.upsamples.append(nn.Sequential(
+#                 ConvNormActive(in_planes + project_dim, out_planes, 1),
+#                 UpSample(out_planes),
+#             ))
+#             in_planes = out_planes
+#         self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
+#
+#         self.norm_layer = DEFAULT_NORM_LAYER(project_dim)
+#         self.classifier = nn.Conv2d(project_dim, num_classes, 1)
+#
+#     def forward(self, x:Tensor) -> Tensor:
+#         p = 0.
+#         for t in range(self.num_layers):
+#             p = p + self.projects[t](x)
+#             x = self.upsamples[t](torch.cat([x, p], dim=1))
+#             p = F.interpolate(p, scale_factor=2, mode='bilinear')
+#         x = p + self.projects[-1](x)
+#         return self.classifier(self.norm_layer(x))
 
 
 class MobileNetFeatures(nn.Module):
