@@ -165,32 +165,50 @@ class TrimNetSeg(Segment):
         ) -> Dict[str, Any]:
 
         times = inputs.shape[-1]
-        F_sigma = lambda t: 1 - (math.cos((t + 1) / times * math.pi) + 1) * 0.5
-        target = target.type_as(inputs)
-
-        alpha = (target.mean(dim=(1, 2, 3))**gamma + 1) * 0.5
-        grand_sigma = 0.
-
+        # F_sigma = lambda t: 1 - (math.cos((t + 1) / times * math.pi) + 1) * 0.5
+        # target = target.type_as(inputs)
+        #
+        # alpha = (target.mean(dim=(1, 2, 3))**gamma + 1) * 0.5
+        # grand_sigma = 0.
+        #
+        # loss = 0.
+        # for t in range(times):
+        #     sigma = F_sigma(t)
+        #     grand_sigma += sigma
+        #     bce = F.binary_cross_entropy_with_logits(
+        #         inputs[..., t],
+        #         target,
+        #         reduction='none',
+        #     ).mean(dim=(1, 2, 3))
+        #     dice = self.dice_loss(
+        #         inputs[..., t],
+        #         target)
+        #     loss_t = alpha * bce + (1 - alpha) * dice
+        #     loss = loss + loss_t.mean() * sigma
+        #
+        # loss = loss / grand_sigma
+        F_alpha = lambda t: (math.cos(t / times * math.pi) + 1) * 0.5
         loss = 0.
         for t in range(times):
-            sigma = F_sigma(t)
-            grand_sigma += sigma
-            bce = F.binary_cross_entropy_with_logits(
-                inputs[..., t],
-                target,
-                reduction='none',
-            ).mean(dim=(1, 2, 3))
+            alpha = F_alpha(t)
             dice = self.dice_loss(
                 inputs[..., t],
-                target)
-            loss_t = alpha * bce + (1 - alpha) * dice
-            loss = loss + loss_t.mean() * sigma
-
-        loss = loss / grand_sigma
+                target,
+            ).mean()
+            bce = 0.
+            if alpha < 1:
+                bce = F.binary_cross_entropy_with_logits(
+                    inputs[..., t],
+                    target,
+                    reduction='mean',
+                )
+            loss = loss + alpha * dice + (1 - alpha) * bce
 
         return dict(
             loss=loss,
-            alpha=alpha.mean(),
+            dice_loss=dice,
+            bce_loss=bce,
+            # alpha=alpha.mean(),
         )
 
     def calc_score(
