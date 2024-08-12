@@ -203,7 +203,8 @@ class TrimNetSeg(Segment):
                     target,
                     reduction='mean',
                 )
-            loss = loss + alpha * dice + (1 - alpha) * bce
+            loss_t = alpha * dice + (1 - alpha) * bce
+            loss = loss + loss_t / times
 
         return dict(
             loss=loss,
