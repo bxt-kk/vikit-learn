@@ -187,6 +187,7 @@ class TrimNetSeg(Segment):
         #     loss = loss + loss_t.mean() * sigma
         #
         # loss = loss / grand_sigma
+        target = target.type_as(inputs)
         F_alpha = lambda t: (math.cos(t / times * math.pi) + 1) * 0.5
         loss = 0.
         for t in range(times):
