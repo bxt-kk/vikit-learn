@@ -177,11 +177,10 @@ class PoolWithPosCode(nn.Module):
     def forward(self, x:Tensor) -> Tensor:
         in_planes = x.shape[1]
 
-        l = (x * x).sum(dim=1, keepdim=True)
+        # l = (x * x).sum(dim=1, keepdim=True)
+        l = (torch.square(x.detach())).sum(dim=1, keepdim=True)
         u = F.pixel_unshuffle(l, self.stride)
         I = u.argmax(dim=1, keepdim=True)
-        # cr = (I // self.stride).type_as(x) / (self.stride - 1)
-        # cc = (I % self.stride).type_as(x) / (self.stride - 1)
         cr = (I // self.stride).type_as(x) / (0.5 * (self.stride - 1)) - 1
         cc = (I % self.stride).type_as(x) / (0.5 * (self.stride - 1)) - 1
 
