@@ -10,7 +10,7 @@ from PIL import Image
 
 from .classifier import Classifier
 from .trimnetx import TrimNetX
-from .component import ConvNormActive
+from .component import DEFAULT_ACTIVATION
 
 
 class TrimNetClf(Classifier):
@@ -29,10 +29,13 @@ class TrimNetClf(Classifier):
             categories:          List[str],
             num_scans:           int=3,
             scan_range:          int=4,
+            dropout_p:           float=0.2,
             backbone:            str='mobilenet_v3_small',
             backbone_pretrained: bool=True,
         ):
         super().__init__(categories)
+
+        self.dropout_p = dropout_p
 
         self.trimnetx = TrimNetX(
             num_scans, scan_range, backbone, backbone_pretrained)
@@ -40,25 +43,27 @@ class TrimNetClf(Classifier):
         merged_dim = self.trimnetx.merged_dim
         expanded_dim = merged_dim * 4
 
-        self.predict = nn.Sequential(
-            ConvNormActive(merged_dim, expanded_dim, 1),
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(expanded_dim, self.num_classes, 1),
-            nn.Flatten(start_dim=1),
+        self.predictor = nn.Sequential(
+            nn.Linear(merged_dim, expanded_dim),
+            DEFAULT_ACTIVATION(inplace=False),
+            nn.Dropout(dropout_p, inplace=False),
+            nn.Linear(expanded_dim, self.num_classes),
         )
 
-        self.category_weights = nn.Parameter(torch.ones(
-            num_scans, 1, self.num_classes) / num_scans)
+        self.alphas = nn.Parameter(torch.ones(
+            1, self.num_classes, num_scans) / num_scans**0.5)
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tensor:
-        hs = self.trimnetx(x)
-        p = self.predict(hs[0]) * self.category_weights[0]
+        hs, _ = self.trimnetx(x)
+        alphas = self.alphas.softmax(dim=-1)
+        p = 0.
         times = len(hs)
-        for t in range(1, times):
-            p = p + self.predict(hs[t]) * self.category_weights[t]
+        for t in range(times):
+            h = F.adaptive_avg_pool2d(hs[t], 1).flatten(start_dim=1)
+            p = p + self.predictor(h) * alphas[..., t]
         return p
 
     @classmethod
@@ -68,6 +73,7 @@ class TrimNetClf(Classifier):
             categories          = hyps['categories'],
             num_scans           = hyps['num_scans'],
             scan_range          = hyps['scan_range'],
+            dropout_p           = hyps['dropout_p'],
             backbone            = hyps['backbone'],
             backbone_pretrained = False,
         )
@@ -77,6 +83,7 @@ class TrimNetClf(Classifier):
     def hyperparameters(self) -> Dict[str, Any]:
         return dict(
             categories = self.categories,
+            dropout_p  = self.dropout_p,
             num_scans  = self.trimnetx.num_scans,
             scan_range = self.trimnetx.scan_range,
             backbone   = self.trimnetx.backbone,
