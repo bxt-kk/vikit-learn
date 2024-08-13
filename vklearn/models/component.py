@@ -1,4 +1,4 @@
-from typing import Callable, List
+from typing import Callable, List, Tuple
 
 from torch import Tensor
 import torch
@@ -72,7 +72,7 @@ class ConvNormActive(nn.Sequential):
             in_planes:   int,
             out_planes:  int,
             kernel_size: int=3,
-            stride:      int | tuple[int, int]=1,
+            stride:      int | Tuple[int, int]=1,
             dilation:    int=1,
             groups:      int=1,
             norm_layer:  Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
@@ -96,6 +96,53 @@ class ConvNormActiveRes(ConvNormActive):
         return super().forward(x) + x
 
 
+class MultiKernelConvNormActive(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:   int,
+            kernel_size: int | List[int]=3,
+            stride:      int | Tuple[int, int]=1,
+            dilation:    int=1,
+            norm_layer:  Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
+            activation:  Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
+        ):
+
+        super().__init__()
+
+        if isinstance(kernel_size, int):
+            kernel_size = [kernel_size]
+
+        self.kernel_groups = len(kernel_size)
+        assert in_planes % self.kernel_groups == 0
+
+        part_dim = in_planes // self.kernel_groups
+        self.convs = nn.ModuleList([
+            ConvNormActive(
+                part_dim,
+                part_dim,
+                kernel_size=ksize,
+                groups=part_dim,
+                norm_layer=None,
+                activation=None,
+            )
+            for ksize in kernel_size])
+
+        self.normal_active = nn.Sequential(
+            norm_layer(in_planes),
+            activation(),
+        )
+
+    def forward(self, x:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+        x = x.reshape(bs, self.kernel_groups, -1, ny, nx)
+        x = torch.cat([
+            self.convs[t](x[:, t])
+            for t in range(self.kernel_groups)
+        ], dim=1)
+        return self.normal_active(x)
+
+
 class InvertedResidual(nn.Module):
 
     def __init__(
@@ -104,7 +151,7 @@ class InvertedResidual(nn.Module):
             out_planes:      int,
             expand_ratio:    int,
             kernel_size:     int=3,
-            stride:          int | tuple[int, int]=1,
+            stride:          int | Tuple[int, int]=1,
             dilation:        int=1,
             norm_layer:      Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
             activation:      Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
@@ -317,7 +364,9 @@ class DetPredictor(nn.Module):
 
         self.expansion = nn.Sequential(
             ConvNormActive(in_planes, clss_hidden, 1),
-            ConvNormActive(clss_hidden, clss_hidden, 3, groups=clss_hidden))
+            # ConvNormActive(clss_hidden, clss_hidden, 3, groups=clss_hidden))
+            MultiKernelConvNormActive(clss_hidden, [3 + t * 2 for t in range(num_anchors)]),
+        )
 
         self.dropout2d = nn.Dropout2d(dropout_p, inplace=False)
 
