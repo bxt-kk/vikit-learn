@@ -55,7 +55,7 @@ class TrimNetDet(Detector):
         merged_dim   = self.trimnetx.merged_dim
         features_dim = self.trimnetx.features_dim
 
-        self.predicts = nn.ModuleList([DetPredictor(
+        self.predictors = nn.ModuleList([DetPredictor(
             in_planes=merged_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
@@ -81,7 +81,7 @@ class TrimNetDet(Detector):
         n, _, rs, cs = hs[0].shape
 
         alphas = torch.softmax(self.alphas, dim=-1)
-        preds = [predict(h) for predict, h in zip(self.predicts, hs)]
+        preds = [predictor(h) for predictor, h in zip(self.predictors, hs)]
         confs = [preds[0][..., :1]]
         objs = preds[0][..., 1:] * alphas[..., 0]
         times = len(preds)
@@ -126,6 +126,12 @@ class TrimNetDet(Detector):
             assign:     bool=False,
         ):
 
+        keys = list(state_dict.keys())
+        for key in keys:
+            if not key.startswith('predicts.'): continue
+            data = state_dict.pop(key)
+            new_key = key.replace('predicts.', 'predictors.', 1)
+            state_dict[new_key] = data
         # CLSS_WEIGHT_KEY = 'predict.clss_predict.weight'
         # CLSS_BIAS_KEY = 'predict.clss_predict.bias'
         # AUXI_WEIGHT_KEY = 'auxi_clf.1.weight'
