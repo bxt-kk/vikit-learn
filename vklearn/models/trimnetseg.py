@@ -11,7 +11,8 @@ from PIL import Image
 
 from .segment import Segment
 from .trimnetx import TrimNetX
-from .component import UpSample, ConvNormActive
+# from .component import UpSample, ConvNormActive
+from .component import SegPredictor
 
 
 class TrimNetSeg(Segment):
@@ -40,52 +41,55 @@ class TrimNetSeg(Segment):
 
         merged_dim = self.trimnetx.merged_dim
 
-        embeded_dim = int((self.num_classes + 2)**0.5)
-        self.decoder = nn.Conv2d(embeded_dim, self.num_classes, 1)
-        self.upsamples = nn.ModuleDict()
-        self.predicts = nn.ModuleList()
-        for t in range(num_scans):
-            in_planes = merged_dim
-            out_planes = max(in_planes // 2, embeded_dim)
-            if t > 0:
-                self.upsamples[f'{t}'] = nn.Sequential(
-                    UpSample(in_planes),
-                    ConvNormActive(in_planes, out_planes, 1),
-                )
-                in_planes = out_planes + embeded_dim
-                out_planes = max(out_planes // 2, embeded_dim)
-            for k in range(t - 1):
-                self.upsamples[f'{t}_{k}'] = nn.Sequential(
-                    UpSample(in_planes),
-                    ConvNormActive(in_planes, out_planes, 1),
-                )
-                in_planes = out_planes + embeded_dim
-                out_planes = max(out_planes // 2, embeded_dim)
-            self.predicts.append(nn.Sequential(
-                UpSample(in_planes),
-                ConvNormActive(in_planes, out_planes, 1),
-                ConvNormActive(out_planes, out_planes, groups=out_planes),
-                ConvNormActive(out_planes, embeded_dim, kernel_size=1),
-            ))
+        # embeded_dim = int((self.num_classes + 2)**0.5)
+        # self.decoder = nn.Conv2d(embeded_dim, self.num_classes, 1)
+        # self.upsamples = nn.ModuleDict()
+        # self.predicts = nn.ModuleList()
+        # for t in range(num_scans):
+        #     in_planes = merged_dim
+        #     out_planes = max(in_planes // 2, embeded_dim)
+        #     if t > 0:
+        #         self.upsamples[f'{t}'] = nn.Sequential(
+        #             UpSample(in_planes),
+        #             ConvNormActive(in_planes, out_planes, 1),
+        #         )
+        #         in_planes = out_planes + embeded_dim
+        #         out_planes = max(out_planes // 2, embeded_dim)
+        #     for k in range(t - 1):
+        #         self.upsamples[f'{t}_{k}'] = nn.Sequential(
+        #             UpSample(in_planes),
+        #             ConvNormActive(in_planes, out_planes, 1),
+        #         )
+        #         in_planes = out_planes + embeded_dim
+        #         out_planes = max(out_planes // 2, embeded_dim)
+        #     self.predicts.append(nn.Sequential(
+        #         UpSample(in_planes),
+        #         ConvNormActive(in_planes, out_planes, 1),
+        #         ConvNormActive(out_planes, out_planes, groups=out_planes),
+        #         ConvNormActive(out_planes, embeded_dim, kernel_size=1),
+        #     ))
+        self.predictor = SegPredictor(merged_dim, self.num_classes, num_scans)
+        self.decoder = nn.Conv2d(self.predictor.embeded_dim, self.num_classes, 1)
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
     def forward_latent(self, x:Tensor) -> List[Tensor]:
         hs, _ = self.trimnetx(x)
-        pt = self.predicts[0](hs[0])
-        ps = [pt]
-        times = len(hs)
-        for t in range(1, times):
-            u = self.upsamples[f'{t}'](hs[t])
-            for k in range(t - 1):
-                u = self.upsamples[f'{t}_{k}'](torch.cat([
-                    u, ps[k]], dim=1))
-            pt = (
-                self.predicts[t](torch.cat([u, pt], dim=1)) +
-                F.interpolate(pt, scale_factor=2, mode='bilinear')
-            )
-            ps.append(pt)
+        # pt = self.predicts[0](hs[0])
+        # ps = [pt]
+        # times = len(hs)
+        # for t in range(1, times):
+        #     u = self.upsamples[f'{t}'](hs[t])
+        #     for k in range(t - 1):
+        #         u = self.upsamples[f'{t}_{k}'](torch.cat([
+        #             u, ps[k]], dim=1))
+        #     pt = (
+        #         self.predicts[t](torch.cat([u, pt], dim=1)) +
+        #         F.interpolate(pt, scale_factor=2, mode='bilinear')
+        #     )
+        #     ps.append(pt)
+        ps = self.predictor(hs)
         return ps
 
     def forward(self, x:Tensor) -> Tensor:

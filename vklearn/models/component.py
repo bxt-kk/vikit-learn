@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, List
 
 from torch import Tensor
 import torch
@@ -340,49 +340,60 @@ class DetPredictor(nn.Module):
         ], dim=-1)
 
 
-# class SegPredictor(nn.Module):
-#
-#     def __init__(
-#             self,
-#             in_planes:   int,
-#             num_classes: int,
-#             num_layers:  int,
-#         ):
-#
-#         super().__init__()
-#
-#         self.num_layers = num_layers
-#
-#         project_dim = min(
-#             max(in_planes // 2**num_layers, num_classes**0.5),
-#             num_classes,
-#         )
-#
-#         self.projects = nn.ModuleList()
-#         self.upsamples = nn.ModuleList()
-#         for t in range(num_layers):
-#             self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
-#             out_planes = in_planes
-#             if out_planes > num_classes**0.5:
-#                 out_planes //= 2
-#             self.upsamples.append(nn.Sequential(
-#                 ConvNormActive(in_planes + project_dim, out_planes, 1),
-#                 UpSample(out_planes),
-#             ))
-#             in_planes = out_planes
-#         self.projects.append(nn.Conv2d(in_planes, project_dim, 1))
-#
-#         self.norm_layer = DEFAULT_NORM_LAYER(project_dim)
-#         self.classifier = nn.Conv2d(project_dim, num_classes, 1)
-#
-#     def forward(self, x:Tensor) -> Tensor:
-#         p = 0.
-#         for t in range(self.num_layers):
-#             p = p + self.projects[t](x)
-#             x = self.upsamples[t](torch.cat([x, p], dim=1))
-#             p = F.interpolate(p, scale_factor=2, mode='bilinear')
-#         x = p + self.projects[-1](x)
-#         return self.classifier(self.norm_layer(x))
+class SegPredictor(nn.Module):
+
+    def __init__(
+            self,
+            in_planes:   int,
+            num_classes: int,
+            num_scans:  int,
+        ):
+
+        super().__init__()
+
+        self.embeded_dim = int((num_classes + 2)**0.5)
+        self.decoder = nn.Conv2d(self.embeded_dim, num_classes, 1)
+        self.upsamples = nn.ModuleDict()
+        self.predicts = nn.ModuleList()
+        for t in range(num_scans):
+            hidden_dim = in_planes
+            out_planes = max(hidden_dim // 2, self.embeded_dim)
+            if t > 0:
+                self.upsamples[f'{t}'] = nn.Sequential(
+                    UpSample(hidden_dim),
+                    ConvNormActive(hidden_dim, out_planes, 1),
+                )
+                hidden_dim = out_planes + self.embeded_dim
+                out_planes = max(out_planes // 2, self.embeded_dim)
+            for k in range(t - 1):
+                self.upsamples[f'{t}_{k}'] = nn.Sequential(
+                    UpSample(hidden_dim),
+                    ConvNormActive(hidden_dim, out_planes, 1),
+                )
+                hidden_dim = out_planes + self.embeded_dim
+                out_planes = max(out_planes // 2, self.embeded_dim)
+            self.predicts.append(nn.Sequential(
+                UpSample(hidden_dim),
+                ConvNormActive(hidden_dim, out_planes, 1),
+                ConvNormActive(out_planes, out_planes, groups=out_planes),
+                ConvNormActive(out_planes, self.embeded_dim, kernel_size=1),
+            ))
+
+    def forward(self, hs:List[Tensor]) -> List[Tensor]:
+        pt = self.predicts[0](hs[0])
+        ps = [pt]
+        times = len(hs)
+        for t in range(1, times):
+            u = self.upsamples[f'{t}'](hs[t])
+            for k in range(t - 1):
+                u = self.upsamples[f'{t}_{k}'](torch.cat([
+                    u, ps[k]], dim=1))
+            pt = (
+                self.predicts[t](torch.cat([u, pt], dim=1)) +
+                F.interpolate(pt, scale_factor=2, mode='bilinear')
+            )
+            ps.append(pt)
+        return ps
 
 
 class MobileNetFeatures(nn.Module):
