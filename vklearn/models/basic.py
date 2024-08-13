@@ -12,7 +12,17 @@ class Basic(nn.Module):
 
     def __init__(self):
         super().__init__()
+
         self._keep_features = False
+
+        self._image2tensor = v2.Compose([
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
+        ])
 
     @classmethod
     def get_transforms(
@@ -56,14 +66,15 @@ class Basic(nn.Module):
         pad_x = (align_size - dst_w) // 2
         pad_y = (align_size - dst_h) // 2
         frame.paste(sample, box=(pad_x, pad_y))
-        inputs = v2.Compose([
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            )
-        ])(frame).unsqueeze(dim=0)
+        # inputs = v2.Compose([
+        #     v2.ToImage(),
+        #     v2.ToDtype(torch.float32, scale=True),
+        #     v2.Normalize(
+        #         mean=[0.485, 0.456, 0.406],
+        #         std=[0.229, 0.224, 0.225],
+        #     )
+        # ])(frame).unsqueeze(dim=0)
+        inputs = self._image2tensor(frame).unsqueeze(dim=0)
         return inputs, scale, pad_x, pad_y
 
     def get_model_device(self) -> torch.device:

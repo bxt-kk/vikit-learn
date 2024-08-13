@@ -30,6 +30,25 @@ class Classifier(Basic):
             num_classes=self.num_classes,
             average='macro')
 
+    def preprocess(
+            self,
+            image:      Image.Image,
+            align_size: int,
+        ) -> Tensor:
+
+        src_w, src_h = image.size
+        scale = align_size / min(src_w, src_h)
+        dst_w, dst_h = round(src_w * scale), round(src_h * scale)
+        x1 = (dst_w - align_size) // 2
+        y1 = (dst_h - align_size) // 2
+        x2 = x1 + align_size
+        y2 = y1 + align_size
+
+        resized = image.resize((dst_w, dst_h), resample=Image.Resampling.BILINEAR)
+        croped = resized.crop((x1, y1, x2, y2))
+        return self._image2tensor(croped).unsqueeze(dim=0)
+
+
     def classify(
             self,
             image:      Image.Image,
