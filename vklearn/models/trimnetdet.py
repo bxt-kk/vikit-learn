@@ -2,8 +2,6 @@ from typing import List, Any, Dict, Tuple, Mapping
 
 from torch import Tensor
 from torchvision.ops import (
-    # generalized_box_iou_loss,
-    # complete_box_iou_loss,
     distance_box_iou_loss,
     boxes as box_ops,
     roi_align,
@@ -67,7 +65,6 @@ class TrimNetDet(Detector):
 
         self.auxi_clf = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
-            # nn.Linear(merged_dim, self.num_classes),
             nn.Linear(features_dim, self.num_classes),
         )
 
@@ -79,39 +76,21 @@ class TrimNetDet(Detector):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def forward_old(self, x:Tensor) -> Tuple[Tensor, Tensor]:
-        hs, m = self.trimnetx(x)
-        n, _, rs, cs = hs[0].shape
-
-        p = self.predicts[0](hs[0])
-        ps = [p[..., :1]]
-        times = len(hs)
-        for t in range(1, times):
-            y = self.predicts[t](hs[t])
-            a = torch.sigmoid(ps[-1])
-            p = y * a + p * (1 - a)
-            ps.append(p[..., :1])
-        ps.append(p[..., 1:])
-        return torch.cat(ps, dim=-1), m
-
     def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
         hs, m = self.trimnetx(x)
         n, _, rs, cs = hs[0].shape
 
+        alphas = torch.softmax(self.alphas, dim=-1)
         preds = [predict(h) for predict, h in zip(self.predicts, hs)]
         confs = [preds[0][..., :1]]
-        # objvs = preds[0][..., 1:]
-        alphas = torch.softmax(self.alphas, dim=-1)
-        objvs = preds[0][..., 1:] * alphas[..., 0]
+        objs = preds[0][..., 1:] * alphas[..., 0]
         times = len(preds)
         for t in range(1, times):
-            c_t = preds[t][..., :1]
-            a_1 = torch.sigmoid(confs[-1])
-            confs.append(c_t * a_1 + confs[-1] * (1 - a_1))
-            # a_2 = torch.sigmoid(c_t)
-            # objvs = preds[t][..., 1:] * a_2 + objvs * (1 - a_2)
-            objvs = objvs + preds[t][..., 1:] * alphas[..., t]
-        return torch.cat(confs + [objvs], dim=-1), m
+            conf = preds[t][..., :1]
+            mask = torch.sigmoid(confs[-1])
+            confs.append(conf * mask + confs[-1] * (1 - mask))
+            objs = objs + preds[t][..., 1:] * alphas[..., t]
+        return torch.cat(confs + [objs], dim=-1), m
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':
@@ -277,10 +256,7 @@ class TrimNetDet(Detector):
         targ_conf = torch.zeros_like(pred_conf)
         targ_conf[target_index] = 1.
 
-        # Lab code <<<
         offset_index = self._random_offset_index(target_index, target_bboxes)
-        # >>>
-        # objects = inputs_ps[target_index]
         objects = inputs_ps[offset_index]
 
         if label_weight is not None:
@@ -290,16 +266,11 @@ class TrimNetDet(Detector):
         clss_loss = torch.zeros_like(conf_loss)
         if objects.shape[0] > 0:
             pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-            # pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
             pred_xyxy = self.pred2boxes(pred_cxcywh, offset_index[2], offset_index[3])
-            # bbox_loss = generalized_box_iou_loss(
-            # bbox_loss = complete_box_iou_loss(
             bbox_loss = distance_box_iou_loss(
                 pred_xyxy, target_bboxes, reduction=reduction)
 
             pred_clss = objects[:, num_confs + self.bbox_dim:]
-            # clss_loss = F.cross_entropy(
-            #     pred_clss, target_labels, reduction=reduction)
             pred_probs = torch.softmax(pred_clss.detach(), dim=-1)
             pred_alpha = 1 - pred_probs[range(len(target_labels)), target_labels]**clss_gamma
 
@@ -392,7 +363,6 @@ class TrimNetDet(Detector):
 
         iou_score = torch.ones_like(conf_f1)
         clss_accuracy = torch.ones_like(conf_f1)
-        # obj_conf_min = torch.zeros_like(conf_f1)
         conf_min = torch.zeros_like(conf_f1)
         recall_min = torch.zeros_like(conf_f1)
         if objects.shape[0] > 0:
@@ -415,21 +385,8 @@ class TrimNetDet(Detector):
             clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
 
             obj_conf = torch.sigmoid(objects[:, :num_confs])
-            # if num_confs == 1:
-            #     obj_conf_min = obj_conf[:, 0].min()
-            # else:
-            #     sample_mask = obj_conf[:, 0] > conf_thresh
-            #     for conf_id in range(1, num_confs - 1):
-            #         sample_mask = torch.logical_and(
-            #             sample_mask, obj_conf[:, conf_id] > conf_thresh)
-            #     if sample_mask.sum() > 0:
-            #         obj_conf_min = torch.masked_select(obj_conf[:, -1], sample_mask).min()
-            #     else:
-            #         obj_conf_min = torch.zeros_like(proposals)
-            # Lab code <<<
             conf_min = obj_conf[:, -1].min()
             recall_min = obj_conf[:, :max(1, num_confs - 1)].min()
-            # >>>
 
         return dict(
             conf_precision=conf_precision,
@@ -438,7 +395,6 @@ class TrimNetDet(Detector):
             iou_score=iou_score,
             clss_accuracy=clss_accuracy,
             proposals=proposals,
-            # obj_conf_min=obj_conf_min,
             conf_min=conf_min,
             recall_min=recall_min,
         )
