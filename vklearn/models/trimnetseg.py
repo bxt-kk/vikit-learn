@@ -181,4 +181,4 @@ class TrimNetSeg(Segment):
         ):
 
         predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
-        self.m_iou.update(predicts.to(torch.int), target.to(torch.int))
+        self.m_iou_metric.update(predicts.to(torch.int), target.to(torch.int))
