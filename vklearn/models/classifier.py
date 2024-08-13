@@ -74,6 +74,8 @@ class Classifier(Basic):
         f1_score = (
             2 * precision * recall /
             torch.clamp_min(precision + recall, 1e-5))
+        self.precision_metric.reset()
+        self.recall_metric.reset()
         return dict(
             precision=precision,
             recall=recall,

@@ -182,7 +182,9 @@ class Detector(Basic):
         assert not 'this is an empty func'
 
     def compute_metric(self) -> Dict[str, Any]:
-        return self.m_ap_metric.compute()
+        metrics = self.m_ap_metric.compute()
+        self.m_ap_metric.reset()
+        return metrics
 
     def _select_anchor(self, boxes:Tensor) -> Tensor:
         derived_anchors = self.anchors.reshape(-1, 2)

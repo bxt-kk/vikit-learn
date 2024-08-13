@@ -25,7 +25,7 @@ class Segment(Basic):
         self.categories   = list(categories)
         self.num_classes  = len(categories)
 
-        self.m_iou = MeanIoU(
+        self.m_iou_metric = MeanIoU(
             num_classes=self.num_classes)
 
     def segment(
@@ -61,7 +61,8 @@ class Segment(Basic):
         assert not 'this is an empty func'
 
     def compute_metric(self) -> Dict[str, Any]:
-        miou = self.m_iou.compute() / self.m_iou.update_count
+        miou = self.m_iou_metric.compute() / self.m_iou_metric.update_count
+        self.m_iou_metric.reset()
         return dict(miou=miou)
 
     @classmethod
