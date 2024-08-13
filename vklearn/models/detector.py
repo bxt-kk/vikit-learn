@@ -90,10 +90,56 @@ class Detector(Basic):
         ], dim=-1)
         return box_convert(bboxes, 'xyxy', fmt)
 
+    def random_offset_index(
+            self,
+            index: List[Tensor],
+            xyxys: Tensor,
+            scale: float=0.5,
+        ) -> List[Tensor]:
+
+        if not self.training: return index
+        if index[0].shape[0] == 0: return index
+
+        cr_w = (xyxys[:, 2] - xyxys[:, 0])
+        cr_x = (
+            (xyxys[:, 2] + xyxys[:, 0]) * 0.5 +
+            # cr_w * (torch.rand_like(cr_w) - 0.5) * scale
+            cr_w * scale * torch.clamp(torch.randn_like(cr_w) * 0.25, -0.5, 0.5)
+        )
+        cr_x = torch.clamp(cr_x, xyxys[:, 0], xyxys[:, 2])
+        col_index = (cr_x / self.cell_size).type(torch.int64)
+
+        cr_h = (xyxys[:, 3] - xyxys[:, 1])
+        cr_y = (
+            (xyxys[:, 3] + xyxys[:, 1]) * 0.5 + 
+            # cr_h * (torch.rand_like(cr_h) - 0.5) * scale
+            cr_h * scale * torch.clamp(torch.randn_like(cr_h) * 0.25, -0.5, 0.5)
+        )
+        cr_y = torch.clamp(cr_y, xyxys[:, 1], xyxys[:, 3])
+        row_index = (cr_y / self.cell_size).type(torch.int64)
+        return [index[0], index[1], row_index, col_index]
+
+    def calc_center_regions(
+            self,
+            boxes: Tensor,
+            scale: float=0.33,
+        ) -> Tensor:
+
+        pw = (boxes[:, 2] - boxes[:, 0]) * 0.5 * scale
+        ph = (boxes[:, 3] - boxes[:, 1]) * 0.5 * scale
+        cx = (boxes[:, 0] + boxes[:, 2]) * 0.5
+        cy = (boxes[:, 1] + boxes[:, 3]) * 0.5
+        regions = torch.zeros_like(boxes)
+        regions[:, 0] = cx - pw
+        regions[:, 1] = cy - ph
+        regions[:, 2] = cx + pw
+        regions[:, 3] = cy + ph
+        return regions
+
     def detect(
             self,
             image:         Image.Image,
-            conf_thresh:   float=0.6,
+            conf_thresh:   float=0.5,
             recall_thresh: float=0.5,
             iou_thresh:    float=0.5,
             align_size:    int=448,
