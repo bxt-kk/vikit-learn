@@ -168,7 +168,7 @@ class TrimNetDet(Detector):
     def detect(
             self,
             image:         Image.Image,
-            conf_thresh:   float=0.6,
+            conf_thresh:   float=0.5,
             recall_thresh: float=0.5,
             iou_thresh:    float=0.5,
             align_size:    int=448,
@@ -189,7 +189,7 @@ class TrimNetDet(Detector):
         conf_prob *= torch.sigmoid(predicts[..., num_confs - 1])
         pred_objs = predicts[..., num_confs:]
 
-        index = torch.nonzero(conf_prob > recall_thresh, as_tuple=True)
+        index = torch.nonzero(conf_prob > conf_thresh, as_tuple=True)
         if len(index[0]) == 0: return []
         conf = conf_prob[index[0], index[1], index[2], index[3]]
         objs = pred_objs[index[0], index[1], index[2], index[3]]
