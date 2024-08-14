@@ -382,12 +382,12 @@ class DetPredictor(nn.Module):
         p_conf = self.conf_predict(x)
         p_bbox = self.bbox_predict(x)
 
-        e = self.expansion(x).view(bs * self.num_anchors, -1, ny, nx)
-        e = self.dropout2d(e).view(bs, -1, ny, nx)
+        e = self.expansion(x).reshape(bs * self.num_anchors, -1, ny, nx)
+        e = self.dropout2d(e).reshape(bs, -1, ny, nx)
         p_clss = self.clss_predict(e)
 
         return torch.cat([
-            part.view(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
+            part.reshape(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
             for part in (p_conf, p_bbox, p_clss)
         ], dim=-1)
 
