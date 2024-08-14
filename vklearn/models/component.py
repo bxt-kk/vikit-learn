@@ -563,4 +563,4 @@ class DinoFeatures(nn.Module):
     def forward(self, x:Tensor) -> Tensor:
         dr, dc = x.shape[2] // self.cell_size, x.shape[3] // self.cell_size
         x = self.features.forward_features(x)['x_norm_patchtokens']
-        return x.transpose(1, 2).view(-1, self.features_dim, dr, dc)
+        return x.transpose(1, 2).reshape(-1, self.features_dim, dr, dc)
