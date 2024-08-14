@@ -134,28 +134,15 @@ class TrimNetDet(Detector):
             assign:     bool=False,
         ):
 
-        keys = list(state_dict.keys())
-        for key in keys:
-            if not key.startswith('predicts.'): continue
-            data = state_dict.pop(key)
-            new_key = key.replace('predicts.', 'predictors.', 1)
-            state_dict[new_key] = data
-        # CLSS_WEIGHT_KEY = 'predict.clss_predict.weight'
-        # CLSS_BIAS_KEY = 'predict.clss_predict.bias'
-        # AUXI_WEIGHT_KEY = 'auxi_clf.1.weight'
-        # AUXI_BIAS_KEY = 'auxi_clf.1.bias'
-        #
-        # clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
-        # clss_bias = state_dict.pop(CLSS_BIAS_KEY)
-        # auxi_weight = state_dict.pop(AUXI_WEIGHT_KEY)
-        # auxi_bias = state_dict.pop(AUXI_BIAS_KEY)
-        #
-        # predict_dim = self.predict.clss_predict.bias.shape[0]
-        # if clss_bias.shape[0] == predict_dim:
-        #     state_dict[CLSS_WEIGHT_KEY] = clss_weight
-        #     state_dict[CLSS_BIAS_KEY] = clss_bias
-        #     state_dict[AUXI_WEIGHT_KEY] = auxi_weight
-        #     state_dict[AUXI_BIAS_KEY] = auxi_bias
+        DECODER_WEIGHT_KEY = 'decoder.weight'
+        DECODER_BIAS_KEY   = 'decoder.bias'
+
+        decoder_weight = state_dict.pop(DECODER_WEIGHT_KEY)
+        decoder_bias   = state_dict.pop(DECODER_BIAS_KEY)
+
+        if decoder_bias.shape[0] == self.num_classes:
+            state_dict[DECODER_WEIGHT_KEY] = decoder_weight
+            state_dict[DECODER_BIAS_KEY] = decoder_bias
         super().load_state_dict(state_dict, strict, assign)
 
     def detect(
