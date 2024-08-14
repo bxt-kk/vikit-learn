@@ -32,7 +32,7 @@ class Joints(Basic):
 
         self.register_buffer(
             'regions', torch.tensor([[2**k for k in range(5)]]))
-        self.bbox_dim    = (self.regions.shape[1] + 1) * 2 - 1
+        self.bbox_dim    = (self.regions.shape[1] + 1) * 3 - 2
         self.num_anchors = 2
         self.cell_size   = 16
 
