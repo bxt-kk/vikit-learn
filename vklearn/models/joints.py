@@ -31,8 +31,8 @@ class Joints(Basic):
         self.region_scale = bbox_limit / 32
 
         self.register_buffer(
-            'regions', torch.tensor([[2**k for k in range(6)]]))
-        self.bbox_dim    = 2 + self.regions.shape[1] + 1
+            'regions', torch.tensor([[2**k for k in range(5)]]))
+        self.bbox_dim    = (self.regions.shape[1] + 1) * 2 - 1
         self.num_anchors = 2
         self.cell_size   = 16
 
@@ -41,35 +41,70 @@ class Joints(Basic):
             backend='faster_coco_eval',
             max_detection_thresholds=[1, 10, 300],
         )
-        self.m_iou = MeanIoU(
+        self.m_iou_metric = MeanIoU(
             num_classes=self.num_classes)
 
     def pred2boxes(
             self,
-            cxcywh: Tensor,
-            index:  List[Tensor],
-            fmt:    str='xyxy',
+            inputs:    Tensor,
+            row_index: Tensor,
+            col_index: Tensor,
+            fmt:       str='xyxy',
         ) -> Tensor:
 
-        boxes_x = (
-            torch.tanh(cxcywh[:, 0]) + 0.5 +
-            index[3].type_as(cxcywh)
-        ) * self.cell_size
-        boxes_y = (
-            torch.tanh(cxcywh[:, 1]) + 0.5 +
-            index[2].type_as(cxcywh)
-        ) * self.cell_size
-        boxes_w = (
-            torch.tanh(cxcywh[:, 2 + 0]) +
-            (cxcywh[:, 2 + 1:2 + 7].softmax(dim=-1) * self.regions).sum(dim=-1)
+        offsets = []
+        for i in range(2):
+            ptr = i * 5
+            offsets.append((
+                torch.tanh(inputs[:, ptr]) *
+                (inputs[:, ptr + 1:ptr + 5].softmax(dim=-1) * self.regions[..., :4]).sum(dim=-1)
+            ) * self.region_scale)
+        ptr = 10
+        padding = (
+            torch.tanh(inputs[:, ptr]) +
+            (inputs[:, ptr + 1:ptr + 6].softmax(dim=-1) * self.regions).sum(dim=-1)
         ) * self.region_scale
+
+        ox = (col_index.type_as(inputs) + 0.5) * self.cell_size
+        oy = (row_index.type_as(inputs) + 0.5) * self.cell_size
+        ltx = ox + offsets[0] - padding
+        lty = oy + offsets[1] - padding
+        rbx = ox + offsets[0] + padding
+        rby = oy + offsets[1] + padding
         bboxes = torch.cat([
-            boxes_x.unsqueeze(-1),
-            boxes_y.unsqueeze(-1),
-            boxes_w.unsqueeze(-1),
-            boxes_w.unsqueeze(-1),
-            ], dim=-1)
-        return box_convert(bboxes, 'cxcywh', fmt)
+            ltx.unsqueeze(-1),
+            lty.unsqueeze(-1),
+            rbx.unsqueeze(-1),
+            rby.unsqueeze(-1),
+        ], dim=-1)
+        return box_convert(bboxes, 'xyxy', fmt)
+
+    def random_offset_index(
+            self,
+            index: List[Tensor],
+            xyxys: Tensor,
+            scale: float=0.5,
+        ) -> List[Tensor]:
+
+        if not self.training: return index
+        if index[0].shape[0] == 0: return index
+
+        cr_w = (xyxys[:, 2] - xyxys[:, 0])
+        cr_x = (
+            (xyxys[:, 2] + xyxys[:, 0]) * 0.5 +
+            cr_w * scale * torch.clamp(torch.randn_like(cr_w) * 0.25, -0.5, 0.5)
+        )
+        cr_x = torch.clamp(cr_x, xyxys[:, 0], xyxys[:, 2])
+        col_index = (cr_x / self.cell_size).type(torch.int64)
+
+        cr_h = (xyxys[:, 3] - xyxys[:, 1])
+        cr_y = (
+            (xyxys[:, 3] + xyxys[:, 1]) * 0.5 + 
+            cr_h * scale * torch.clamp(torch.randn_like(cr_h) * 0.25, -0.5, 0.5)
+        )
+        cr_y = torch.clamp(cr_y, xyxys[:, 1], xyxys[:, 3])
+        row_index = (cr_y / self.cell_size).type(torch.int64)
+        return [index[0], index[1], row_index, col_index]
 
     def detect(
             self,
@@ -117,9 +152,11 @@ class Joints(Basic):
         assert not 'this is an empty func'
 
     def compute_metric(self) -> Dict[str, Any]:
-        miou = self.m_iou.compute() / self.m_iou.update_count
+        miou = self.m_iou_metric.compute() / self.m_iou_metric.update_count
         metrics = self.m_ap_metric.compute()
         metrics['miou'] = miou
+        self.m_iou_metric.reset()
+        self.m_ap_metric.reset()
         return metrics
 
     def _select_anchor(self, labels:Tensor) -> Tensor:
@@ -130,11 +167,6 @@ class Joints(Basic):
 
     def _select_row(self, boxes:Tensor, height:int) -> Tensor:
         cy = (boxes[:, 1] + boxes[:, 3]) * 0.5
-        cell_size = self.cell_size
-        noise = torch.rand_like(cy) * cell_size - cell_size / 2
-        hs = boxes[:, 3] - boxes[:, 1]
-        noise[hs < 2 * cell_size] = 0.
-        cy = cy + noise 
         cell_row = (cy / self.cell_size).type(torch.int64)
         min_row = 0
         max_row = height // self.cell_size - 1
@@ -143,11 +175,6 @@ class Joints(Basic):
 
     def _select_column(self, boxes:Tensor, width:int) -> Tensor:
         cx = (boxes[:, 0] + boxes[:, 2]) * 0.5
-        cell_size = self.cell_size
-        noise = torch.rand_like(cx) * cell_size - cell_size / 2
-        ws = boxes[:, 2] - boxes[:, 0]
-        noise[ws < 2 * cell_size] = 0.
-        cx = cx + noise
         cell_col = (cx / self.cell_size).type(torch.int64)
         min_col = 0
         max_col = width // self.cell_size - 1
@@ -217,8 +244,12 @@ class Joints(Basic):
                     max_size=448,
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
-                # v2.RandomHorizontalFlip(p=0.5),
                 v2.RandomVerticalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
                 v2.RandomCrop(
                     size=(448, 448),
                     pad_if_needed=True,
@@ -235,7 +266,51 @@ class Joints(Basic):
                     size=447,
                     max_size=448,
                     antialias=True),
+                v2.Pad(
+                    padding=448 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(448),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+
+        elif task_name == 'mvtecx512':
+            train_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=511,
+                    max_size=512,
+                    antialias=True),
+                v2.RandomPhotometricDistort(p=1),
+                v2.RandomVerticalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
+                v2.RandomCrop(
+                    size=(512, 512),
+                    pad_if_needed=True,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+            test_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=511,
+                    max_size=512,
+                    antialias=True),
+                v2.Pad(
+                    padding=512 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+                v2.CenterCrop(512),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -251,8 +326,12 @@ class Joints(Basic):
                     max_size=640,
                     antialias=True),
                 v2.RandomPhotometricDistort(p=1),
-                # v2.RandomHorizontalFlip(p=0.5),
                 v2.RandomVerticalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
                 v2.RandomCrop(
                     size=(640, 640),
                     pad_if_needed=True,
@@ -269,6 +348,9 @@ class Joints(Basic):
                     size=639,
                     max_size=640,
                     antialias=True),
+                v2.Pad(
+                    padding=640 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
                 v2.CenterCrop(640),
                 v2.ToDtype(torch.float32, scale=True),
                 v2.Normalize(
