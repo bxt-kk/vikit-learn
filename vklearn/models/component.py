@@ -339,11 +339,12 @@ class DetPredictor(nn.Module):
 
     def __init__(
             self,
-            in_planes:     int,
-            num_anchors:   int,
-            bbox_dim:      int,
-            num_classes:   int,
-            dropout_p:     float,
+            in_planes:   int,
+            num_anchors: int,
+            bbox_dim:    int,
+            # num_classes:   int,
+            embed_dim:   int,
+            dropout_p:   float,
         ):
 
         super().__init__()
@@ -355,10 +356,12 @@ class DetPredictor(nn.Module):
             ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
             nn.Conv2d(in_planes, num_anchors, kernel_size=1))
 
+        ex_bbox_dims = bbox_dim * num_anchors
         self.bbox_predict = nn.Sequential(
             ConvNormActive(in_planes, in_planes, 1),
             ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Conv2d(in_planes, bbox_dim * num_anchors, kernel_size=1))
+            nn.Conv2d(in_planes, ex_bbox_dims, kernel_size=1),
+            nn.Conv2d(ex_bbox_dims, ex_bbox_dims, kernel_size=1, groups=num_anchors))
 
         clss_hidden = in_planes * num_anchors
 
@@ -371,7 +374,7 @@ class DetPredictor(nn.Module):
         self.dropout2d = nn.Dropout2d(dropout_p, inplace=False)
 
         self.clss_predict = nn.Conv2d(
-            clss_hidden, num_classes * num_anchors, kernel_size=1, groups=num_anchors)
+            clss_hidden, embed_dim * num_anchors, kernel_size=1, groups=num_anchors)
 
     def forward(self, x:Tensor) -> Tensor:
         bs, _, ny, nx = x.shape

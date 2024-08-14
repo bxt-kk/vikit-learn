@@ -37,6 +37,7 @@ class TrimNetDet(Detector):
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
             dropout_p:           float=0.2,
+            embed_dim:           int=32,
             num_scans:           int=3,
             scan_range:          int=4,
             backbone:            str='mobilenet_v3_small',
@@ -51,6 +52,7 @@ class TrimNetDet(Detector):
 
         self.cell_size = self.trimnetx.cell_size
         self.dropout_p = dropout_p
+        self.embed_dim = embed_dim
 
         merged_dim   = self.trimnetx.merged_dim
         features_dim = self.trimnetx.features_dim
@@ -59,16 +61,18 @@ class TrimNetDet(Detector):
             in_planes=merged_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
-            num_classes=self.num_classes,
+            embed_dim=embed_dim,
             dropout_p=dropout_p,
         ) for _ in range(num_scans)])
 
         self.auxi_clf = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
-            nn.Linear(features_dim, self.num_classes),
+            nn.Linear(features_dim, embed_dim),
         )
 
-        obj_dim = self.bbox_dim + self.num_classes
+        self.decoder = nn.Linear(embed_dim, self.num_classes)
+
+        obj_dim = self.bbox_dim + embed_dim
         self.alphas = nn.Parameter(torch.full(
             (1, self.num_anchors, 1, 1, obj_dim, num_scans),
             fill_value=1 / num_scans**0.5))
@@ -90,7 +94,9 @@ class TrimNetDet(Detector):
             mask = torch.sigmoid(confs[-1])
             confs.append(conf * mask + confs[-1] * (1 - mask))
             objs = objs + preds[t][..., 1:] * alphas[..., t]
-        return torch.cat(confs + [objs], dim=-1), m
+        obj_bbox = objs[..., :self.bbox_dim]
+        obj_clss = self.decoder(objs[..., self.bbox_dim:])
+        return torch.cat(confs + [obj_bbox, obj_clss], dim=-1), m
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetDet':
@@ -100,6 +106,7 @@ class TrimNetDet(Detector):
             bbox_limit          = hyps['bbox_limit'],
             anchors             = hyps['anchors'],
             dropout_p           = hyps['dropout_p'],
+            embed_dim           = hyps['embed_dim'],
             num_scans           = hyps['num_scans'],
             scan_range          = hyps['scan_range'],
             backbone            = hyps['backbone'],
@@ -114,6 +121,7 @@ class TrimNetDet(Detector):
             bbox_limit = self.bbox_limit,
             anchors    = self.anchors,
             dropout_p  = self.dropout_p,
+            embed_dim  = self.embed_dim,
             num_scans  = self.trimnetx.num_scans,
             scan_range = self.trimnetx.scan_range,
             backbone   = self.trimnetx.backbone,
@@ -289,7 +297,7 @@ class TrimNetDet(Detector):
                 target_bboxes], dim=-1)
             aligned = roi_align(
                 inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
-            auxi_pred = self.auxi_clf(aligned.flatten(start_dim=1))
+            auxi_pred = self.decoder(self.auxi_clf(aligned.flatten(start_dim=1)))
 
             auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
             auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
