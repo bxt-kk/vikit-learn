@@ -1,8 +1,8 @@
 from typing import List, Any, Dict, Mapping, Tuple
-import math
 
 from torch import Tensor
 from torchvision.ops import (
+    sigmoid_focal_loss,
     generalized_box_iou_loss,
     boxes as box_ops,
 )
@@ -16,7 +16,7 @@ import numpy as np
 from .joints import Joints
 from .trimnetx import TrimNetX
 from .component import SegPredictor, DetPredictor
-from ..utils.focal_boost import focal_boost_loss, focal_boost_positive, focal_boost_predict
+from ..utils.focal_boost import focal_boost_positive, focal_boost_predict
 
 
 class TrimNetJot(Joints):
@@ -297,37 +297,32 @@ class TrimNetJot(Joints):
             inputs:  Tensor,
             target:  Tensor,
             weights: Dict[str, float] | None=None,
-            gamma:   float=0.5,
         ) -> Dict[str, Any]:
 
-        times = inputs.shape[-1]
-        F_sigma = lambda t: 1 - (math.cos((t + 1) / times * math.pi) + 1) * 0.5
-        target = target.type_as(inputs)
+        rows, cols = inputs.shape[2], inputs.shape[3]
+        target = F.interpolate(target, (rows, cols), mode='bilinear')
 
-        alpha = (target.mean(dim=(1, 2, 3))**gamma + 1) * 0.5
-        grand_sigma = 0.
+        # 2 * abs(mean - 0.5) >> 0. -> alpha >> 0
+        # 2 * abs(mean - 0.5) >> 1. -> alpha >> 1
+        alpha = (target.mean(dim=(1, 2, 3)) - 0.5) * 2
 
-        loss = 0.
-        for t in range(times):
+        bce = F.binary_cross_entropy_with_logits(
+            inputs,
+            target,
+            reduction='none',
+        ).mean(dim=(1, 2, 3))
+        dice = self.dice_loss(
+            inputs,
+            target)
 
-            sigma = F_sigma(t)
-            grand_sigma += sigma
-            bce = F.binary_cross_entropy_with_logits(
-                inputs[..., t],
-                target,
-                reduction='none',
-            ).mean(dim=(1, 2, 3))
-            dice = self.dice_loss(
-                inputs[..., t],
-                target)
-            loss_t = alpha * bce + (1 - alpha) * dice
-            loss = loss + loss_t.mean() * sigma
-
-        loss = loss / grand_sigma
+        loss = (alpha * bce + (1 - alpha) * dice).mean()
+        bce_loss = bce.mean()
+        dice_loss = dice.mean()
 
         return dict(
             loss=loss,
-            alpha=alpha.mean(),
+            bce_loss=bce_loss,
+            dice_loss=dice_loss,
         )
 
     def _calc_det_loss(
@@ -342,28 +337,38 @@ class TrimNetJot(Joints):
         ) -> Dict[str, Any]:
 
         reduction = 'mean'
-        num_confs = self.trimnetx.num_scans
 
-        conf_loss, sampled_loss = focal_boost_loss(
-            inputs, target_index, num_confs, alpha, gamma)
-
-        pred_conf = inputs[..., 0]
-        targ_conf = torch.zeros_like(pred_conf)
+        targ_conf = torch.zeros_like(inputs)
         targ_conf[target_index] = 1.
+
+        precision_loss = sigmoid_focal_loss(
+            inputs=inputs,
+            targets=targ_conf,
+            alpha=alpha,
+            gamma=gamma,
+            reduction=reduction,
+        )
 
         objects = inputs[target_index]
 
-        bbox_loss = torch.zeros_like(conf_loss)
-        clss_loss = torch.zeros_like(conf_loss)
+        recall_loss = torch.zeros_like(precision_loss)
+        bbox_loss   = torch.zeros_like(precision_loss)
+        clss_loss   = torch.zeros_like(precision_loss)
         if objects.shape[0] > 0:
-            pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
+            pred_recall = objects[:, 0]
+            recall_loss = F.binary_cross_entropy_with_logits(
+                pred_recall, torch.ones_like(pred_recall), reduction=reduction)
+
+            pred_cxcywh = objects[:, 1:1 + self.bbox_dim]
             pred_xyxy = self.pred2boxes(pred_cxcywh, target_index)
             bbox_loss = generalized_box_iou_loss(
                 pred_xyxy, target_bboxes, reduction=reduction)
 
-            pred_clss = objects[:, num_confs + self.bbox_dim:]
+            pred_clss = objects[:, 1 + self.bbox_dim:]
             clss_loss = F.cross_entropy(
                 pred_clss, target_labels, reduction=reduction)
+
+        conf_loss = (1 - alpha) * precision_loss + alpha * recall_loss
 
         weights = weights or dict()
 
@@ -375,10 +380,10 @@ class TrimNetJot(Joints):
 
         return dict(
             loss=loss,
-            conf_loss=conf_loss,
+            precision_loss=precision_loss,
+            recall_loss=recall_loss,
             bbox_loss=bbox_loss,
             clss_loss=clss_loss,
-            sampled_loss=sampled_loss,
         )
 
     def calc_loss(
@@ -391,7 +396,6 @@ class TrimNetJot(Joints):
             weights:       Dict[str, float] | None=None,
             alpha:         float=0.25,
             gamma:         float=2.,
-            seg_gamma:     float=0.5,
         ) -> Dict[str, Any]:
 
         inputs_seg, inputs_det = inputs
@@ -400,7 +404,6 @@ class TrimNetJot(Joints):
             inputs_seg,
             target_masks,
             weights=weights,
-            gamma=seg_gamma,
         )
 
         det_losses = self._calc_det_loss(
