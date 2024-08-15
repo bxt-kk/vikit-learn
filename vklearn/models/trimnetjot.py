@@ -16,7 +16,7 @@ import numpy as np
 from .joints import Joints
 from .trimnetx import TrimNetX
 from .component import SegPredictor, DetPredictor
-from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
+from ..utils.focal_boost import focal_boost_loss, focal_boost_positive, focal_boost_predict
 
 
 class TrimNetJot(Joints):
@@ -50,57 +50,30 @@ class TrimNetJot(Joints):
         self.cell_size = self.trimnetx.cell_size
 
         merged_dim = self.trimnetx.merged_dim
-        expanded_dim = merged_dim * 4
 
-        self.seg_predict = SegPredictor(
-            merged_dim, num_classes=1, num_layers=4)
+        self.seg_predictor = SegPredictor(merged_dim, 1, num_scans)
 
-        self.det_predict = DetPredictor(
+        self.det_predictor = DetPredictor(
             in_planes=merged_dim + 1,
-            hidden_planes=expanded_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
-            num_classes=self.num_classes,
+            clss_dim=self.num_classes,
+            dropout_p=0.,
         )
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def forward_seg(self, hs:List[Tensor]) -> Tensor:
-        p = self.seg_predict(hs[0])
-        ps = [p]
-        times = len(hs)
-        for t in range(1, times):
-            a = torch.sigmoid(p)
-            p = self.seg_predict(hs[t]) * a + p * (1 - a)
-            ps.append(p)
-        return torch.cat([p[..., None] for p in ps], dim=-1)
-
-    def forward_det(self, hs:List[Tensor]) -> Tensor:
-        n, _, rs, cs = hs[0].shape
-
-        p = self.det_predict(hs[0])
-        ps = [p[..., :1]]
-        times = len(hs)
-        for t in range(1, times):
-            y = self.det_predict(hs[t])
-            a = torch.sigmoid(ps[-1])
-            p = y * a + p * (1 - a)
-            ps.append(p[..., :1])
-        ps.append(p[..., 1:])
-        return torch.cat(ps, dim=-1)
-
     def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
         hs, _ = self.trimnetx(x)
-        seg_p = self.forward_seg(hs)
-
-        mask = F.max_pool2d(seg_p[..., -1], 4)
-        mask = F.interpolate(mask, scale_factor=0.25, mode='bilinear')
-        mask = F.hardsigmoid(mask)
-        hs = [torch.cat([h, mask], dim=1) for h in hs]
-
-        det_p = self.forward_det(hs)
-        return seg_p, det_p
+        last_segment = self.seg_predictor(hs)[-1]
+        mask = F.hardsigmoid(last_segment)
+        mask = F.interpolate(
+            mask,
+            scale_factor=1 / 2**len(hs),
+            mode='bilinear')
+        objs = self.det_predictor(torch.cat([mask, hs[-1]], dim=1))
+        return last_segment, objs
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetJot':
@@ -131,13 +104,12 @@ class TrimNetJot(Joints):
             strict:     bool=True,
             assign:     bool=False,
         ):
-        CLSS_WEIGHT_KEY = 'det_predict.clss_predict.2.weight'
-        CLSS_BIAS_KEY = 'det_predict.clss_predict.2.bias'
+        CLSS_WEIGHT_KEY = 'det_predictor.clss_predict.weight'
+        CLSS_BIAS_KEY   = 'det_predictor.clss_predict.bias'
 
         clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
-        clss_bias = state_dict.pop(CLSS_BIAS_KEY)
-        predict_dim = self.det_predict.clss_predict[-1].bias.shape[0]
-        if clss_bias.shape[0] == predict_dim:
+        clss_bias   = state_dict.pop(CLSS_BIAS_KEY)
+        if clss_bias.shape[0] == self.num_classes:
             state_dict[CLSS_WEIGHT_KEY] = clss_weight
             state_dict[CLSS_BIAS_KEY] = clss_bias
         super().load_state_dict(state_dict, strict, assign)
@@ -145,8 +117,7 @@ class TrimNetJot(Joints):
     def detect(
             self,
             image:         Image.Image,
-            conf_thresh:   float=0.6,
-            recall_thresh: float=0.5,
+            conf_thresh:   float=0.5,
             iou_thresh:    float=0.5,
             align_size:    int=448,
             mini_side:     int=1,
@@ -160,13 +131,12 @@ class TrimNetJot(Joints):
         num_confs = self.trimnetx.num_scans
 
         seg_predicts, det_predicts = self.forward(x)
-        conf_prob = torch.ones_like(det_predicts[..., 0])
-        for conf_id in range(num_confs - 1):
-            conf_prob[torch.sigmoid(det_predicts[..., conf_id]) < recall_thresh] = 0.
-        conf_prob *= torch.sigmoid(det_predicts[..., num_confs - 1])
-        pred_objs = det_predicts[..., num_confs:]
 
-        index = torch.nonzero(conf_prob > recall_thresh, as_tuple=True)
+        pred_objs = det_predicts[..., num_confs:]
+        conf_prob = focal_boost_predict(
+            det_predicts, num_confs, recall_thresh=conf_thresh)
+
+        index = torch.nonzero(conf_prob > conf_thresh, as_tuple=True)
         if len(index[0]) == 0: return []
         conf = conf_prob[index[0], index[1], index[2], index[3]]
         objs = pred_objs[index[0], index[1], index[2], index[3]]
@@ -176,7 +146,7 @@ class TrimNetJot(Joints):
 
         clss = torch.softmax(objs[:, self.bbox_dim:], dim=-1).max(dim=-1)
         labels, probs = clss.indices, clss.values
-        scores = conf # * probs
+        scores = conf * probs
         final_ids = box_ops.batched_nms(boxes, scores, labels, iou_thresh)
         boxes = boxes[final_ids]
         labels = labels[final_ids]
@@ -186,7 +156,7 @@ class TrimNetJot(Joints):
 
         nodes = []
         for score, box, label, prob, anchor in zip(scores, boxes, labels, probs, anchors):
-            if score < conf_thresh: continue
+            # if score < conf_thresh: continue
             if (box[2:] - box[:2]).min() < mini_side: continue
             nodes.append(dict(
                 score=round(score.item(), 5),
@@ -200,7 +170,7 @@ class TrimNetJot(Joints):
         seg_predicts = torch.sigmoid(seg_predicts[..., -1])
         heatmap = seg_predicts[0, 0].cpu().numpy()
 
-        rects, remains = self.joints(nodes, heatmap)
+        objs, remains = self.joints(nodes, heatmap)
 
         heatmap = F.interpolate(
             seg_predicts[..., pad_y:pad_y + dst_h, pad_x:pad_x + dst_w],
@@ -217,18 +187,18 @@ class TrimNetJot(Joints):
             y2 = round(min(max((y2 - pad_y) / scale, 1), raw_h))
             item['box'] = x1, y1, x2, y2
 
-        for ix in range(len(rects)):
-            (cx, cy), (w, h), a = rects[ix]
+        for ix in range(len(objs)):
+            (cx, cy), (w, h), a = objs[ix]['rect']
             cx = round(min(max((cx - pad_x) / scale, 0), raw_w))
             cy = round(min(max((cy - pad_y) / scale, 0), raw_h))
             w = w / scale
             h = h / scale
-            rects[ix] = (cx, cy), (w, h), a
+            objs[ix]['rect'] = (cx, cy), (w, h), a
 
         return dict(
             remains=remains,
             heatmap=heatmap,
-            rects=rects,
+            objs=objs,
         )
 
     def _joint_iter(
@@ -278,7 +248,7 @@ class TrimNetJot(Joints):
             if score < 0.9:
                 end_nodes.insert(matched_id, end_node)
 
-        rects = []
+        objs = []
         for begin_node, end_node in matched_pairs:
             begin_bbox = np.array(begin_node['box'], dtype=np.float32)
             end_bbox = np.array(end_node['box'], dtype=np.float32)
@@ -294,9 +264,16 @@ class TrimNetJot(Joints):
             diameter = (begin_width + end_width) * 0.5
             cx, cy = (begin_cxcy + end_cxcy) * 0.5
             rect = (cx, cy), (length, diameter), angle
-            rects.append(rect)
+            begin_score = begin_node['score']
+            end_score = end_node['score']
+            label = begin_node['label']
+            score = begin_score
+            if begin_score < end_score:
+                label = end_node['label']
+                score = end_score
+            objs.append(dict(rect=rect, label=label, score=score))
 
-        return rects, begin_nodes + end_nodes
+        return objs, begin_nodes + end_nodes
 
     def dice_loss(
             self,
