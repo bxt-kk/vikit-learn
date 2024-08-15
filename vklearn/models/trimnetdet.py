@@ -61,7 +61,7 @@ class TrimNetDet(Detector):
             in_planes=merged_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
-            embed_dim=embed_dim,
+            clss_dim=embed_dim,
             dropout_p=dropout_p,
         ) for _ in range(num_scans)])
 

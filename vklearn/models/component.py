@@ -342,8 +342,7 @@ class DetPredictor(nn.Module):
             in_planes:   int,
             num_anchors: int,
             bbox_dim:    int,
-            # num_classes:   int,
-            embed_dim:   int,
+            clss_dim:    int,
             dropout_p:   float,
         ):
 
@@ -367,14 +366,14 @@ class DetPredictor(nn.Module):
 
         self.expansion = nn.Sequential(
             ConvNormActive(in_planes, clss_hidden, 1),
-            # ConvNormActive(clss_hidden, clss_hidden, 3, groups=clss_hidden))
-            MultiKernelConvNormActive(clss_hidden, [3 + t * 2 for t in range(num_anchors)]),
+            MultiKernelConvNormActive(
+                clss_hidden, [3 + t * 2 for t in range(num_anchors)]),
         )
 
         self.dropout2d = nn.Dropout2d(dropout_p, inplace=False)
 
         self.clss_predict = nn.Conv2d(
-            clss_hidden, embed_dim * num_anchors, kernel_size=1, groups=num_anchors)
+            clss_hidden, clss_dim * num_anchors, kernel_size=1, groups=num_anchors)
 
     def forward(self, x:Tensor) -> Tensor:
         bs, _, ny, nx = x.shape
