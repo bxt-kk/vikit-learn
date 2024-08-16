@@ -142,7 +142,7 @@ class TrimNetJot(Joints):
         objs = pred_objs[index[0], index[1], index[2], index[3]]
 
         raw_w, raw_h = image.size
-        boxes = self.pred2boxes(objs[:, :self.bbox_dim], index)
+        boxes = self.pred2boxes(objs[:, :self.bbox_dim], index[2], index[3])
 
         clss = torch.softmax(objs[:, self.bbox_dim:], dim=-1).max(dim=-1)
         labels, probs = clss.indices, clss.values
@@ -360,7 +360,7 @@ class TrimNetJot(Joints):
                 pred_recall, torch.ones_like(pred_recall), reduction=reduction)
 
             pred_cxcywh = objects[:, 1:1 + self.bbox_dim]
-            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index)
+            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
             bbox_loss = generalized_box_iou_loss(
                 pred_xyxy, target_bboxes, reduction=reduction)
 
@@ -432,8 +432,8 @@ class TrimNetJot(Joints):
             eps:    float=1e-5,
         ) -> Dict[str, Any]:
 
-        predicts = torch.sigmoid(inputs[..., -1])
-        distance = torch.abs(predicts - target).mean(dim=(2, 3)).mean()
+        predicts = torch.sigmoid(inputs)
+        distance = torch.abs(predicts - target).mean()
 
         return dict(
             mae=distance,
@@ -446,17 +446,13 @@ class TrimNetJot(Joints):
             target_labels: Tensor,
             target_bboxes: Tensor,
             conf_thresh:   float=0.5,
-            recall_thresh: float=0.5,
             eps:           float=1e-5,
         ) -> Dict[str, Any]:
 
-        num_confs = self.trimnetx.num_scans
-
-        targ_conf = torch.zeros_like(inputs[..., 0])
+        targ_conf = torch.zeros_like(inputs)
         targ_conf[target_index] = 1.
 
-        pred_obj = focal_boost_positive(
-            inputs, num_confs, conf_thresh, recall_thresh)
+        pred_obj = inputs > conf_thresh
 
         pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
         conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
@@ -468,10 +464,10 @@ class TrimNetJot(Joints):
 
         iou_score = torch.ones_like(conf_f1)
         clss_accuracy = torch.ones_like(conf_f1)
-        obj_conf_min = torch.zeros_like(conf_f1)
+        conf_min = torch.zeros_like(conf_f1)
         if objects.shape[0] > 0:
-            pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index)
+            pred_cxcywh = objects[:, 1:1 + self.bbox_dim]
+            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
             targ_xyxy = target_bboxes
 
             max_x1y1 = torch.maximum(pred_xyxy[:, :2], targ_xyxy[:, :2])
@@ -485,21 +481,10 @@ class TrimNetJot(Joints):
             union = pred_area + targ_area - intersection
             iou_score = (intersection / union).mean()
 
-            pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
+            pred_labels = torch.argmax(objects[:, 1 + self.bbox_dim:], dim=-1)
             clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
 
-            obj_conf = torch.sigmoid(objects[:, :num_confs])
-            if num_confs == 1:
-                obj_conf_min = obj_conf[:, 0].min()
-            else:
-                sample_mask = obj_conf[:, 0] > conf_thresh
-                for conf_id in range(1, num_confs - 1):
-                    sample_mask = torch.logical_and(
-                        sample_mask, obj_conf[:, conf_id] > conf_thresh)
-                if sample_mask.sum() > 0:
-                    obj_conf_min = torch.masked_select(obj_conf[:, -1], sample_mask).min()
-                else:
-                    obj_conf_min = torch.zeros_like(proposals)
+            conf_min = torch.sigmoid(objects[:, 0].min())
 
         return dict(
             conf_precision=conf_precision,
@@ -508,7 +493,7 @@ class TrimNetJot(Joints):
             iou_score=iou_score,
             clss_accuracy=clss_accuracy,
             proposals=proposals,
-            obj_conf_min=obj_conf_min,
+            conf_min=conf_min,
         )
 
     def calc_score(
@@ -537,7 +522,6 @@ class TrimNetJot(Joints):
             target_labels,
             target_bboxes,
             conf_thresh=conf_thresh,
-            recall_thresh=recall_thresh,
             eps=eps,
         )
 
@@ -554,7 +538,7 @@ class TrimNetJot(Joints):
             conf_thresh: float=0.5,
         ):
 
-        predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
+        predicts = torch.sigmoid(inputs) > conf_thresh
         self.m_iou.update(predicts.to(torch.int), target.to(torch.int))
 
     def _update_det_metric(
@@ -578,7 +562,7 @@ class TrimNetJot(Joints):
 
         pred_scores = torch.sigmoid(objects[:, num_confs - 1])
         pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
-        pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index), 0.)
+        pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index[2], preds_index[3]), 0.)
         pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
 
         preds = []
