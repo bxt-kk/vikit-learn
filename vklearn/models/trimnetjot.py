@@ -465,14 +465,16 @@ class TrimNetJot(Joints):
         conf_f1 = 2 * conf_precision * conf_recall / torch.clamp_min(conf_precision + conf_recall, eps)
         proposals = pred_obj.sum() / pred_obj.shape[0]
 
-        objects = inputs[target_index]
+        # objects = inputs[target_index]
+        offset_index = self.random_offset_index(target_index, target_bboxes)
+        objects = inputs[offset_index]
 
         iou_score = torch.ones_like(conf_f1)
         clss_accuracy = torch.ones_like(conf_f1)
         conf_min = torch.zeros_like(conf_f1)
         if objects.shape[0] > 0:
             pred_cxcywh = objects[:, 1:1 + self.bbox_dim]
-            pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
+            pred_xyxy = self.pred2boxes(pred_cxcywh, offset_index[2], offset_index[3])
             targ_xyxy = target_bboxes
 
             max_x1y1 = torch.maximum(pred_xyxy[:, :2], targ_xyxy[:, :2])

@@ -8,7 +8,7 @@ from ...models.joints import Joints as Model
 @dataclass
 class Joints(Task):
     model:       Model
-    key_metrics: Tuple[str]=('map', 'map_50', 'map_75', 'miou')
+    key_metrics: Tuple[str]=('mjoin', 'map', 'map_50', 'map_75', 'miou')
 
     def sample_convert(self, sample: Any) -> Tuple[Any, Any]:
         inputs, target_labels, target_bboxes, target_masks = [

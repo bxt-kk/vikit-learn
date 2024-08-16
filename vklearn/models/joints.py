@@ -157,6 +157,10 @@ class Joints(Basic):
         metrics['miou'] = miou
         self.m_iou_metric.reset()
         self.m_ap_metric.reset()
+        metrics['mjoin'] = (
+            2 * metrics['map'] * miou /
+            torch.clamp_min(metrics['map'] + miou, 1e-5)
+        )
         return metrics
 
     def _select_anchor(self, labels:Tensor) -> Tensor:
