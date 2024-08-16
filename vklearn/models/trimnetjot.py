@@ -559,7 +559,7 @@ class TrimNetJot(Joints):
             iou_thresh:    float=0.5,
         ):
 
-        preds_mask = inputs[..., 0] > conf_thresh
+        preds_mask = torch.sigmoid(inputs[..., 0]) > conf_thresh
         preds_index = torch.nonzero(preds_mask, as_tuple=True)
 
         objects = inputs[preds_index]
