@@ -16,7 +16,7 @@ import numpy as np
 from .joints import Joints
 from .trimnetx import TrimNetX
 from .component import SegPredictor, DetPredictor
-from ..utils.focal_boost import focal_boost_positive, focal_boost_predict
+from ..utils.focal_boost import focal_boost_predict
 
 
 class TrimNetJot(Joints):
@@ -300,7 +300,7 @@ class TrimNetJot(Joints):
         ) -> Dict[str, Any]:
 
         rows, cols = inputs.shape[2], inputs.shape[3]
-        target = F.interpolate(target, (rows, cols), mode='bilinear')
+        target = F.interpolate(target.type_as(inputs), (rows, cols), mode='bilinear')
 
         # 2 * abs(mean - 0.5) >> 0. -> alpha >> 0
         # 2 * abs(mean - 0.5) >> 1. -> alpha >> 1
@@ -338,11 +338,12 @@ class TrimNetJot(Joints):
 
         reduction = 'mean'
 
-        targ_conf = torch.zeros_like(inputs)
+        pred_conf = inputs[..., 0]
+        targ_conf = torch.zeros_like(pred_conf)
         targ_conf[target_index] = 1.
 
         precision_loss = sigmoid_focal_loss(
-            inputs=inputs,
+            inputs=pred_conf,
             targets=targ_conf,
             alpha=alpha,
             gamma=gamma,
@@ -432,6 +433,9 @@ class TrimNetJot(Joints):
             eps:    float=1e-5,
         ) -> Dict[str, Any]:
 
+        rows, cols = inputs.shape[2], inputs.shape[3]
+        target = F.interpolate(target.type_as(inputs), (rows, cols), mode='bilinear')
+
         predicts = torch.sigmoid(inputs)
         distance = torch.abs(predicts - target).mean()
 
@@ -449,10 +453,11 @@ class TrimNetJot(Joints):
             eps:           float=1e-5,
         ) -> Dict[str, Any]:
 
-        targ_conf = torch.zeros_like(inputs)
+        pred_conf = inputs[..., 0]
+        targ_conf = torch.zeros_like(pred_conf)
         targ_conf[target_index] = 1.
 
-        pred_obj = inputs > conf_thresh
+        pred_obj = torch.sigmoid(pred_conf) > conf_thresh
 
         pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
         conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
@@ -538,8 +543,11 @@ class TrimNetJot(Joints):
             conf_thresh: float=0.5,
         ):
 
+        rows, cols = inputs.shape[2], inputs.shape[3]
+        target = F.interpolate(target.type_as(inputs), (rows, cols), mode='bilinear')
+
         predicts = torch.sigmoid(inputs) > conf_thresh
-        self.m_iou.update(predicts.to(torch.int), target.to(torch.int))
+        self.m_iou_metric.update(predicts.to(torch.int), target.to(torch.int))
 
     def _update_det_metric(
             self,
@@ -548,22 +556,18 @@ class TrimNetJot(Joints):
             target_labels: Tensor,
             target_bboxes: Tensor,
             conf_thresh:   float=0.5,
-            recall_thresh: float=0.5,
             iou_thresh:    float=0.5,
         ):
 
-        num_confs = self.trimnetx.num_scans
-
-        preds_mask = focal_boost_positive(
-            inputs, num_confs, conf_thresh, recall_thresh)
+        preds_mask = inputs[..., 0] > conf_thresh
         preds_index = torch.nonzero(preds_mask, as_tuple=True)
 
         objects = inputs[preds_index]
 
-        pred_scores = torch.sigmoid(objects[:, num_confs - 1])
-        pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
+        pred_scores = torch.sigmoid(objects[:, 0])
+        pred_cxcywh = objects[:, 1:1 + self.bbox_dim]
         pred_bboxes = torch.clamp_min(self.pred2boxes(pred_cxcywh, preds_index[2], preds_index[3]), 0.)
-        pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
+        pred_labels = torch.argmax(objects[:, 1 + self.bbox_dim:], dim=-1)
 
         preds = []
         target = []
@@ -614,6 +618,5 @@ class TrimNetJot(Joints):
             target_labels,
             target_bboxes,
             conf_thresh=conf_thresh,
-            recall_thresh=recall_thresh,
             iou_thresh=iou_thresh,
         )
