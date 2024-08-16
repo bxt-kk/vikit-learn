@@ -304,28 +304,28 @@ class TrimNetJot(Joints):
 
         # 2 * abs(mean - 0.5) >> 0. -> alpha >> 0
         # 2 * abs(mean - 0.5) >> 1. -> alpha >> 1
-        # alpha = torch.abs(target.mean(dim=(1, 2, 3)) - 0.5) * 2
-        alpha = torch.abs(target.mean() - 0.5) * 2
+        alpha = torch.abs(target.mean(dim=(1, 2, 3)) - 0.5) * 2
+        # alpha = torch.abs(target.mean() - 0.5) * 2
 
-        # bce = F.binary_cross_entropy_with_logits(
-        #     inputs,
-        #     target,
-        #     reduction='none',
-        # ).mean(dim=(1, 2, 3))
-        # dice = self.dice_loss(
-        #     inputs,
-        #     target)
         bce = F.binary_cross_entropy_with_logits(
             inputs,
             target,
-            reduction='mean',
-        )
+            reduction='none',
+        ).mean(dim=(1, 2, 3))
         dice = self.dice_loss(
             inputs,
-            target).mean()
+            target)
+        # bce = F.binary_cross_entropy_with_logits(
+        #     inputs,
+        #     target,
+        #     reduction='mean',
+        # )
+        # dice = self.dice_loss(
+        #     inputs,
+        #     target).mean()
 
-        # loss = (alpha * bce + (1 - alpha) * dice).mean()
-        loss = alpha * bce + (1 - alpha) * dice
+        loss = (alpha * bce + (1 - alpha) * dice).mean()
+        # loss = alpha * bce + (1 - alpha) * dice
         bce_loss = bce.mean()
         dice_loss = dice.mean()
 
@@ -333,7 +333,7 @@ class TrimNetJot(Joints):
             loss=loss,
             bce_loss=bce_loss,
             dice_loss=dice_loss,
-            seg_alpha=alpha,
+            # seg_alpha=alpha,
         )
 
     def _calc_det_loss(
