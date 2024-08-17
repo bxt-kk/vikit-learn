@@ -83,6 +83,8 @@ class Joints(Basic):
             self,
             index: List[Tensor],
             xyxys: Tensor,
+            rows:  int,
+            cols:  int,
             scale: float=0.5,
         ) -> List[Tensor]:
 
@@ -95,7 +97,7 @@ class Joints(Basic):
             cr_w * scale * torch.clamp(torch.randn_like(cr_w) * 0.25, -0.5, 0.5)
         )
         cr_x = torch.clamp(cr_x, xyxys[:, 0], xyxys[:, 2])
-        col_index = (cr_x / self.cell_size).type(torch.int64)
+        col_index = torch.clamp(cr_x / self.cell_size, 0, cols - 1).type(torch.int64)
 
         cr_h = (xyxys[:, 3] - xyxys[:, 1])
         cr_y = (
@@ -103,7 +105,7 @@ class Joints(Basic):
             cr_h * scale * torch.clamp(torch.randn_like(cr_h) * 0.25, -0.5, 0.5)
         )
         cr_y = torch.clamp(cr_y, xyxys[:, 1], xyxys[:, 3])
-        row_index = (cr_y / self.cell_size).type(torch.int64)
+        row_index = torch.clamp(cr_y / self.cell_size, 0, rows - 1).type(torch.int64)
         return [index[0], index[1], row_index, col_index]
 
     def detect(

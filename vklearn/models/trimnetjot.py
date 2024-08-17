@@ -466,7 +466,8 @@ class TrimNetJot(Joints):
         proposals = pred_obj.sum() / pred_obj.shape[0]
 
         # objects = inputs[target_index]
-        offset_index = self.random_offset_index(target_index, target_bboxes)
+        offset_index = self.random_offset_index(
+            target_index, target_bboxes, inputs.shape[2], inputs.shape[3])
         objects = inputs[offset_index]
 
         iou_score = torch.ones_like(conf_f1)
