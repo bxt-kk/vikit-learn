@@ -10,13 +10,11 @@ import torch
 import torch.nn.functional as F
 
 from PIL import Image
-from numpy import ndarray
 import numpy as np
 
 from .joints import Joints
 from .trimnetx import TrimNetX
 from .component import SegPredictor, DetPredictor
-from ..utils.focal_boost import focal_boost_predict
 
 
 class TrimNetJot(Joints):
@@ -109,7 +107,7 @@ class TrimNetJot(Joints):
 
         clss_weight = state_dict.pop(CLSS_WEIGHT_KEY)
         clss_bias   = state_dict.pop(CLSS_BIAS_KEY)
-        if clss_bias.shape[0] == self.num_classes:
+        if clss_bias.shape[0] == self.num_classes * self.num_anchors:
             state_dict[CLSS_WEIGHT_KEY] = clss_weight
             state_dict[CLSS_BIAS_KEY] = clss_bias
         super().load_state_dict(state_dict, strict, assign)
@@ -128,13 +126,10 @@ class TrimNetJot(Joints):
             image, align_size, limit_size=32, fill_value=127)
         x = x.to(device)
 
-        num_confs = self.trimnetx.num_scans
+        seg_predict, det_predict = self.forward(x)
 
-        seg_predicts, det_predicts = self.forward(x)
-
-        pred_objs = det_predicts[..., num_confs:]
-        conf_prob = focal_boost_predict(
-            det_predicts, num_confs, recall_thresh=conf_thresh)
+        pred_objs = det_predict[..., 1:]
+        conf_prob = torch.sigmoid(det_predict[..., 0])
 
         index = torch.nonzero(conf_prob > conf_thresh, as_tuple=True)
         if len(index[0]) == 0: return []
@@ -156,7 +151,6 @@ class TrimNetJot(Joints):
 
         nodes = []
         for score, box, label, prob, anchor in zip(scores, boxes, labels, probs, anchors):
-            # if score < conf_thresh: continue
             if (box[2:] - box[:2]).min() < mini_side: continue
             nodes.append(dict(
                 score=round(score.item(), 5),
@@ -167,16 +161,16 @@ class TrimNetJot(Joints):
             ))
 
         dst_w, dst_h = round(scale * raw_w), round(scale * raw_h)
-        seg_predicts = torch.sigmoid(seg_predicts[..., -1])
-        heatmap = seg_predicts[0, 0].cpu().numpy()
+        heatmap_arr = F.interpolate(
+            torch.sigmoid(seg_predict),
+            size=(x.shape[2], x.shape[3]),
+            mode='bilinear')[0, 0].cpu().numpy()
 
-        objs, remains = self.joints(nodes, heatmap)
+        objs, remains = self.joints(nodes, heatmap_arr)
 
-        heatmap = F.interpolate(
-            seg_predicts[..., pad_y:pad_y + dst_h, pad_x:pad_x + dst_w],
-            size=(raw_h, raw_w),
-            mode='bilinear',
-        )[0, 0].numpy()
+        heatmap = Image.fromarray(
+            (heatmap_arr[pad_y:pad_y + dst_h, pad_x:pad_x + dst_w] * 255
+        ).astype(np.uint8)).resize((raw_w,raw_h), resample=Image.Resampling.BILINEAR)
 
         for ix in range(len(remains)):
             item = remains[ix]
@@ -200,80 +194,6 @@ class TrimNetJot(Joints):
             heatmap=heatmap,
             objs=objs,
         )
-
-    def _joint_iter(
-            self,
-            begin_node: List[Dict[str, Any]],
-            end_nodes:  List[Dict[str, Any]],
-            heatmap:    ndarray,
-        ) -> Tuple[int, float]:
-
-        begin_bbox = np.array(begin_node['box'], dtype=np.float32)
-        begin_cxcy = (begin_bbox[:2] + begin_bbox[2:]) * 0.5
-        max_score = 0.5
-        matched_id = -1
-        for end_ix, end_node in enumerate(end_nodes):
-            end_bbox = np.array(end_node['box'], dtype=np.float32)
-            end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
-            steps = round(np.linalg.norm(begin_cxcy - end_cxcy) / 1)
-            cols = np.around(np.linspace(begin_cxcy[0], end_cxcy[0], steps)).astype(int)
-            rows = np.around(np.linspace(begin_cxcy[1], end_cxcy[1], steps)).astype(int)
-            region = heatmap[rows, cols]
-            if region.size == 0:
-                continue
-            score = region.mean()
-            if score > max_score:
-                max_score = score
-                matched_id = end_ix
-            if max_score > 0.99: break
-        return matched_id, max_score
-
-    def joints(
-            self,
-            nodes:   List[Dict[str, Any]],
-            heatmap: ndarray,
-        ) -> Tuple[List[Any], List[Dict[str, Any]]]:
-
-        begin_nodes = [item for item in nodes if item['anchor'] == 0]
-        end_nodes = [item for item in nodes if item['anchor'] == 1]
-        matched_pairs = []
-        for _ in range(len(begin_nodes)):
-            begin_node = begin_nodes.pop(0)
-            matched_id, score = self._joint_iter(begin_node, end_nodes, heatmap)
-            if matched_id < 0:
-                begin_nodes.append(begin_node)
-                continue
-            end_node = end_nodes.pop(matched_id)
-            matched_pairs.append((begin_node, end_node))
-            if score < 0.9:
-                end_nodes.insert(matched_id, end_node)
-
-        objs = []
-        for begin_node, end_node in matched_pairs:
-            begin_bbox = np.array(begin_node['box'], dtype=np.float32)
-            end_bbox = np.array(end_node['box'], dtype=np.float32)
-            begin_cxcy = (begin_bbox[:2] + begin_bbox[2:]) * 0.5
-            end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
-            vector = end_cxcy - begin_cxcy
-            length = np.linalg.norm(vector)
-            vector /= length
-            angle = np.rad2deg(np.arccos(vector[0]))
-            if vector[1] < 0: angle = -angle
-            begin_width = max(begin_bbox[2:] - begin_bbox[:2])
-            end_width = max(end_bbox[2:] - end_bbox[:2])
-            diameter = (begin_width + end_width) * 0.5
-            cx, cy = (begin_cxcy + end_cxcy) * 0.5
-            rect = (cx, cy), (length, diameter), angle
-            begin_score = begin_node['score']
-            end_score = end_node['score']
-            label = begin_node['label']
-            score = begin_score
-            if begin_score < end_score:
-                label = end_node['label']
-                score = end_score
-            objs.append(dict(rect=rect, label=label, score=score))
-
-        return objs, begin_nodes + end_nodes
 
     def dice_loss(
             self,

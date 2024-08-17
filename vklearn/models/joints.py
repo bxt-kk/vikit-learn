@@ -12,6 +12,8 @@ from torchmetrics.detection import MeanAveragePrecision
 from torchmetrics.segmentation import MeanIoU
 
 from PIL import Image
+from numpy import ndarray
+import numpy as np
 
 from .basic import Basic
 
@@ -107,6 +109,79 @@ class Joints(Basic):
         cr_y = torch.clamp(cr_y, xyxys[:, 1], xyxys[:, 3])
         row_index = torch.clamp(cr_y / self.cell_size, 0, rows - 1).type(torch.int64)
         return [index[0], index[1], row_index, col_index]
+
+    def _joint_iter(
+            self,
+            begin_node: Dict[str, Any],
+            end_nodes:  List[Dict[str, Any]],
+            heatmap:    ndarray,
+        ) -> Tuple[int, float]:
+
+        begin_bbox = np.array(begin_node['box'], dtype=np.float32)
+        begin_cxcy = (begin_bbox[:2] + begin_bbox[2:]) * 0.5
+        max_score = 0.5
+        matched_id = -1
+        for end_ix, end_node in enumerate(end_nodes):
+            end_bbox = np.array(end_node['box'], dtype=np.float32)
+            end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
+            steps = round(np.linalg.norm(begin_cxcy - end_cxcy))
+            cols = np.around(np.linspace(begin_cxcy[0], end_cxcy[0], steps)).astype(int)
+            rows = np.around(np.linspace(begin_cxcy[1], end_cxcy[1], steps)).astype(int)
+            region = heatmap[rows, cols]
+            if region.size == 0: continue
+            score = region.mean()
+            if score > max_score:
+                max_score = score
+                matched_id = end_ix
+            if max_score > 0.99: break
+        return matched_id, max_score
+
+    def joints(
+            self,
+            nodes:   List[Dict[str, Any]],
+            heatmap: ndarray,
+        ) -> Tuple[List[Any], List[Dict[str, Any]]]:
+
+        begin_nodes = [item for item in nodes if item['anchor'] == 0]
+        end_nodes = [item for item in nodes if item['anchor'] == 1]
+        matched_pairs = []
+        for _ in range(len(begin_nodes)):
+            begin_node = begin_nodes.pop(0)
+            matched_id, score = self._joint_iter(begin_node, end_nodes, heatmap)
+            if matched_id < 0:
+                begin_nodes.append(begin_node)
+                continue
+            end_node = end_nodes.pop(matched_id)
+            matched_pairs.append((begin_node, end_node))
+            if score < 0.9:
+                end_nodes.insert(matched_id, end_node)
+
+        objs = []
+        for begin_node, end_node in matched_pairs:
+            begin_bbox = np.array(begin_node['box'], dtype=np.float32)
+            end_bbox = np.array(end_node['box'], dtype=np.float32)
+            begin_cxcy = (begin_bbox[:2] + begin_bbox[2:]) * 0.5
+            end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
+            vector = end_cxcy - begin_cxcy
+            length = np.linalg.norm(vector)
+            vector /= length
+            angle = np.rad2deg(np.arccos(vector[0]))
+            if vector[1] < 0: angle = -angle
+            begin_width = max(begin_bbox[2:] - begin_bbox[:2])
+            end_width = max(end_bbox[2:] - end_bbox[:2])
+            diameter = (begin_width + end_width) * 0.5
+            cx, cy = (begin_cxcy + end_cxcy) * 0.5
+            rect = (cx, cy), (length, diameter), angle
+            begin_score = begin_node['score']
+            end_score = end_node['score']
+            label = begin_node['label']
+            score = begin_score
+            if begin_score < end_score:
+                label = end_node['label']
+                score = end_score
+            objs.append(dict(rect=rect, label=label, score=score))
+
+        return objs, begin_nodes + end_nodes
 
     def detect(
             self,
