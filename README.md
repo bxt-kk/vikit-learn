@@ -113,11 +113,11 @@ trainer.fit()
 
 Upon training completion, there will be visualization images of model training results in the `/kaggle/working/logs/` directory:
 
-![](./asset/CATDOG-LOG-240818-15 22 23_loss.png)
-![](./asset/CATDOG-LOG-240818-15 22 23_conf_f1.png)
-![](./asset/CATDOG-LOG-240818-15 22 23_iou_score.png)
-![](./asset/CATDOG-LOG-240818-15 22 23_map.png)
-![](./asset/CATDOG-LOG-240818-15 22 23_map_50.png)
+![](./asset/CATDOG-LOG-240818-15:22:23_loss.png)
+![](./asset/CATDOG-LOG-240818-15:22:23_conf_f1.png)
+![](./asset/CATDOG-LOG-240818-15:22:23_iou_score.png)
+![](./asset/CATDOG-LOG-240818-15:22:23_map.png)
+![](./asset/CATDOG-LOG-240818-15:22:23_map_50.png)
 
 Based on the focal-boost loss function I designed, the model can be successfully trained on tasks with extremely low positive sample ratio.
 
@@ -167,7 +167,6 @@ Here are some examples of image classification:
 
 Here are some examples of semantic segmentation: 
 
-
 ![](./asset/Figure_21.png)
 ![](./asset/Figure_22.png)
 ![](./asset/Figure_23.png)
@@ -177,9 +176,8 @@ Here are some examples of semantic segmentation:
 
 Here are some objectives that support directional localization, which is implemented based on keypoint&joint detection technology:
 
-![](./asset/Figure_21.png)
-![](./asset/Figure_22.png)
-![](./asset/Figure_23.png)
-![](./asset/Figure_24.png)
-![](./asset/Figure_25.png)
-![](./asset/Figure_26.png)
+![](./asset/Figure_31.png)
+![](./asset/Figure_32.png)
+![](./asset/Figure_33.png)
+![](./asset/Figure_34.png)
+![](./asset/Figure_35.png)
