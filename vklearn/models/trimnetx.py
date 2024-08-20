@@ -1,60 +1,16 @@
 from typing import List, Mapping, Any, Dict, Tuple
-# import math
 
 from torch import Tensor
 
 import torch
 import torch.nn as nn
 
-# from .component import ConvNormActive, ConvNormActiveRes, CSENet
 from .component import ConvNormActive
 from .component import MobileNetFeatures, DinoFeatures
 from .component import CBANet
 from .basic import Basic
 
 
-# class TrimUnit(nn.Module):
-#
-#     def __init__(
-#             self,
-#             in_planes:  int,
-#             out_planes: int,
-#             head_dim:   int,
-#             scan_range: int=4,
-#             dropout_p:  float=0.,
-#         ):
-#
-#         super().__init__()
-#
-#         assert out_planes % head_dim == 0
-#         groups = out_planes // head_dim
-#
-#         modules = []
-#         modules.append(CSENet(in_planes, out_planes))
-#         for r in range(scan_range):
-#             modules.append(ConvNormActiveRes(
-#                 out_planes,
-#                 out_planes,
-#                 dilation=2**r,
-#                 groups=groups,
-#                 norm_layer=None,
-#                 activation=None,
-#             ))
-#         modules.append(ConvNormActive(out_planes, out_planes, 1))
-#         if dropout_p > 0:
-#             modules.append(nn.Dropout(dropout_p))
-#         self.blocks = nn.Sequential(*modules)
-#
-#     # def train(self, mode:bool=True):
-#     #     super().train(mode)
-#     #     if isinstance(self.blocks[-1], nn.Dropout):
-#     #         self.blocks[-1].train()
-#
-#     def forward(self, x:Tensor) -> Tensor:
-#         return self.blocks(x)
-
-
-# class TrimUnit2(nn.Module):
 class TrimUnit(nn.Module):
 
     def __init__(
@@ -63,7 +19,6 @@ class TrimUnit(nn.Module):
             out_planes: int,
             head_dim:   int,
             scan_range: int=4,
-            # dropout_p:  float=0.,
         ):
 
         super().__init__()
@@ -72,8 +27,6 @@ class TrimUnit(nn.Module):
         groups = out_planes // head_dim
         dense_dim = out_planes // scan_range
 
-        # self.dropout = nn.Dropout2d(dropout_p) # Lab code
-        # self.csenet = CSENet(in_planes, out_planes)
         self.cbanet = CBANet(in_planes, out_planes)
         self.convs = nn.ModuleList()
         self.denses = nn.ModuleList()
@@ -90,7 +43,6 @@ class TrimUnit(nn.Module):
         self.merge = ConvNormActive(dense_dim * scan_range, out_planes, 1)
 
     def forward(self, x:Tensor) -> Tensor:
-        # x = self.dropout(x) # Lab code
         x = self.cbanet(x)
         ds = []
         for conv, dense in zip(self.convs, self.denses):
@@ -163,32 +115,20 @@ class TrimNetX(Basic):
 
         self.cell_size = self.features.cell_size
 
-        # self.merge = ConvNormActive(
-        #     self.features_dim, self.merged_dim, 1, activation=None)
-        # self.merge = CSENet(self.features_dim, self.merged_dim)
-
-        # self.project = ConvNormActive(
-        #     self.merged_dim, self.merged_dim, 1, activation=None)
         self.projects = nn.ModuleList([
             ConvNormActive(self.merged_dim, self.merged_dim, 1, activation=None)
             for _ in range(num_scans - 1)])
 
         self.trim_units = nn.ModuleList()
         for t in range(num_scans):
-            # in_planes = self.merged_dim
             in_planes = self.features_dim
             if t > 0:
-                # in_planes = 2 * self.merged_dim
                 in_planes = self.features_dim + self.merged_dim
-            # sigma = (math.cos((t + 1) / num_scans * math.pi) + 1) / 4
-            # self.trim_units.append(TrimUnit2(
             self.trim_units.append(TrimUnit(
                 in_planes,
                 self.merged_dim,
                 head_dim=16,
                 scan_range=scan_range,
-                # dropout_p=sigma,
-                # dropout_p=0.1,
             ))
 
     def forward(self, x:Tensor) -> Tuple[List[Tensor], Tensor]:
@@ -198,17 +138,14 @@ class TrimNetX(Basic):
             with torch.no_grad():
                 f = self.features(x)
 
-        # m = self.merge(f)
-        m = f
-        h = self.trim_units[0](m)
+        h = self.trim_units[0](f)
         ht = [h]
         times = len(self.trim_units)
         for t in range(1, times):
-            # e = self.project(h)
             e = self.projects[t - 1](h)
-            h = self.trim_units[t](torch.cat([m, e], dim=1))
+            h = self.trim_units[t](torch.cat([f, e], dim=1))
             ht.append(h)
-        return ht, m
+        return ht, f
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetX':
