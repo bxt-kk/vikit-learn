@@ -64,13 +64,22 @@ class TrimNetX(Basic):
 
     def __init__(
             self,
-            num_scans:           int,
-            scan_range:          int=4,
-            backbone:            str='mobilenet_v3_small',
-            backbone_pretrained: bool=True,
+            num_scans:           int | None=None,
+            scan_range:          int | None=None,
+            backbone:            str | None=None,
+            backbone_pretrained: bool | None=None,
         ):
 
         super().__init__()
+
+        if num_scans is None:
+            num_scans = 3
+        if scan_range is None:
+            scan_range = 4
+        if backbone is None:
+            backbone = 'mobilenet_v3_small'
+        if backbone_pretrained is None:
+            backbone_pretrained = True
 
         self.num_scans  = num_scans
         self.scan_range = scan_range

@@ -27,11 +27,11 @@ class TrimNetClf(Classifier):
     def __init__(
             self,
             categories:          List[str],
-            num_scans:           int=3,
-            scan_range:          int=4,
             dropout_p:           float=0.2,
-            backbone:            str='mobilenet_v3_small',
-            backbone_pretrained: bool=True,
+            num_scans:           int | None=None,
+            scan_range:          int | None=None,
+            backbone:            str | None=None,
+            backbone_pretrained: bool | None=None,
         ):
         super().__init__(categories)
 
@@ -51,7 +51,7 @@ class TrimNetClf(Classifier):
         )
 
         self.alphas = nn.Parameter(torch.zeros(
-            1, self.num_classes, num_scans))
+            1, self.num_classes, self.trimnetx.num_scans))
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
@@ -71,9 +71,9 @@ class TrimNetClf(Classifier):
         hyps = state['hyperparameters']
         model = cls(
             categories          = hyps['categories'],
+            dropout_p           = hyps['dropout_p'],
             num_scans           = hyps['num_scans'],
             scan_range          = hyps['scan_range'],
-            dropout_p           = hyps['dropout_p'],
             backbone            = hyps['backbone'],
             backbone_pretrained = False,
         )
