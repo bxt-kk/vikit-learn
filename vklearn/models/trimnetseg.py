@@ -28,10 +28,10 @@ class TrimNetSeg(Segment):
     def __init__(
             self,
             categories:          List[str],
-            num_scans:           int=3,
-            scan_range:          int=4,
-            backbone:            str='mobilenet_v3_small',
-            backbone_pretrained: bool=True,
+            num_scans:           int | None=None,
+            scan_range:          int | None=None,
+            backbone:            str | None=None,
+            backbone_pretrained: bool | None=None,
         ):
         super().__init__(categories)
 
@@ -40,7 +40,7 @@ class TrimNetSeg(Segment):
 
         merged_dim = self.trimnetx.merged_dim
 
-        self.predictor = SegPredictor(merged_dim, self.num_classes, num_scans)
+        self.predictor = SegPredictor(merged_dim, self.num_classes, self.trimnetx.num_scans)
         self.decoder = nn.Conv2d(self.predictor.embeded_dim, self.num_classes, 1)
 
     def train_features(self, flag:bool):
