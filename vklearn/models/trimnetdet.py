@@ -73,9 +73,8 @@ class TrimNetDet(Detector):
         self.decoder = nn.Linear(embed_dim, self.num_classes)
 
         obj_dim = self.bbox_dim + embed_dim
-        self.alphas = nn.Parameter(torch.full(
-            (1, self.num_anchors, 1, 1, obj_dim, num_scans),
-            fill_value=1 / num_scans**0.5))
+        self.alphas = nn.Parameter(torch.zeros(
+            1, self.num_anchors, 1, 1, obj_dim, num_scans))
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)

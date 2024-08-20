@@ -50,8 +50,8 @@ class TrimNetClf(Classifier):
             nn.Linear(expanded_dim, self.num_classes),
         )
 
-        self.alphas = nn.Parameter(torch.ones(
-            1, self.num_classes, num_scans) / num_scans**0.5)
+        self.alphas = nn.Parameter(torch.zeros(
+            1, self.num_classes, num_scans))
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
