@@ -38,10 +38,10 @@ class TrimNetDet(Detector):
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
             dropout_p:           float=0.2,
             embed_dim:           int=32,
-            num_scans:           int=3,
-            scan_range:          int=4,
-            backbone:            str='mobilenet_v3_small',
-            backbone_pretrained: bool=True,
+            num_scans:           int | None=None,
+            scan_range:          int | None=None,
+            backbone:            str | None=None,
+            backbone_pretrained: bool | None=None,
         ):
 
         super().__init__(
@@ -63,7 +63,7 @@ class TrimNetDet(Detector):
             bbox_dim=self.bbox_dim,
             clss_dim=embed_dim,
             dropout_p=dropout_p,
-        ) for _ in range(num_scans)])
+        ) for _ in range(self.trimnetx.num_scans)])
 
         self.auxi_clf = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
@@ -74,7 +74,7 @@ class TrimNetDet(Detector):
 
         obj_dim = self.bbox_dim + embed_dim
         self.alphas = nn.Parameter(torch.zeros(
-            1, self.num_anchors, 1, 1, obj_dim, num_scans))
+            1, self.num_anchors, 1, 1, obj_dim, self.trimnetx.num_scans))
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
