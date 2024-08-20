@@ -33,10 +33,10 @@ class TrimNetJot(Joints):
             self,
             categories:          List[str],
             bbox_limit:          int=640,
-            num_scans:           int=3,
-            scan_range:          int=4,
-            backbone:            str='mobilenet_v3_small',
-            backbone_pretrained: bool=True,
+            num_scans:           int | None=None,
+            scan_range:          int | None=None,
+            backbone:            str | None=None,
+            backbone_pretrained: bool | None=None,
         ):
 
         super().__init__(
@@ -49,7 +49,7 @@ class TrimNetJot(Joints):
 
         merged_dim = self.trimnetx.merged_dim
 
-        self.seg_predictor = SegPredictor(merged_dim, 1, num_scans)
+        self.seg_predictor = SegPredictor(merged_dim, 1, self.trimnetx.num_scans)
 
         self.det_predictor = DetPredictor(
             in_planes=merged_dim + 1,
