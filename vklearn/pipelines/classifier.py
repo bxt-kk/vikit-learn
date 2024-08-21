@@ -1,16 +1,21 @@
 from typing import List, Dict, Any, Mapping
 import io
 
-import torch
 from PIL.Image import Image as PILImage
 from numpy import ndarray
 from PIL import Image
 from matplotlib.pyplot import Figure
+import torch
 
 from ..models.classifier import Classifier as Model
 
 
 class Classifier:
+    '''This class is used for handling image classification tasks. 
+
+    Args:
+        model: Classifier model.
+    '''
 
     def __init__(self, model:Model):
         self.model = model
@@ -50,6 +55,13 @@ class Classifier:
             top_k:      int=10,
             align_size: int=224,
         ) -> List[Dict[str, Any]]:
+        '''Invoke the method for image classification.
+
+        Args:
+            image: The image to be classified.
+            top_k: Specifies the number of top classes to return, sorted by probability in descending order.
+            align_size: The size to which the image will be aligned after preprocessing.
+        '''
 
         if isinstance(image, str):
             image = Image.open(image)
@@ -70,6 +82,13 @@ class Classifier:
             result:     List[Dict[str, Any]],
             fig:        Figure,
         ):
+        '''This method visualizes the model prediction results.
+
+        Args:
+            image: The image used for classification.
+            result: The data returned after the model performs the classification operation.
+            fig: The matplotlib Figure object.
+        '''
 
         fig.subplots_adjust(left=0.05)
         ax = fig.add_subplot(1, 9, (1, 6))
