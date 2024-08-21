@@ -55,6 +55,7 @@ class TrimNetDst(Distiller):
         model = cls(
             teacher_arch = hyps['teacher_arch'],
             student_arch = hyps['student_arch'],
+            pretrained   = False,
         )
         model.load_state_dict(state['model'])
         return model
