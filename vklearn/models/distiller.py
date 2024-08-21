@@ -1,4 +1,4 @@
-from typing import List, Any, Dict, Tuple
+from typing import List, Any, Dict, Tuple, Callable
 
 from torch import Tensor
 
@@ -14,31 +14,35 @@ from torchmetrics.regression import MeanSquaredError, MeanAbsoluteError
 from .basic import Basic
 
 
-class Distillation(Basic):
+class Distiller(Basic):
 
     def __init__(
             self,
-            teacher: nn.Module,
-            student: nn.Module,
-            project: nn.Module,
+            teacher:      nn.Module,
+            student:      nn.Module,
+            in_transform: Callable | None=None,
+            out_project:  nn.Module | None=None,
         ):
 
         super().__init__()
 
-        self.teacher = teacher
-        self.student = student
-        self.project = project
+        if in_transform is None:
+            in_transform = lambda x: x
+        if out_project is None:
+            out_project = nn.Identity()
+
+        self.teacher      = teacher
+        self.student      = student
+        self.in_transform = in_transform
+        self.out_project  = out_project
 
         self.mse_metric = MeanSquaredError()
         self.mae_metric = MeanAbsoluteError()
 
-    def align_inputs(self, x:Tensor) -> Tensor:
-        return x
-
     def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
         with torch.no_grad():
-            teacher_targ = self.teacher(self.align_inputs(x))
-        student_pred = self.project(self.student(x))
+            teacher_targ = self.teacher(self.in_transform(x))
+        student_pred = self.out_project(self.student(x))
         return student_pred, teacher_targ
 
     def calc_loss(
@@ -131,7 +135,6 @@ class Distillation(Basic):
                 size=(aligned_size, aligned_size),
                 pad_if_needed=True,
                 fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-            v2.SanitizeBoundingBoxes(min_size=3),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(
                 mean=[0.485, 0.456, 0.406],
@@ -148,7 +151,6 @@ class Distillation(Basic):
                 padding=aligned_size // 4,
                 fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
             v2.CenterCrop(aligned_size),
-            v2.SanitizeBoundingBoxes(min_size=3),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(
                 mean=[0.485, 0.456, 0.406],
