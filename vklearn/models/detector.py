@@ -73,7 +73,8 @@ class Detector(Basic):
         for i in range(2):
             ptr = i * 6 + 10
             offsets.append((
-                torch.tanh(inputs[:, ptr]) +
+                # torch.tanh(inputs[:, ptr]) +
+                torch.sigmoid(inputs[:, ptr]) *
                 (inputs[:, ptr + 1:ptr + 6].softmax(dim=-1) * self.regions).sum(dim=-1)
             ) * self.region_scale)
         ox = (col_index.type_as(inputs) + 0.5) * self.cell_size
