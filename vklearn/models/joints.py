@@ -63,7 +63,8 @@ class Joints(Basic):
             ) * self.region_scale)
         ptr = 10
         padding = (
-            torch.tanh(inputs[:, ptr]) +
+            # torch.tanh(inputs[:, ptr]) +
+            torch.sigmoid(inputs[:, ptr]) *
             (inputs[:, ptr + 1:ptr + 6].softmax(dim=-1) * self.regions).sum(dim=-1)
         ) * self.region_scale
 
