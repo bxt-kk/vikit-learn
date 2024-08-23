@@ -77,7 +77,7 @@ class Distiller(Basic):
         ):
 
         teacher_targ, student_pred = inputs
-        student_pred = student_pred.contiguous()
+        teacher_targ = teacher_targ.contiguous()
         self.mse_metric.update(student_pred, teacher_targ)
         self.mae_metric.update(student_pred, teacher_targ)
 
