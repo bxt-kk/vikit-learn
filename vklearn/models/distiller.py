@@ -43,7 +43,7 @@ class Distiller(Basic):
         with torch.no_grad():
             teacher_targ = self.teacher(self.in_transform(x))
         student_pred = self.out_project(self.student(x))
-        return student_pred, teacher_targ
+        return teacher_targ, student_pred
 
     def calc_loss(
             self,
