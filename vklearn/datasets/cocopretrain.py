@@ -71,7 +71,7 @@ class CocoPretrain(VisionDataset):
             category = self.coid2supercategory[i]
             if category in self.supercategories: continue
             self.supercategories.append(category)
-        self.subcategories = sub_categories + [self.NAME_OTHER]
+        self.subcategories = sub_categories # + [self.NAME_OTHER]
 
         if len(sub_categories) > 0:
             self.classes = self.subcategories
