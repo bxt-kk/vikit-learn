@@ -40,6 +40,7 @@ class TrimNetDst(Distiller):
 
         in_planes, out_planes = student.features_dim, teacher.features_dim
         out_project = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, 1),
             ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
             ConvNormActive(in_planes, out_planes, 1, norm_layer=None, activation=None),
         )
