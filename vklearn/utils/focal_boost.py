@@ -103,7 +103,12 @@ def focal_boost_positive(
         num_confs:     int,
         conf_thresh:   float=0.5,
         recall_thresh: float=0.5,
+        top_k:         int=0,
     ) -> Tensor:
 
     predict = focal_boost_predict(inputs, num_confs, recall_thresh)
+    if top_k > 0:
+        conf_thresh = max(
+            predict.flatten().topk(top_k + 1)[-1].item(),
+            conf_thresh)
     return predict > conf_thresh

@@ -385,8 +385,9 @@ class TrimNetDet(Detector):
 
         inputs_ps, _ = inputs
 
+        top_k = self.m_ap_metric.max_detection_thresholds[-1]
         preds_mask = focal_boost_positive(
-            inputs_ps, num_confs, conf_thresh, recall_thresh)
+            inputs_ps, num_confs, conf_thresh, recall_thresh, top_k)
         preds_index = torch.nonzero(preds_mask, as_tuple=True)
 
         objects = inputs_ps[preds_index]
