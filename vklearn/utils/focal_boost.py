@@ -107,8 +107,12 @@ def focal_boost_positive(
     ) -> Tensor:
 
     predict = focal_boost_predict(inputs, num_confs, recall_thresh)
-    if top_k > 0:
-        conf_thresh = max(
-            predict.flatten().topk(top_k + 1).values[-1].item(),
-            conf_thresh)
-    return predict > conf_thresh
+    if top_k <= 0:
+        return predict >= conf_thresh
+    samples = predict.flatten(start_dim=1)
+    top_k = min(samples.shape[1], top_k)
+    conf_threshes = torch.clamp_min(
+        samples.topk(top_k).values[:, -1], conf_thresh)
+    for _ in range(len(predict.shape) - 1):
+        conf_threshes.unsqueeze_(dim=-1)
+    return predict >= conf_threshes
