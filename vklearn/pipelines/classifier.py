@@ -86,7 +86,7 @@ class Classifier:
 
         Args:
             image: The image used for classification.
-            result: The data returned after the model performs the classification operation.
+            result: The data returned after the model performs the classification.
             fig: The matplotlib Figure object.
         '''
 

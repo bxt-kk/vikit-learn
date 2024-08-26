@@ -12,6 +12,12 @@ from ..models.segment import Segment as Model
 
 
 class Segment:
+    '''This class is used for handling semantic segmentation tasks. 
+
+    Args:
+        model: Semantic segmentation model.
+    '''
+
 
     def __init__(self, model:Model):
         self.model = model
@@ -54,9 +60,16 @@ class Segment:
     def __call__(
             self,
             image:       PILImage | str | ndarray,
-            conf_thresh: float=0.6,
+            conf_thresh: float=0.5,
             align_size:  int=448,
         ) -> ndarray:
+        '''Invoke the method for semantic segmentation.
+
+        Args:
+            image: The image to be segmented.
+            conf_thresh: Confidence threshold.
+            align_size: The size to which the image will be aligned after preprocessing.
+        '''
 
         if isinstance(image, str):
             image = Image.open(image)
@@ -77,6 +90,13 @@ class Segment:
             result:     ndarray,
             fig:        Figure,
         ):
+        '''This method visualizes the model prediction results.
+
+        Args:
+            image: The image used for classification.
+            result: The data returned after the model performs the segmentation.
+            fig: The matplotlib Figure object.
+        '''
 
         plot_cols = len(result)
         for i in range(plot_cols):

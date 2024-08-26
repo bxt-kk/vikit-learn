@@ -11,6 +11,11 @@ from ..models.detector import Detector as Model
 
 
 class Detector:
+    '''This class is used for handling object detection tasks. 
+
+    Args:
+        model: Object detector model.
+    '''
 
     def __init__(self, model:Model):
         self.model = model
@@ -53,12 +58,22 @@ class Detector:
     def __call__(
             self,
             image:         PILImage | str | ndarray,
-            conf_thresh:   float=0.6,
+            conf_thresh:   float=0.5,
             recall_thresh: float=0.5,
             iou_thresh:    float=0.5,
             align_size:    int=448,
             mini_side:     int=1,
         ) -> List[Dict[str, Any]]:
+        '''Invoke the method for object detection.
+
+        Args:
+            image: The image to be detected.
+            conf_thresh: Confidence threshold.
+            recall_thresh: Recall score threshold.
+            iou_thresh: Intersection over union threshold.
+            align_size: The size to which the image will be aligned after preprocessing.
+            mini_side: Minimum bounding box side length.
+        '''
 
         if isinstance(image, str):
             image = Image.open(image)
@@ -84,6 +99,15 @@ class Detector:
             color:      str='red',
             text_color: str='white',
         ):
+        '''This method visualizes the model prediction results.
+
+        Args:
+            image: The image used for classification.
+            result: The data returned after the model performs the detection.
+            fig: The matplotlib Figure object.
+            color: The color of annotates.
+            text_color: The color of the label text.
+        '''
 
         ax = fig.add_subplot()
         ax.imshow(image)

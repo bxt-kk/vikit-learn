@@ -12,6 +12,11 @@ from ..models.joints import Joints as Model
 
 
 class Joints:
+    '''This class is used for handling keypoint&joint detection tasks. 
+
+    Args:
+        model: Keypoint&joint detection model.
+    '''
 
     def __init__(self, model:Model):
         self.model = model
@@ -54,11 +59,20 @@ class Joints:
     def __call__(
             self,
             image:         PILImage | str | ndarray,
-            conf_thresh:   float=0.6,
+            conf_thresh:   float=0.5,
             iou_thresh:    float=0.5,
             align_size:    int=448,
             mini_side:     int=1,
         ) -> List[Dict[str, Any]]:
+        '''Invoke the method for keypoint&joint detection.
+
+        Args:
+            image: The image to be detected.
+            conf_thresh: Confidence threshold.
+            iou_thresh: Intersection over union threshold.
+            align_size: The size to which the image will be aligned after preprocessing.
+            mini_side: Minimum bounding box side length.
+        '''
 
         if isinstance(image, str):
             image = Image.open(image)
@@ -81,6 +95,13 @@ class Joints:
             result:     List[Dict[str, Any]],
             fig:        Figure,
         ):
+        '''This method visualizes the model prediction results.
+
+        Args:
+            image: The image used for keypoint&joint detection.
+            result: The data returned after the model performs the detection.
+            fig: The matplotlib Figure object.
+        '''
 
         ax = fig.add_subplot()
         ax.imshow(image)
