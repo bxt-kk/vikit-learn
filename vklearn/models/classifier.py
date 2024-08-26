@@ -117,166 +117,52 @@ class Classifier(Basic):
         test_transforms  = None
 
         if task_name in ('default', 'imagenetx224'):
-            train_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.ScaleJitter(
-                    target_size=(224, 224),
-                    scale_range=(1., 2.),
-                    antialias=True),
-                v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomCrop(
-                    size=(224, 224),
-                    pad_if_needed=True,
-                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-            test_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.Resize(
-                    size=224,
-                    antialias=True),
-                v2.CenterCrop(224),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-
+            aligned_size = 224
         elif task_name == 'imagenetx256':
-            train_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.ScaleJitter(
-                    target_size=(256, 256),
-                    scale_range=(1., 2.),
-                    antialias=True),
-                v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomCrop(
-                    size=(256, 256),
-                    pad_if_needed=True,
-                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-            test_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.Resize(
-                    size=256,
-                    antialias=True),
-                v2.CenterCrop(256),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-
+            aligned_size = 256
         elif task_name == 'imagenetx448':
-            train_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.ScaleJitter(
-                    target_size=(448, 448),
-                    scale_range=(1., 2.),
-                    antialias=True),
-                v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomCrop(
-                    size=(448, 448),
-                    pad_if_needed=True,
-                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-            test_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.Resize(
-                    size=448,
-                    antialias=True),
-                v2.CenterCrop(448),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-
+            aligned_size = 448
         elif task_name == 'imagenetx512':
-            train_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.ScaleJitter(
-                    target_size=(512, 512),
-                    scale_range=(1., 2.),
-                    antialias=True),
-                v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomCrop(
-                    size=(512, 512),
-                    pad_if_needed=True,
-                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-            test_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.Resize(
-                    size=512,
-                    antialias=True),
-                v2.CenterCrop(512),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-
+            aligned_size = 512
         elif task_name == 'imagenetx640':
-            train_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.ScaleJitter(
-                    target_size=(640, 640),
-                    scale_range=(1., 2.),
-                    antialias=True),
-                v2.RandomPhotometricDistort(p=1),
-                v2.RandomHorizontalFlip(p=0.5),
-                v2.RandomCrop(
-                    size=(640, 640),
-                    pad_if_needed=True,
-                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-            test_transforms = v2.Compose([
-                v2.ToImage(),
-                v2.Resize(
-                    size=640,
-                    antialias=True),
-                v2.CenterCrop(640),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(
-                    mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225],
-                )
-            ])
-
+            aligned_size = 640
         else:
             raise ValueError(f'Unsupported the task `{task_name}`')
+
+        train_transforms = v2.Compose([
+            v2.ToImage(),
+            v2.ScaleJitter(
+                target_size=(aligned_size, aligned_size),
+                scale_range=(1., 2.),
+                antialias=True),
+            v2.RandomPhotometricDistort(p=1),
+            v2.RandomHorizontalFlip(p=0.5),
+            v2.RandomChoice([
+                v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                v2.RandomAdjustSharpness(2, p=0.5),
+                v2.RandomEqualize(p=0.5),
+            ]),
+            v2.RandomCrop(
+                size=(aligned_size, aligned_size),
+                pad_if_needed=True,
+                fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            )
+        ])
+        test_transforms = v2.Compose([
+            v2.ToImage(),
+            v2.Resize(
+                size=aligned_size,
+                antialias=True),
+            v2.CenterCrop(aligned_size),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            )
+        ])
 
         return train_transforms, test_transforms
