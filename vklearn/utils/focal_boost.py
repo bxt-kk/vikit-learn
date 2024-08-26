@@ -109,6 +109,6 @@ def focal_boost_positive(
     predict = focal_boost_predict(inputs, num_confs, recall_thresh)
     if top_k > 0:
         conf_thresh = max(
-            predict.flatten().topk(top_k + 1)[-1].item(),
+            predict.flatten().topk(top_k + 1).values[-1].item(),
             conf_thresh)
     return predict > conf_thresh
