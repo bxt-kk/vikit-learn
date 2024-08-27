@@ -17,6 +17,28 @@ from .logging import Logger
 
 @dataclass
 class Trainer:
+    '''This `class` is used to set general parameters for model training and starts the model training process through the `fit` method.
+
+    Args:
+        task:  The object of the training task.
+        output: The path to the output file.
+        train_loader: The data loader for the training set.
+        valid_loader: The data loader for the validation set.
+        test_loader: The data loader for the test set.
+        checkpoint: The archive file for the model training parameters.
+        drop_optim: Whether to drop the optimizer parameters from the archive file.
+        drop_lr_scheduler: Whether to drop the learning rate parameters from the archive file.
+        optim_method: The optimization method.
+        lr: The learning rate.
+        weight_decay: The regularization weight.
+        lrf: The learning rate decay factor.
+        T_num: The number of learning rate change cycles.
+        grad_steps: The number of steps for gradient updates.
+        epochs: The total number of training epochs.
+        show_step: Set the interval for displaying the training status in steps.
+        save_epoch: Set the interval for saving the model in epochs.
+    '''
+
     task:              Task
     output:            str
     train_loader:      DataLoader
