@@ -120,6 +120,8 @@ class Classifier(Basic):
             aligned_size = 224
         elif task_name == 'imagenetx256':
             aligned_size = 256
+        elif task_name == 'imagenetx384':
+            aligned_size = 384
         elif task_name == 'imagenetx448':
             aligned_size = 448
         elif task_name == 'imagenetx512':
