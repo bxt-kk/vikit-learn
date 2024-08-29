@@ -83,7 +83,7 @@ class OxfordIIITPet(VisionDataset):
                 self._bin_labels.append(int(bin_label) - 1)
 
         self.bin_classes = ['Cat', 'Dog']
-        self.classes = [
+        self.multi_classes = [
             ' '.join(part.title() for part in raw_cls.split('_'))
             for raw_cls, _ in sorted(
                 {(image_id.rsplit('_', 1)[0], label) for image_id, label in zip(image_ids, self._labels)},
@@ -91,7 +91,12 @@ class OxfordIIITPet(VisionDataset):
             )
         ]
         self.bin_class_to_idx = dict(zip(self.bin_classes, range(len(self.bin_classes))))
-        self.class_to_idx = dict(zip(self.classes, range(len(self.classes))))
+        self.multi_class_to_idx = dict(zip(self.multi_classes, range(len(self.multi_classes))))
+        if len(target_types) == 1 and 'category' in target_types:
+            self.classes = self.multi_classes
+        else:
+            self.classes = self.bin_classes
+
         self.tag_to_ix = dict(zip(['xmin', 'ymin', 'xmax', 'ymax'], range(4)))
 
         self._images = [self._images_folder / f'{image_id}.jpg' for image_id in image_ids]
