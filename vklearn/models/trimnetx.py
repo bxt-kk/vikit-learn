@@ -39,12 +39,7 @@ class TrimUnit(nn.Module):
                 norm_layer=None,
                 activation=None,
             ))
-            # self.denses.append(ConvNormActive(out_planes, dense_dim, 1))
-            # Lab code <<<
-            dense_in_dim = out_planes
-            if r > 0: dense_in_dim += dense_dim
-            self.denses.append(CBANet(dense_in_dim, dense_dim, 1))
-            # >>>
+            self.denses.append(ConvNormActive(out_planes, dense_dim, 1))
         self.merge = ConvNormActive(dense_dim * scan_range, out_planes, 1)
 
     def forward(self, x:Tensor) -> Tensor:
@@ -52,13 +47,7 @@ class TrimUnit(nn.Module):
         ds = []
         for conv, dense in zip(self.convs, self.denses):
             x = x + conv(x)
-            # ds.append(dense(x))
-            # Lab code <<<
-            if len(ds) == 0:
-                ds.append(dense(x))
-            else:
-                ds.append(dense(torch.cat([ds[-1], x], dim=1)))
-            # >>>
+            ds.append(dense(x))
         m = self.merge(torch.cat(ds, dim=1))
         return m
 

@@ -7,4 +7,4 @@ faster-coco-eval>=1.5.4
 pycocotools>=2.0.7
 clip @ git+https://github.com/openai/CLIP.git
 opencv-python>=4.10.0
-customtkinter>=5.2.2
+flet>=0.23.2
