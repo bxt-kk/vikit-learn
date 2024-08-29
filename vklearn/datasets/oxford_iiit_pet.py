@@ -17,22 +17,22 @@ class OxfordIIITPet(VisionDataset):
 
     Args:
         root: Root directory of the dataset.
-        split: The dataset split, supports ``"trainval"`` (default) or ``"test"``.
-        target_types: Types of target to use. Can be ``category`` (default) or
-            ``segmentation``. Can also be a list to output a tuple with all specified target types. The types represent:
+        split: The dataset split, supports `"trainval"` (default) or `"test"`.
+        target_types: Types of target to use. Can be `category` (default) or
+            `segmentation`. Can also be a list to output a tuple with all specified target types. The types represent:
 
-                - ``category`` (int): Label for one of the 37 pet categories.
-                - ``binary-category`` (int): Binary label for cat or dog.
-                - ``segmentation`` (PIL image): Segmentation trimap of the image.
-                - ``detection`` (PIL image, Labels & BoundingBoxes): Detection annotation.
+                - `category` (int): Label for one of the 37 pet categories.
+                - `binary-category` (int): Binary label for cat or dog.
+                - `segmentation` (PIL image): Segmentation trimap of the image.
+                - `detection` (PIL image, Labels & BoundingBoxes): Detection annotation.
 
-            If empty, ``None`` will be returned as target.
+            If empty, `None` will be returned as target.
 
         transform: A function/transform that takes in a PIL image and returns a transformed
-            version. E.g, ``transforms.RandomCrop``.
+            version. E.g, `transforms.RandomCrop`.
         target_transform: A function/transform that takes in the target and transforms it.
         download: If True, downloads the dataset from the internet and puts it into
-            ``root/oxford-iiit-pet``. If dataset is already downloaded, it is not downloaded again.
+            `root/oxford-iiit-pet`. If dataset is already downloaded, it is not downloaded again.
     '''
 
     _RESOURCES = (
@@ -42,15 +42,19 @@ class OxfordIIITPet(VisionDataset):
     _VALID_TARGET_TYPES = ('category', 'binary-category', 'segmentation', 'detection')
 
     def __init__(
-        self,
-        root:             str | pathlib.Path,
-        split:            str='trainval',
-        target_types:     Sequence[str] | str='category',
-        transforms:       Callable | None=None,
-        transform:        Callable | None=None,
-        target_transform: Callable | None=None,
-        download:         bool=False,
-    ):
+            self,
+            root:             str | pathlib.Path,
+            split:            str='trainval',
+            target_types:     Sequence[str] | str='category',
+            transforms:       Callable | None=None,
+            transform:        Callable | None=None,
+            target_transform: Callable | None=None,
+            download:         bool=False,
+        ):
+
+        if split == 'train': split = 'trainval'
+        if split == 'val': split = 'test'
+
         self._split = verify_str_arg(split, 'split', ('trainval', 'test'))
         if isinstance(target_types, str):
             target_types = [target_types]

@@ -11,7 +11,7 @@ class ImagesFolder(VisionDataset):
 
     Args:
         root: Root directory.
-        split: The dataset split, supports `"train"`(default), `"test"`.
+        split: The dataset split, supports `"train"`(default), `"val"`.
         extensions: The tuple of extensions. E.g, `("jpg", "jpeg", "png")`
         transform: A function/transform that takes in a PIL image
             and returns a transformed version. E.g, `transforms.PILToTensor`
@@ -22,16 +22,17 @@ class ImagesFolder(VisionDataset):
     '''
 
     def __init__(
-        self,
-        root:             str,
-        split:            str='train',
-        extensions:       Tuple[str]=('jpg', 'jpeg', 'png'),
-        transform:        Callable | None=None,
-        target_transform: Callable | None=None,
-        transforms:       Callable | None=None,
-    ):
+            self,
+            root:             str,
+            split:            str='train',
+            extensions:       Tuple[str]=('jpg', 'jpeg', 'png'),
+            transform:        Callable | None=None,
+            target_transform: Callable | None=None,
+            transforms:       Callable | None=None,
+        ):
+
         super().__init__(root, transforms, transform, target_transform)
-        assert split in ['train', 'test']
+        assert split in ['train', 'val']
         self.dataset_dir = os.path.join(root, split)
         self.classes = sorted(os.listdir(self.dataset_dir))
         self.paths = []

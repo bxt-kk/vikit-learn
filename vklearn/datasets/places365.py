@@ -10,9 +10,9 @@ class Places365(VisionDataset):
 
     Args:
         root: Root directory where images are downloaded to.
-        split: The dataset split, supports ``"train"``(default), ``"val"``.
+        split: The dataset split, supports `"train"`(default), `"val"`.
         transform: A function/transform that takes in a PIL image
-            and returns a transformed version. E.g, ``transforms.PILToTensor``
+            and returns a transformed version. E.g, `transforms.PILToTensor`
         target_transform: A function/transform that takes in the
             target and transforms it.
         transforms: A function/transform that takes input sample and its target as entry
@@ -20,13 +20,14 @@ class Places365(VisionDataset):
     '''
 
     def __init__(
-        self,
-        root:             str,
-        split:            str='train',
-        transform:        Callable | None=None,
-        target_transform: Callable | None=None,
-        transforms:       Callable | None=None,
-    ):
+            self,
+            root:             str,
+            split:            str='train',
+            transform:        Callable | None=None,
+            target_transform: Callable | None=None,
+            transforms:       Callable | None=None,
+        ):
+
         super().__init__(root, transforms, transform, target_transform)
         assert split in ['train', 'val']
         self.dataset_dir = root
