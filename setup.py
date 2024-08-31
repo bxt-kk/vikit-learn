@@ -30,4 +30,10 @@ setup(
         'datasets/ms_coco_classnames.json',
     ]},
     install_requires=requirements,
+    entry_points = {
+        'console_scripts': [
+            'vkl-clf-cfg=toolkit.clf_cfg:entry',
+            'vkl-clf-cli=toolkit.clf_cli:entry',
+        ],
+    }
 )
