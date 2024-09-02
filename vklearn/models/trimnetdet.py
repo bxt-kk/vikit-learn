@@ -233,6 +233,12 @@ class TrimNetDet(Detector):
         if label_weight is not None:
             label_weight = label_weight.type_as(inputs_ps)
 
+        # lab code <<<
+        instance_weight = (
+            1 / torch.clamp_min(targ_conf.flatten(start_dim=1).sum(dim=1), 1)
+        )[target_index[0]]
+        # >>>
+
         bbox_loss = torch.zeros_like(conf_loss)
         clss_loss = torch.zeros_like(conf_loss)
         if objects.shape[0] > 0:
@@ -242,18 +248,30 @@ class TrimNetDet(Detector):
                 pred_xyxy, target_bboxes, reduction=reduction)
 
             pred_clss = objects[:, num_confs + self.bbox_dim:]
-            pred_probs = torch.softmax(pred_clss.detach(), dim=-1)
-            pred_alpha = 1 - pred_probs[range(len(target_labels)), target_labels]**clss_gamma
+            # Lab code <<<
+            # pred_probs = torch.softmax(pred_clss.detach(), dim=-1)
+            # pred_alpha = 1 - pred_probs[range(len(target_labels)), target_labels]**clss_gamma
+
+            # clss_loss = (
+            #     pred_alpha *
+            #     F.cross_entropy(
+            #         pred_clss,
+            #         target_labels,
+            #         label_smoothing=label_smoothing,
+            #         weight=label_weight,
+            #         reduction='none')
+            # ).mean()
 
             clss_loss = (
-                pred_alpha *
+                instance_weight *
                 F.cross_entropy(
                     pred_clss,
                     target_labels,
                     label_smoothing=label_smoothing,
                     weight=label_weight,
                     reduction='none')
-            ).mean()
+            ).sum() / inputs_ps.shape[0]
+            # >>>
 
         weights = weights or dict()
 
@@ -269,6 +287,7 @@ class TrimNetDet(Detector):
             bbox_loss=bbox_loss,
             clss_loss=clss_loss,
             sampled_loss=sampled_loss,
+            iws=instance_weight.sum(),
         )
 
         # auxiliary_clss
@@ -285,18 +304,29 @@ class TrimNetDet(Detector):
                 inputs_mx, bboxes, 1, spatial_scale=1 / self.cell_size)
             auxi_pred = self.decoder(self.auxi_clf(aligned.flatten(start_dim=1)))
 
-            auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
-            auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
+            # Lab code <<<
+            # auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
+            # auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
 
+            # auxi_loss = (
+            #     auxi_alpha *
+            #     F.cross_entropy(
+            #         auxi_pred,
+            #         target_labels,
+            #         label_smoothing=label_smoothing,
+            #         weight=label_weight,
+            #         reduction='none')
+            # ).mean()
             auxi_loss = (
-                auxi_alpha *
+                instance_weight *
                 F.cross_entropy(
                     auxi_pred,
                     target_labels,
                     label_smoothing=label_smoothing,
                     weight=label_weight,
                     reduction='none')
-            ).mean()
+            ).sum() / inputs_ps.shape[0]
+            # >>>
 
         losses['loss'] = loss + auxi_loss * auxi_weight
         losses['auxi_loss'] = auxi_loss
