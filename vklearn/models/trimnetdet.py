@@ -366,10 +366,8 @@ class TrimNetDet(Detector):
         # conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
         # conf_recall = pred_obj_true / torch.clamp_min(targ_conf.sum(), eps)
         pred_obj_true = (targ_conf * pred_obj).flatten(start_dim=1).sum(dim=1)
-        pred_count = pred_obj.flatten(start_dim=1).sum(dim=1)
-        conf_precision = (pred_obj_true / torch.clamp_min(pred_count, 1)).sum() / (pred_count > 0).sum()
-        targ_count = targ_conf.flatten(start_dim=1).sum(dim=1)
-        conf_recall = (pred_obj_true / torch.clamp_min(targ_count, 1)).sum() / (targ_count > 0).sum()
+        conf_precision = (pred_obj_true / torch.clamp_min(pred_obj.flatten(start_dim=1).sum(dim=1), 1)).mean()
+        conf_recall = (pred_obj_true / torch.clamp_min(targ_conf.flatten(start_dim=1).sum(dim=1), 1)).mean()
         # >>>
         conf_f1 = 2 * conf_precision * conf_recall / torch.clamp_min(conf_precision + conf_recall, eps)
         proposals = pred_obj.sum() / pred_obj.shape[0]
