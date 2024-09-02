@@ -215,7 +215,7 @@ class TrimNetDet(Detector):
             label_weight:    Tensor | None=None,
         ) -> Dict[str, Any]:
 
-        reduction = 'mean'
+        # reduction = 'mean'
         num_confs = self.trimnetx.num_scans
 
         inputs_ps, inputs_mx = inputs
@@ -244,8 +244,12 @@ class TrimNetDet(Detector):
         if objects.shape[0] > 0:
             pred_cxcywh = objects[:, num_confs:num_confs + self.bbox_dim]
             pred_xyxy = self.pred2boxes(pred_cxcywh, offset_index[2], offset_index[3])
-            bbox_loss = distance_box_iou_loss(
-                pred_xyxy, target_bboxes, reduction=reduction)
+            # Lab code <<<
+            # bbox_loss = distance_box_iou_loss(
+            #     pred_xyxy, target_bboxes, reduction=reduction)
+            bbox_loss = (instance_weight * distance_box_iou_loss(
+                pred_xyxy, target_bboxes, reduction='none')).sum() / inputs_ps.shape[0]
+            # >>>
 
             pred_clss = objects[:, num_confs + self.bbox_dim:]
             # Lab code <<<
