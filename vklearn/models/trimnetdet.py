@@ -361,13 +361,22 @@ class TrimNetDet(Detector):
         pred_obj = focal_boost_positive(
             inputs_ps, num_confs, conf_thresh, recall_thresh)
 
-        pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
-        conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
-        conf_recall = pred_obj_true / torch.clamp_min(targ_conf.sum(), eps)
+        # Lab code <<<
+        # pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
+        # conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
+        # conf_recall = pred_obj_true / torch.clamp_min(targ_conf.sum(), eps)
+        pred_obj_true = (targ_conf * pred_obj).flatten(start_dim=1).sum(dim=1)
+        conf_precision = (pred_obj_true / torch.clamp_min(pred_obj.flatten(start_dim=1).sum(dim=1), 1)).mean()
+        conf_recall = (pred_obj_true / torch.clamp_min(targ_conf.flatten(start_dim=1).sum(dim=1), 1)).mean()
+        # >>>
         conf_f1 = 2 * conf_precision * conf_recall / torch.clamp_min(conf_precision + conf_recall, eps)
         proposals = pred_obj.sum() / pred_obj.shape[0]
 
         objects = inputs_ps[target_index]
+
+        # Lab code <<<
+        instance_weight = 1 / target_index[0].bincount().type_as(targ_conf)[target_index[0]]
+        # >>>
 
         iou_score = torch.ones_like(conf_f1)
         clss_accuracy = torch.ones_like(conf_f1)
@@ -387,10 +396,16 @@ class TrimNetDet(Detector):
             pred_area = pred_size[:, 0] * pred_size[:, 1]
             targ_area = targ_size[:, 0] * targ_size[:, 1]
             union = pred_area + targ_area - intersection
-            iou_score = (intersection / union).mean()
+            # Lab code <<<
+            # iou_score = (intersection / union).mean()
+            iou_score = (instance_weight * intersection / union).sum() / inputs_ps.shape[0]
+            # >>>
 
             pred_labels = torch.argmax(objects[:, num_confs + self.bbox_dim:], dim=-1)
-            clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
+            # Lab code <<<
+            # clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
+            clss_accuracy = (instance_weight * (pred_labels == target_labels)).sum() / inputs_ps.shape[0]
+            # >>>
 
             obj_conf = torch.sigmoid(objects[:, :num_confs])
             conf_min = obj_conf[:, -1].min()
