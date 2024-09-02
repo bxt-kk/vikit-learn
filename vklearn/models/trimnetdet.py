@@ -253,8 +253,8 @@ class TrimNetDet(Detector):
 
             pred_clss = objects[:, num_confs + self.bbox_dim:]
             # Lab code <<<
-            # pred_probs = torch.softmax(pred_clss.detach(), dim=-1)
-            # pred_alpha = 1 - pred_probs[range(len(target_labels)), target_labels]**clss_gamma
+            pred_probs = torch.softmax(pred_clss.detach(), dim=-1)
+            pred_alpha = 1 - pred_probs[range(len(target_labels)), target_labels]**clss_gamma
 
             # clss_loss = (
             #     pred_alpha *
@@ -268,6 +268,7 @@ class TrimNetDet(Detector):
 
             clss_loss = (
                 instance_weight *
+                pred_alpha *
                 F.cross_entropy(
                     pred_clss,
                     target_labels,
@@ -309,8 +310,8 @@ class TrimNetDet(Detector):
             auxi_pred = self.decoder(self.auxi_clf(aligned.flatten(start_dim=1)))
 
             # Lab code <<<
-            # auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
-            # auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
+            auxi_probs = torch.softmax(auxi_pred.detach(), dim=-1)
+            auxi_alpha = 1 - auxi_probs[range(len(target_labels)), target_labels]**clss_gamma
 
             # auxi_loss = (
             #     auxi_alpha *
@@ -323,6 +324,7 @@ class TrimNetDet(Detector):
             # ).mean()
             auxi_loss = (
                 instance_weight *
+                auxi_alpha *
                 F.cross_entropy(
                     auxi_pred,
                     target_labels,
