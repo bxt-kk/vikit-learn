@@ -293,7 +293,7 @@ class TrimNetDet(Detector):
             bbox_loss=bbox_loss,
             clss_loss=clss_loss,
             sampled_loss=sampled_loss,
-            iws=instance_weight.sum(),
+            # iws=instance_weight.sum(),
         )
 
         # auxiliary_clss
