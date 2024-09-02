@@ -234,9 +234,10 @@ class TrimNetDet(Detector):
             label_weight = label_weight.type_as(inputs_ps)
 
         # lab code <<<
-        instance_weight = (
-            1 / torch.clamp_min(targ_conf.flatten(start_dim=1).sum(dim=1), 1)
-        )[target_index[0]]
+        # instance_weight = (
+        #     1 / torch.clamp_min(targ_conf.flatten(start_dim=1).sum(dim=1), 1)
+        # )[target_index[0]]
+        instance_weight = target_index[0].bincount().type_as(targ_conf)[target_index[0]]
         # >>>
 
         bbox_loss = torch.zeros_like(conf_loss)
