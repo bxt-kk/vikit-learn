@@ -50,7 +50,7 @@ def focal_boost_iter(
         # instance_weight = (
         #     1 / torch.clamp_min(targ_conf.flatten(start_dim=1).sum(dim=1), 1)
         # )[target_index[0]]
-        instance_weight = target_index[0].bincount().type_as(targ_conf)[target_index[0]]
+        instance_weight = 1 / target_index[0].bincount().type_as(targ_conf)[target_index[0]]
         obj_pred = pred_conf[target_index]
         obj_targ = targ_conf[target_index]
         obj_loss = (instance_weight * F.binary_cross_entropy_with_logits(
