@@ -355,7 +355,7 @@ class DetPredictor(nn.Module):
         #     ConvNormActive(in_planes, in_planes, 1),
         #     ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
         #     nn.Conv2d(in_planes, num_anchors, kernel_size=1))
-        conf_hidden = in_planes // num_anchors * num_anchors
+        conf_hidden = max(in_planes // num_anchors * num_anchors, num_anchors)
         self.conf_predict = nn.Sequential(
             ConvNormActive(in_planes, conf_hidden, 1),
             MultiKernelConvNormActive(
