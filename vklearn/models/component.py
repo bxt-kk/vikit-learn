@@ -350,10 +350,18 @@ class DetPredictor(nn.Module):
 
         self.num_anchors = num_anchors
 
+        # Lab code <<<
+        # self.conf_predict = nn.Sequential(
+        #     ConvNormActive(in_planes, in_planes, 1),
+        #     ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+        #     nn.Conv2d(in_planes, num_anchors, kernel_size=1))
+        conf_hidden = in_planes // num_anchors * num_anchors
         self.conf_predict = nn.Sequential(
-            ConvNormActive(in_planes, in_planes, 1),
-            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
-            nn.Conv2d(in_planes, num_anchors, kernel_size=1))
+            ConvNormActive(in_planes, conf_hidden, 1),
+            MultiKernelConvNormActive(
+                conf_hidden, [3 + t * 2 for t in range(num_anchors)]),
+            nn.Conv2d(conf_hidden, num_anchors, kernel_size=1))
+        # >>>
 
         ex_bbox_dims = bbox_dim * num_anchors
         self.bbox_predict = nn.Sequential(
