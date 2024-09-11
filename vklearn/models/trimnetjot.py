@@ -272,22 +272,34 @@ class TrimNetJot(Joints):
 
         objects = inputs[target_index]
 
+        instance_weight = 1 / target_index[0].bincount().type_as(targ_conf)[target_index[0]]
+
         recall_loss = torch.zeros_like(precision_loss)
         bbox_loss   = torch.zeros_like(precision_loss)
         clss_loss   = torch.zeros_like(precision_loss)
         if objects.shape[0] > 0:
             pred_recall = objects[:, 0]
-            recall_loss = F.binary_cross_entropy_with_logits(
-                pred_recall, torch.ones_like(pred_recall), reduction=reduction)
+            # Lab code <<<
+            # recall_loss = F.binary_cross_entropy_with_logits(
+            #     pred_recall, torch.ones_like(pred_recall), reduction=reduction)
+            recall_loss = (instance_weight * F.binary_cross_entropy_with_logits(
+                pred_recall, torch.ones_like(pred_recall), reduction='none')).sum() / inputs.shape[0]
+            # >>>
 
             pred_cxcywh = objects[:, 1:1 + self.bbox_dim]
             pred_xyxy = self.pred2boxes(pred_cxcywh, target_index[2], target_index[3])
-            bbox_loss = generalized_box_iou_loss(
-                pred_xyxy, target_bboxes, reduction=reduction)
+            # Lab code <<<
+            # bbox_loss = generalized_box_iou_loss(
+            #     pred_xyxy, target_bboxes, reduction=reduction)
+            bbox_loss = (instance_weight * generalized_box_iou_loss(
+                pred_xyxy, target_bboxes, reduction='none')).sum() / inputs.shape[0]
+            # >>>
 
             pred_clss = objects[:, 1 + self.bbox_dim:]
-            clss_loss = F.cross_entropy(
-                pred_clss, target_labels, reduction=reduction)
+            # Lab code <<<
+            clss_loss = (instance_weight * F.cross_entropy(
+                pred_clss, target_labels, reduction='none')).sum() / inputs.shape[0]
+            # >>>
 
         conf_loss = (1 - alpha) * precision_loss + alpha * recall_loss
 
@@ -379,9 +391,14 @@ class TrimNetJot(Joints):
 
         pred_obj = torch.sigmoid(pred_conf) > conf_thresh
 
-        pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
-        conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
-        conf_recall = pred_obj_true / torch.clamp_min(targ_conf.sum(), eps)
+        # Lab code <<<
+        # pred_obj_true = torch.masked_select(targ_conf, pred_obj).sum()
+        # conf_precision = pred_obj_true / torch.clamp_min(pred_obj.sum(), eps)
+        # conf_recall = pred_obj_true / torch.clamp_min(targ_conf.sum(), eps)
+        pred_obj_true = (targ_conf * pred_obj).flatten(start_dim=1).sum(dim=1)
+        conf_precision = (pred_obj_true / torch.clamp_min(pred_obj.flatten(start_dim=1).sum(dim=1), 1)).mean()
+        conf_recall = (pred_obj_true / torch.clamp_min(targ_conf.flatten(start_dim=1).sum(dim=1), 1)).mean()
+        # >>>
         conf_f1 = 2 * conf_precision * conf_recall / torch.clamp_min(conf_precision + conf_recall, eps)
         proposals = pred_obj.sum() / pred_obj.shape[0]
 
@@ -389,6 +406,10 @@ class TrimNetJot(Joints):
         offset_index = self.random_offset_index(
             target_index, target_bboxes, inputs.shape[2], inputs.shape[3])
         objects = inputs[offset_index]
+
+        # Lab code <<<
+        instance_weight = 1 / target_index[0].bincount().type_as(targ_conf)[target_index[0]]
+        # >>>
 
         iou_score = torch.ones_like(conf_f1)
         clss_accuracy = torch.ones_like(conf_f1)
@@ -407,10 +428,16 @@ class TrimNetJot(Joints):
             pred_area = pred_size[:, 0] * pred_size[:, 1]
             targ_area = targ_size[:, 0] * targ_size[:, 1]
             union = pred_area + targ_area - intersection
-            iou_score = (intersection / union).mean()
+            # Lab code <<<
+            # iou_score = (intersection / union).mean()
+            iou_score = (instance_weight * intersection / union).sum() / inputs.shape[0]
+            # >>>
 
             pred_labels = torch.argmax(objects[:, 1 + self.bbox_dim:], dim=-1)
-            clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
+            # Lab code <<<
+            # clss_accuracy = (pred_labels == target_labels).sum() / len(pred_labels)
+            clss_accuracy = (instance_weight * (pred_labels == target_labels)).sum() / inputs.shape[0]
+            # >>>
 
             conf_min = torch.sigmoid(objects[:, 0].min())
 
