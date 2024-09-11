@@ -360,7 +360,11 @@ class DetPredictor(nn.Module):
             ConvNormActive(in_planes, conf_hidden, 1),
             MultiKernelConvNormActive(
                 conf_hidden, [3 + t * 2 for t in range(num_anchors)]),
-            nn.Conv2d(conf_hidden, num_anchors, kernel_size=1))
+            nn.Conv2d(conf_hidden, conf_hidden, kernel_size=1),
+            MultiKernelConvNormActive(
+                conf_hidden, [3 + t * 2 for t in range(num_anchors)]),
+            nn.Conv2d(conf_hidden, num_anchors, kernel_size=1),
+        )
         # >>>
 
         ex_bbox_dims = bbox_dim * num_anchors
