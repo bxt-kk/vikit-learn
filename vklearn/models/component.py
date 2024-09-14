@@ -448,7 +448,10 @@ class DetPredictor2(nn.Module):
         clss_hidden = in_planes * num_anchors
 
         self.expansion = nn.Sequential(
-            ConvNormActive(in_planes + features_dim, clss_hidden, 1),
+            ConvNormActive(in_planes + features_dim, conf_hidden, 1),
+            MultiKernelConvNormActive(
+                conf_hidden, [3 + t * 2 for t in range(num_anchors)]),
+            ConvNormActive(conf_hidden, clss_hidden, 1),
             MultiKernelConvNormActive(
                 clss_hidden, [3 + t * 2 for t in range(num_anchors)]),
         )
