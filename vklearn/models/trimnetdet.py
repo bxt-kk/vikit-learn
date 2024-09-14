@@ -14,7 +14,7 @@ from PIL import Image
 
 from .detector import Detector
 from .trimnetx import TrimNetX
-from .component import DetPredictor
+from .component import DetPredictor2 as DetPredictor
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
@@ -57,13 +57,23 @@ class TrimNetDet(Detector):
         merged_dim   = self.trimnetx.merged_dim
         features_dim = self.trimnetx.features_dim
 
+        # Lab code <<<
+        # self.predictors = nn.ModuleList([DetPredictor(
+        #     in_planes=merged_dim,
+        #     num_anchors=self.num_anchors,
+        #     bbox_dim=self.bbox_dim,
+        #     clss_dim=embed_dim,
+        #     dropout_p=dropout_p,
+        # ) for _ in range(self.trimnetx.num_scans)])
         self.predictors = nn.ModuleList([DetPredictor(
+            features_dim=features_dim,
             in_planes=merged_dim,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
             clss_dim=embed_dim,
             dropout_p=dropout_p,
         ) for _ in range(self.trimnetx.num_scans)])
+        # >>>
 
         self.auxi_clf = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
@@ -84,7 +94,10 @@ class TrimNetDet(Detector):
         n, _, rs, cs = hs[0].shape
 
         alphas = torch.softmax(self.alphas, dim=-1)
-        preds = [predictor(h) for predictor, h in zip(self.predictors, hs)]
+        # Lab code <<<
+        # preds = [predictor(h) for predictor, h in zip(self.predictors, hs)]
+        preds = [predictor(h, m) for predictor, h in zip(self.predictors, hs)]
+        # >>>
         confs = [preds[0][..., :1]]
         objs = preds[0][..., 1:] * alphas[..., 0]
         times = len(preds)

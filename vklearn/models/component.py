@@ -404,6 +404,76 @@ class DetPredictor(nn.Module):
         ], dim=-1)
 
 
+class DetPredictor2(nn.Module):
+
+    def __init__(
+            self,
+            features_dim: int,
+            in_planes:    int,
+            num_anchors:  int,
+            bbox_dim:     int,
+            clss_dim:     int,
+            dropout_p:    float,
+        ):
+
+        super().__init__()
+
+        self.num_anchors = num_anchors
+
+        # Lab code <<<
+        # self.conf_predict = nn.Sequential(
+        #     ConvNormActive(in_planes, in_planes, 1),
+        #     ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+        #     nn.Conv2d(in_planes, num_anchors, kernel_size=1))
+        conf_hidden = max(in_planes // num_anchors * num_anchors, num_anchors)
+        self.conf_predict = nn.Sequential(
+            ConvNormActive(in_planes, conf_hidden, 1),
+            MultiKernelConvNormActive(
+                conf_hidden, [3 + t * 2 for t in range(num_anchors)]),
+            ConvNormActive(conf_hidden, conf_hidden, 1),
+            MultiKernelConvNormActive(
+                conf_hidden, [3 + t * 2 for t in range(num_anchors)]),
+            nn.Conv2d(conf_hidden, num_anchors, kernel_size=1),
+        )
+        # >>>
+
+        ex_bbox_dims = bbox_dim * num_anchors
+        self.bbox_predict = nn.Sequential(
+            ConvNormActive(in_planes, in_planes, 1),
+            ConvNormActive(in_planes, in_planes, 3, groups=in_planes),
+            # nn.Conv2d(in_planes, ex_bbox_dims, kernel_size=1),
+            ConvNormActive(in_planes, ex_bbox_dims, 1, norm_layer=None),
+            nn.Conv2d(ex_bbox_dims, ex_bbox_dims, kernel_size=1, groups=num_anchors))
+
+        clss_hidden = in_planes * num_anchors
+
+        self.expansion = nn.Sequential(
+            ConvNormActive(in_planes + features_dim, clss_hidden, 1),
+            MultiKernelConvNormActive(
+                clss_hidden, [3 + t * 2 for t in range(num_anchors)]),
+        )
+
+        self.dropout2d = nn.Dropout2d(dropout_p, inplace=False)
+
+        self.clss_predict = nn.Conv2d(
+            clss_hidden, clss_dim * num_anchors, kernel_size=1, groups=num_anchors)
+
+    def forward(self, x:Tensor, features:Tensor) -> Tensor:
+        bs, _, ny, nx = x.shape
+
+        p_conf = self.conf_predict(x)
+        p_bbox = self.bbox_predict(x)
+
+        e = self.expansion(torch.cat([x, features], dim=1)).reshape(bs * self.num_anchors, -1, ny, nx)
+        e = self.dropout2d(e).reshape(bs, -1, ny, nx)
+        p_clss = self.clss_predict(e)
+
+        return torch.cat([
+            part.reshape(bs, self.num_anchors, -1, ny, nx).permute(0, 1, 3, 4, 2)
+            for part in (p_conf, p_bbox, p_clss)
+        ], dim=-1)
+
+
 class SegPredictor(nn.Module):
 
     def __init__(
