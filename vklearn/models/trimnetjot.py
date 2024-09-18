@@ -48,10 +48,12 @@ class TrimNetJot(Joints):
         self.cell_size = self.trimnetx.cell_size
 
         merged_dim = self.trimnetx.merged_dim
+        features_dim = self.trimnetx.features_dim
 
         self.seg_predictor = SegPredictor(merged_dim, 1, self.trimnetx.num_scans)
 
         self.det_predictor = DetPredictor(
+            features_dim=features_dim,
             in_planes=merged_dim + 1,
             num_anchors=self.num_anchors,
             bbox_dim=self.bbox_dim,
@@ -63,14 +65,14 @@ class TrimNetJot(Joints):
         self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tuple[Tensor, Tensor]:
-        hs, _ = self.trimnetx(x)
+        hs, m = self.trimnetx(x)
         last_segment = self.seg_predictor(hs)[-1]
         mask = F.hardsigmoid(last_segment)
         mask = F.interpolate(
             mask,
             scale_factor=1 / 2**len(hs),
             mode='bilinear')
-        objs = self.det_predictor(torch.cat([mask, hs[-1]], dim=1))
+        objs = self.det_predictor(torch.cat([mask, hs[-1]], dim=1), m)
         return last_segment, objs
 
     @classmethod

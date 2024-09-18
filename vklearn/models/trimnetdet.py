@@ -14,7 +14,7 @@ from PIL import Image
 
 from .detector import Detector
 from .trimnetx import TrimNetX
-from .component import DetPredictor2 as DetPredictor
+from .component import DetPredictor
 from ..utils.focal_boost import focal_boost_loss, focal_boost_positive
 
 
@@ -36,7 +36,7 @@ class TrimNetDet(Detector):
             categories:          List[str],
             bbox_limit:          int=640,
             anchors:             List[Tuple[float, float]] | Tensor | None=None,
-            dropout_p:           float=0.2,
+            dropout_p:           float=0.,
             embed_dim:           int=32,
             num_scans:           int | None=None,
             scan_range:          int | None=None,
