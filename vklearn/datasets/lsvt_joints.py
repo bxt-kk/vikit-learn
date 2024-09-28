@@ -1,8 +1,8 @@
 from typing import Any, Callable, List, Tuple, Dict
-from collections import defaultdict
+from glob import glob
 import os.path
 import json
-import math
+# import math
 
 from PIL import Image
 import cv2 as cv
@@ -14,12 +14,11 @@ from torchvision.tv_tensors import BoundingBoxes, Mask
 from torchvision.ops import box_convert
 
 
-class MVTecScrews(VisionDataset):
-    '''`MVTec-Screws Joints Detection dataset.
+class LSVTJoints(VisionDataset):
+    '''`LSVT Joints Detection dataset.
 
     Args:
         root: Root directory where images are downloaded to.
-        split: The dataset split, supports ``""`` (default), ``"train"``, ``"val"`` or ``"test"``.
         transform: A function/transform that takes in a PIL image
             and returns a transformed version. E.g, ``transforms.PILToTensor``
         target_transform: A function/transform that takes in the
@@ -32,44 +31,25 @@ class MVTecScrews(VisionDataset):
     def __init__(
         self,
         root:             str,
-        split:            str='train',
         transform:        Callable | None=None,
         target_transform: Callable | None=None,
         transforms:       Callable | None=None,
     ):
         super().__init__(root, transforms, transform, target_transform)
-        assert split in ['train', 'val', 'test']
 
-        self.images_dir = os.path.join(root, 'images/')
-
-        label_path = os.path.join(root, f'mvtec_screws_{split}.json')
+        self.image_paths = sorted(glob(os.path.join(root, 'train_full_images_*/*/*.jpg')))
+        label_path = os.path.join(root, 'train_full_labels.json')
 
         with open(label_path) as f:
-            data = json.load(f)
+            self.anns_dict = json.load(f)
 
-        self.id2category = {item['id'] - 1: item['name'] for item in data['categories']}
-        self.classes = list(self.id2category.values())
-
-        self.image_id2filename = {item['id']: item['file_name'] for item in data['images']}
-        self.image_ids = list(self.image_id2filename.keys())
-
-        self.anns_dict = defaultdict(list)
-        for ann in data['annotations']:
-            label = ann['category_id'] - 1
-            bbox = ann['bbox']
-            image_id = ann['image_id']
-            self.anns_dict[image_id].append(dict(
-                label=label,
-                bbox=bbox,
-            ))
+        self.classes = ['text']
 
     def __len__(self) -> int:
-        return len(self.image_ids)
+        return len(self.image_paths)
 
-    def _load_image(self, image_id:int) -> Image.Image:
-        filename = self.image_id2filename[image_id]
-        return Image.open(
-            os.path.join(self.images_dir, filename)).convert('RGB')
+    def _load_image(self, image_paths:str) -> Image.Image:
+        return Image.open(image_paths).convert('RGB')
 
     def _format_anns(
         self,
@@ -78,27 +58,28 @@ class MVTecScrews(VisionDataset):
     ) -> Dict[str, Any]:
 
         bbox_list = []
-        label_list = []
         for ann in anns:
-            y, x, w, h, a = ann['bbox']
-            a = - a / math.pi * 180
+            # if ann['illegibility']: continue
+            (x, y), (w, h), a = cv.minAreaRect(np.array(ann['points']))
+            if w < h:
+                w, h = h, w
+                a -= 90
             pts = cv.boxPoints(((x, y), (w, h), a))
 
             x1, y1 = (pts[0] + pts[1]) * 0.5
             x2, y2 = (pts[2] + pts[3]) * 0.5
             diameter = min(w, h)
+            if diameter < self.LINE_THICKNESS: continue
 
             bbox_list.append([x1, y1, diameter, diameter])
             bbox_list.append([x2, y2, diameter, diameter])
-            label_list.append(ann['label'])
-            label_list.append(ann['label'])
 
         return dict(
             boxes=BoundingBoxes(
                 bbox_list,
                 format='CXCYWH',
                 canvas_size=(image_size[1], image_size[0])),
-            labels=torch.LongTensor(label_list),
+            labels=torch.LongTensor([0] * len(bbox_list)),
         )
 
     def _draw_masks(self, boxes:BoundingBoxes) -> Mask:
@@ -115,12 +96,13 @@ class MVTecScrews(VisionDataset):
         if not isinstance(index, int):
             raise ValueError(f'Index must be of type integer, got {type(index)} instead.')
 
-        image_id = self.image_ids[index]
+        image_path = self.image_paths[index]
+        image_id = os.path.splitext(os.path.basename(image_path))[0]
         anns = self.anns_dict[image_id]
         if len(anns) == 0:
             return self.__getitem__((index + 1) % self.__len__())
 
-        image = self._load_image(image_id)
+        image = self._load_image(image_path)
         target = self._format_anns(anns, image.size)
 
         num_boxes = len(target['boxes'])
@@ -129,6 +111,19 @@ class MVTecScrews(VisionDataset):
             target['boxes'][:, 2:] /= max_diameter
             image, target = self.transforms(image, target)
             target['boxes'][:, 2:] *= max_diameter
+
+        for i in range(0, len(target['boxes']), 2):
+            x1, y1 = target['boxes'][i][:2].tolist()
+            x2, y2 = target['boxes'][i + 1][:2].tolist()
+            if abs(x2 - x1) > abs(y2 - y1):
+                if x1 <= x2: continue
+            else:
+                if y1 <= y2: continue
+            target['boxes'][i][0] = x2
+            target['boxes'][i][1] = y2
+            target['boxes'][i + 1][0] = x1
+            target['boxes'][i + 1][1] = y1
+
         target['masks'] = self._draw_masks(target['boxes'])
         target['boxes'] = box_convert(target['boxes'], 'cxcywh', 'xyxy')
         assert len(target['boxes']) == num_boxes
@@ -140,20 +135,22 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt 
     from matplotlib.pyplot import Circle
 
-    dataset = MVTecScrews('/media/kk/Data/dataset/image/MVTec-Screws', 'test')
+    dataset = LSVTJoints('/media/kk/Data/dataset/image/LSVT')
     print(len(dataset))
 
-    for i in range(3):
+    for i in range(len(dataset)):
         image, target = dataset[i]
         ax:plt.Axes = plt.subplot()
         img_arr = np.array(image, dtype=np.uint8)
         mask = target['masks'].numpy()
-        img_arr[..., 0][mask[0] == 1] = 0
+        img_arr[..., 1][mask[0] == 1] = 0
         ax.imshow(img_arr)
         for bnd_id, bbox in enumerate(target['boxes']):
             is_begin = bnd_id % 2 == 0
-            x, y, diameter, _ = bbox
+            x, y = (bbox[:2] + bbox[2:]) * 0.5
+            diameter = (bbox[2:] - bbox[:2]).min()
             color = 'red' if is_begin else 'blue'
             ax.add_patch(Circle((x, y), diameter * 0.5, color=color, fill=False, linewidth=1))
-            ax.add_patch(Circle((x, y), 10, color=color, fill=True))
+            ax.add_patch(Circle((x, y), 5, color=color, fill=True))
         plt.show()
+        if input('continue?>').strip() == 'q': break
