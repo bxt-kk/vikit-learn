@@ -104,6 +104,8 @@ class LSVTJoints(VisionDataset):
 
         image = self._load_image(image_path)
         target = self._format_anns(anns, image.size)
+        if target['boxes'].numel() == 0:
+            return self.__getitem__((index + 1) % self.__len__())
 
         num_boxes = len(target['boxes'])
         if self.transforms is not None:
