@@ -1,7 +1,7 @@
 matplotlib>=3.7.5
 torch>=2.1.2
 torchvision>=0.16.2
-torchmetrics>=1.4.0
+torchmetrics>=1.4.2
 lightning-utilities>=0.11.2
 faster-coco-eval>=1.5.4
 pycocotools>=2.0.7

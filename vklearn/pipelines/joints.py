@@ -91,9 +91,11 @@ class Joints:
 
     def plot_result(
             self,
-            image:      PILImage,
-            result:     List[Dict[str, Any]],
-            fig:        Figure,
+            image:         PILImage,
+            result:        List[Dict[str, Any]],
+            fig:           Figure,
+            hide_annotate: bool=False,
+            hide_remains:  bool=False,
         ):
         '''This method visualizes the model prediction results.
 
@@ -109,6 +111,7 @@ class Joints:
             rect = obj['rect']
             pts = cv.boxPoints(rect)
             ax.add_patch(Polygon(pts, closed=True, fill=False, color='red'))
+            if hide_annotate: continue
             ax.annotate(
                 f"{obj['label']}: {round(obj['score'], 3)}",
                 (pts[1] + pts[2]) * 0.5,
@@ -122,6 +125,7 @@ class Joints:
                     pad=0,
                 ),
             )
+        if hide_remains: return
         for node in result['remains']:
             x1, y1, x2, y2 = node['box']
             xy = (x1 + x2) * 0.5, (y1 + y2) * 0.5

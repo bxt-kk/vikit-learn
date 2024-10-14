@@ -230,7 +230,7 @@ class Joints(Basic):
         assert not 'this is an empty func'
 
     def compute_metric(self) -> Dict[str, Any]:
-        miou = self.m_iou_metric.compute() / self.m_iou_metric.update_count
+        miou = self.m_iou_metric.compute() # / self.m_iou_metric.update_count
         metrics = self.m_ap_metric.compute()
         metrics['miou'] = miou
         self.m_iou_metric.reset()
