@@ -126,8 +126,8 @@ class Joints(Basic):
             end_bbox = np.array(end_node['box'], dtype=np.float32)
             end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
             steps = round(np.linalg.norm(begin_cxcy - end_cxcy))
-            cols = np.around(np.linspace(begin_cxcy[0], end_cxcy[0], steps)).astype(int)
-            rows = np.around(np.linspace(begin_cxcy[1], end_cxcy[1], steps)).astype(int)
+            cols = np.around(np.linspace(begin_cxcy[0], min(end_cxcy[0], heatmap.shape[1] - 1), steps)).astype(int)
+            rows = np.around(np.linspace(begin_cxcy[1], min(end_cxcy[1], heatmap.shape[0] - 1), steps)).astype(int)
             region = heatmap[rows, cols]
             if region.size == 0: continue
             score = region.mean()
