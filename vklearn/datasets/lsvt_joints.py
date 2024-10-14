@@ -31,7 +31,7 @@ class LSVTJoints(VisionDataset):
     def __init__(
         self,
         root:                str,
-        ignore_illegibility: bool=False,
+        ignore_illegibility: bool=True,
         transform:           Callable | None=None,
         target_transform:    Callable | None=None,
         transforms:          Callable | None=None,
