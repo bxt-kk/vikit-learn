@@ -30,10 +30,11 @@ class LSVTJoints(VisionDataset):
 
     def __init__(
         self,
-        root:             str,
-        transform:        Callable | None=None,
-        target_transform: Callable | None=None,
-        transforms:       Callable | None=None,
+        root:                str,
+        ignore_illegibility: bool=True,
+        transform:           Callable | None=None,
+        target_transform:    Callable | None=None,
+        transforms:          Callable | None=None,
     ):
         super().__init__(root, transforms, transform, target_transform)
 
@@ -44,6 +45,7 @@ class LSVTJoints(VisionDataset):
             self.anns_dict = json.load(f)
 
         self.classes = ['text']
+        self.ignore_illegibility = ignore_illegibility
 
     def __len__(self) -> int:
         return len(self.image_paths)
@@ -59,7 +61,7 @@ class LSVTJoints(VisionDataset):
 
         bbox_list = []
         for ann in anns:
-            # if ann['illegibility']: continue
+            if self.ignore_illegibility and ann['illegibility']: continue
             (x, y), (w, h), a = cv.minAreaRect(np.array(ann['points']))
             if w < h:
                 w, h = h, w
