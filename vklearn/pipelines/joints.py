@@ -29,7 +29,7 @@ class Joints:
         ) -> 'Joints':
 
         if isinstance(state, str):
-            state = torch.load(state, map_location='cpu')
+            state = torch.load(state, map_location='cpu', weights_only=True)
         return cls(model.load_from_state(state).eval())
 
     def export_onnx(self, f: str | io.BytesIO):

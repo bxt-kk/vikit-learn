@@ -107,7 +107,7 @@ class Trainer:
 
         if self.checkpoint is not None:
             print('checkpoint:', self.checkpoint)
-            state_dict = torch.load(self.checkpoint)
+            state_dict = torch.load(self.checkpoint, weights_only=True)
             self.model.load_state_dict(state_dict['model'], strict=False)
             if not self.drop_optim:
                 self.optimizer.load_state_dict(state_dict['optim'])

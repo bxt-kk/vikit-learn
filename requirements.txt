@@ -1,10 +1,9 @@
 matplotlib>=3.7.5
-torch>=2.1.2
-torchvision>=0.16.2
+torch>=2.4.0
+torchvision>=0.19.0
 torchmetrics>=1.4.2
-lightning-utilities>=0.11.2
-faster-coco-eval>=1.5.4
+lightning-utilities>=0.11.7
+faster-coco-eval>=1.6.0
 pycocotools>=2.0.7
-# clip @ git+https://github.com/openai/CLIP.git
 opencv-python>=4.10.0
-flet>=0.23.2
+flet>=0.24.0
