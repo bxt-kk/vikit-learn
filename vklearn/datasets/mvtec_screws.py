@@ -84,9 +84,12 @@ class MVTecScrews(VisionDataset):
             a = - a / math.pi * 180
             pts = cv.boxPoints(((x, y), (w, h), a))
 
-            x1, y1 = (pts[0] + pts[1]) * 0.5
-            x2, y2 = (pts[2] + pts[3]) * 0.5
             diameter = min(w, h)
+            length = max(w, h)
+            x1y1 = (pts[0] + pts[1]) * 0.5
+            x2y2 = (pts[2] + pts[3]) * 0.5
+            x1, y1 = x1y1 + (x2y2 - x1y1) * diameter / length * 0.5
+            x2, y2 = x2y2 + (x1y1 - x2y2) * diameter / length * 0.5
 
             bbox_list.append([x1, y1, diameter, diameter])
             bbox_list.append([x2, y2, diameter, diameter])
