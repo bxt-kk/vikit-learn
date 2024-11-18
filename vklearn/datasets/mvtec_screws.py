@@ -15,7 +15,7 @@ from torchvision.ops import box_convert
 
 
 class MVTecScrews(VisionDataset):
-    '''`MVTec-Screws Joints Detection dataset.
+    '''MVTec-Screws Joints Detection dataset.
 
     Args:
         root: Root directory where images are downloaded to.
