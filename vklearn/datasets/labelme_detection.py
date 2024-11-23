@@ -39,19 +39,18 @@ class LabelmeDetection(VisionDataset):
         assert os.path.isdir(self.dataset_dir)
 
         self.label_paths = sorted(glob(os.path.join(self.dataset_dir, '*.json')))
-        self.CLASSNAMES = {}
+        self.classes = []
         with open(os.path.join(root, 'classnames.txt')) as f:
             for name in f:
                 name = name.strip()
                 if not name: continue
-                self.CLASSNAMES[len(self.CLASSNAMES)] = name
-        self.name_2_id = {v: k for k, v in self.CLASSNAMES.items()}
+                self.classes.append(name)
 
     def __len__(self) -> int:
         return len(self.label_paths)
 
     def _load_image(self, path:str) -> Image.Image:
-        return Image.open(os.path.join(self.dataset_dir, path)).convert("RGB")
+        return Image.open(os.path.join(self.dataset_dir, path)).convert('RGB')
 
     def _load_anns(self, id:int) -> Tuple[List[Any], str]:
         label_path = self.label_paths[id]
@@ -75,7 +74,7 @@ class LabelmeDetection(VisionDataset):
             format='XYXY',
             canvas_size=(image_size[1], image_size[0]),
         )
-        labels = torch.LongTensor([self.name_2_id[ann['label']] for ann in anns])
+        labels = torch.LongTensor([self.classes.index(ann['label']) for ann in anns])
         return dict(boxes=boxes, labels=labels)
 
     def __getitem__(self, index:int) -> Tuple[Any, Any]:

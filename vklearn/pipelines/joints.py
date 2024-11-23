@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Mapping
+from typing import List, Dict, Any, Mapping, Sequence, Tuple
 import io
 
 import torch
@@ -58,20 +58,22 @@ class Joints:
 
     def __call__(
             self,
-            image:         PILImage | str | ndarray,
-            conf_thresh:   float=0.5,
-            iou_thresh:    float=0.5,
-            align_size:    int=448,
-            mini_side:     int=1,
+            image:        PILImage | str | ndarray,
+            joints_type:  str='normal',
+            conf_thresh:  float=0.5,
+            iou_thresh:   float=0.5,
+            align_size:   int=448,
+            score_thresh: float=0.5,
+            ocr_params:   Sequence[Tuple[float, int]]=((0.7, 7), (0.9, 5)),
         ) -> List[Dict[str, Any]]:
         '''Invoke the method for keypoint&joint detection.
 
         Args:
             image: The image to be detected.
+            joints_type: The type of joints operation.
             conf_thresh: Confidence threshold.
             iou_thresh: Intersection over union threshold.
             align_size: The size to which the image will be aligned after preprocessing.
-            mini_side: Minimum bounding box side length.
         '''
 
         if isinstance(image, str):
@@ -82,10 +84,12 @@ class Joints:
         with torch.no_grad():
             result = self.model.detect(
                 image=image,
+                joints_type=joints_type,
                 conf_thresh=conf_thresh,
                 iou_thresh=iou_thresh,
                 align_size=align_size,
-                mini_side=mini_side,
+                score_thresh=score_thresh,
+                ocr_params=ocr_params,
             )
         return result
 
@@ -94,8 +98,9 @@ class Joints:
             image:         PILImage,
             result:        List[Dict[str, Any]],
             fig:           Figure,
-            hide_annotate: bool=False,
-            hide_remains:  bool=False,
+            show_annotate: bool=True,
+            show_nodes:    bool=False,
+            show_heatmap:  bool=False,
         ):
         '''This method visualizes the model prediction results.
 
@@ -105,13 +110,17 @@ class Joints:
             fig: The matplotlib Figure object.
         '''
 
-        ax = fig.add_subplot()
+        if show_heatmap:
+            ax = fig.add_subplot(1, 2, 1)
+            fig.add_subplot(1, 2, 2).imshow(result['heatmap'])
+        else:
+            ax = fig.add_subplot()
         ax.imshow(image)
         for obj in result['objs']:
             rect = obj['rect']
             pts = cv.boxPoints(rect)
             ax.add_patch(Polygon(pts, closed=True, fill=False, color='red'))
-            if hide_annotate: continue
+            if not show_annotate: continue
             ax.annotate(
                 f"{obj['label']}: {round(obj['score'], 3)}",
                 (pts[1] + pts[2]) * 0.5,
@@ -125,14 +134,14 @@ class Joints:
                     pad=0,
                 ),
             )
-        if hide_remains: return
-        for node in result['remains']:
-            x1, y1, x2, y2 = node['box']
-            xy = (x1 + x2) * 0.5, (y1 + y2) * 0.5
-            radius = min(x2 - x1, y2 - y1) * 0.25
-            color = 'blue'
-            fill = True
-            alpha = 0.5
-            if node['anchor'] == 1: color = 'yellow'
-            ax.add_patch(Circle(
-                xy, radius, color=color, fill=fill, linewidth=1, alpha=alpha))
+        if show_nodes:
+            for node in result['nodes']:
+                x1, y1, x2, y2 = node['box']
+                xy = (x1 + x2) * 0.5, (y1 + y2) * 0.5
+                radius = min(x2 - x1, y2 - y1) * 0.25
+                color = 'blue'
+                fill = True
+                alpha = 0.5
+                if node['anchor'] == 1: color = 'yellow'
+                ax.add_patch(Circle(
+                    xy, radius, color=color, fill=fill, linewidth=1, alpha=alpha))

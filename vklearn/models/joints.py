@@ -1,7 +1,8 @@
-from typing import List, Any, Dict, Tuple
+from typing import List, Any, Dict, Tuple, Sequence
+from collections import defaultdict
+import time
 
 from torch import Tensor
-
 import torch
 
 from torchvision import tv_tensors
@@ -14,6 +15,8 @@ from torchmetrics.segmentation import MeanIoU
 from PIL import Image
 from numpy import ndarray
 import numpy as np
+import cv2 as cv
+import shapely
 
 from .basic import Basic
 
@@ -111,7 +114,7 @@ class Joints(Basic):
         row_index = torch.clamp(cr_y / self.cell_size, 0, rows - 1).type(torch.int64)
         return [index[0], index[1], row_index, col_index]
 
-    def _joint_iter(
+    def _match_nodes(
             self,
             begin_node: Dict[str, Any],
             end_nodes:  List[Dict[str, Any]],
@@ -121,77 +124,192 @@ class Joints(Basic):
         begin_bbox = np.array(begin_node['box'], dtype=np.float32)
         begin_cxcy = (begin_bbox[:2] + begin_bbox[2:]) * 0.5
         max_score = 0.5
-        matched_id = -1
+        matched_ix = -1
+        begin_size = (begin_bbox[2:] - begin_bbox[:2]).mean()
         for end_ix, end_node in enumerate(end_nodes):
             end_bbox = np.array(end_node['box'], dtype=np.float32)
+            end_size = (end_bbox[2:] - end_bbox[:2]).mean()
             end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
             steps = round(np.linalg.norm(begin_cxcy - end_cxcy))
             cols = np.around(np.linspace(begin_cxcy[0], min(end_cxcy[0], heatmap.shape[1] - 1), steps)).astype(int)
             rows = np.around(np.linspace(begin_cxcy[1], min(end_cxcy[1], heatmap.shape[0] - 1), steps)).astype(int)
             region = heatmap[rows, cols]
-            if region.size == 0: continue
-            score = region.mean()
-            if score > max_score:
-                max_score = score
-                matched_id = end_ix
-            if max_score > 0.99: break
-        return matched_id, max_score
+            score = 1. if region.size == 0 else region.mean()
+            score = score * (begin_node['score'] + end_node['score']) * 0.5
+            score = score * min(begin_size, end_size) / max(begin_size, end_size)
+            if score < max_score: continue
+            max_score = score
+            matched_ix = end_ix
+        return matched_ix, max_score
 
-    def joints(
+    def joints_on_group(
             self,
-            nodes:   List[Dict[str, Any]],
-            heatmap: ndarray,
-        ) -> Tuple[List[Any], List[Dict[str, Any]]]:
+            nodes:        List[Dict[str, Any]],
+            heatmap:      ndarray,
+            score_thresh: float,
+        ) -> List[Dict[str, Any]]:
 
         begin_nodes = [item for item in nodes if item['anchor'] == 0]
         end_nodes = [item for item in nodes if item['anchor'] == 1]
+        begin_nodes = sorted(begin_nodes, key=lambda n: n['score'], reverse=True)[:2]
+        end_nodes = sorted(end_nodes, key=lambda n: n['score'], reverse=True)[:len(begin_nodes)]
         matched_pairs = []
-        for _ in range(len(begin_nodes)):
-            begin_node = begin_nodes.pop(0)
-            matched_id, score = self._joint_iter(begin_node, end_nodes, heatmap)
-            if matched_id < 0:
-                begin_nodes.append(begin_node)
-                continue
-            end_node = end_nodes.pop(matched_id)
-            matched_pairs.append((begin_node, end_node))
-            if score < 0.9:
-                end_nodes.insert(matched_id, end_node)
+
+        for begin_ix, begin_node in enumerate(begin_nodes):
+            end_ix, max_score = self._match_nodes(begin_node, end_nodes, heatmap)
+            if end_ix < 0: continue
+            matched_pairs.append((
+                begin_ix,
+                end_ix, max_score))
 
         objs = []
-        for begin_node, end_node in matched_pairs:
+        for begin_ix, end_ix, score in matched_pairs:
+            begin_node = begin_nodes[begin_ix]
+            end_node = end_nodes[end_ix]
             begin_bbox = np.array(begin_node['box'], dtype=np.float32)
             end_bbox = np.array(end_node['box'], dtype=np.float32)
             begin_cxcy = (begin_bbox[:2] + begin_bbox[2:]) * 0.5
             end_cxcy = (end_bbox[:2] + end_bbox[2:]) * 0.5
             vector = end_cxcy - begin_cxcy
             length = np.linalg.norm(vector)
-            vector /= length
+            vector /= max(1e-5, length)
             angle = np.rad2deg(np.arccos(vector[0]))
             if vector[1] < 0: angle = -angle
             begin_width = max(begin_bbox[2:] - begin_bbox[:2])
             end_width = max(end_bbox[2:] - end_bbox[:2])
             diameter = (begin_width + end_width) * 0.5
             cx, cy = (begin_cxcy + end_cxcy) * 0.5
-            rect = (cx, cy), (length, diameter), angle
+            rect = (cx, cy), (length + diameter, diameter), angle
             begin_score = begin_node['score']
             end_score = end_node['score']
             label = begin_node['label']
-            score = begin_score
             if begin_score < end_score:
                 label = end_node['label']
-                score = end_score
+            if score < score_thresh: continue
             objs.append(dict(rect=rect, label=label, score=score))
 
-        return objs, begin_nodes + end_nodes
+        return objs
+
+    def joints(
+            self,
+            nodes:        List[Dict[str, Any]],
+            heatmap:      ndarray,
+            score_thresh: float,
+        ) -> List[Dict[str, Any]]:
+
+        thresh_map = (heatmap > 0.5).astype(np.uint8)
+        contours, _ = cv.findContours(thresh_map, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
+        boxes = shapely.polygons([cv.boxPoints(cv.minAreaRect(pts)) for pts in contours])
+
+        node_groups = defaultdict(list)
+        for node in nodes:
+            node_box = shapely.box(*node['box'])
+            for gid, box in enumerate(boxes):
+                if shapely.intersects(node_box, box):
+                    node_groups[gid].append(node)
+
+        objs = []
+        for group in node_groups.values():
+            _objs = self.joints_on_group(group, thresh_map, score_thresh)
+            objs.extend(_objs)
+
+        return objs
+
+    def joints_ocr(
+            self,
+            nodes:   List[Dict[str, Any]],
+            heatmap: ndarray,
+            params:  Sequence[Tuple[float, int]],
+        ) -> List[Dict[str, Any]]:
+
+        segment_thresh, rect_side_limit = params[0]
+        next_params = params[1:]
+        print('joints ocr param:', segment_thresh, rect_side_limit)
+
+        clock = time.time()
+        binary_map = (heatmap > segment_thresh).astype(np.uint8)
+        contours, _ = cv.findContours(binary_map, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
+        block_rects = [cv.minAreaRect(pts) for pts in contours]
+        block_rects = [rect for rect in block_rects if min(rect[1]) > rect_side_limit]
+        if not block_rects: return []
+        block_boxes = shapely.polygons([cv.boxPoints(rect) for rect in block_rects])
+
+        clock2 = time.time()
+        node_groups = defaultdict(list)
+        remains = []
+        for node in nodes:
+            node_box = node['box']
+            node_poly = shapely.box(*node_box)
+            node_centroid = shapely.centroid(node_poly)
+            for bid, block_poly in enumerate(block_boxes):
+                if shapely.contains(block_poly, node_centroid):
+                    node_groups[bid].append(node)
+                    break
+            else:
+                remains.append(node)
+        print('nodes size:', len(node), 'remains size:', len(remains))
+        for node in remains:
+            node_box = node['box']
+            node_poly = shapely.box(*node_box)
+            for bid, block_poly in enumerate(block_boxes):
+                if node_groups[bid]: continue
+                if shapely.intersects(node_poly, block_poly):
+                    node_groups[bid].append(node)
+        print('delta2:', time.time() - clock2, params)
+        objs = []
+        multilines = []
+        calc_diameter = lambda n: 0.5 * (n['box'][2] + n['box'][3] - n['box'][0] - n['box'][1])
+        need_mask_blocks = []
+        for bid, rect in enumerate(block_rects):
+            diameters = [calc_diameter(node) for node in node_groups[bid]]
+            if not diameters:
+                need_mask_blocks.append(bid)
+                continue
+            mean_diameter = sum(diameters) / max(1, len(diameters))
+            min_side = min(rect[1])
+            if next_params and (min_side > 1.5 * mean_diameter):
+                multilines.append(bid)
+                continue
+            need_mask_blocks.append(bid)
+            if min_side < 1.5 * mean_diameter:
+                xy, (w, h), a = rect
+                if w > h:
+                    rect = xy, (w + mean_diameter, mean_diameter), a
+                else:
+                    rect = xy, (mean_diameter, h + mean_diameter), a
+            objs.append(dict(rect=rect, label='text', score=0.8))
+
+        for obj in objs:
+            xy, wh, a = obj['rect']
+            if min(wh) / max(wh) < 0.7: continue
+            print('update src ojb', obj['rect'])
+            side = sum(wh) * 0.5
+            obj['rect'] = xy, (side, side), 0
+            print('update dst ojb', obj['rect'])
+        print('debug multilines:', multilines)
+
+        if next_params and multilines:
+            mask = np.ones_like(heatmap, dtype=np.uint8)
+            mask_pts = [cv.boxPoints(block_rects[bid]).astype(np.int32) for bid in need_mask_blocks]
+            mask = cv.fillPoly(mask, mask_pts, color=0)
+            remains = []
+            for bid in multilines:
+                remains.extend(node_groups[bid])
+            sub_objs = self.joints_ocr(remains, heatmap * mask, next_params)
+            objs.extend(sub_objs)
+        print('debug remains:', len(remains), 'full nodes:', len(nodes))
+        print('delta:', time.time() - clock)
+        return objs
 
     def detect(
             self,
-            image:         Image.Image,
-            conf_thresh:   float=0.6,
-            recall_thresh: float=0.5,
-            iou_thresh:    float=0.5,
-            align_size:    int=448,
-            mini_side:     int=1,
+            image:        Image.Image,
+            joints_type:  str='normal',
+            conf_thresh:  float=0.5,
+            iou_thresh:   float=0.5,
+            align_size:   int=448,
+            score_thresh: float=0.5,
+            ocr_params:   Sequence[Tuple[float, int]]=((0.7, 7), (0.9, 5)),
         ) -> List[Dict[str, Any]]:
         assert not 'this is an empty func'
 

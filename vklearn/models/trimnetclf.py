@@ -94,7 +94,7 @@ class TrimNetClf(Classifier):
             image:      Image.Image,
             top_k:      int=10,
             align_size: int=224,
-        ) -> List[Dict[str, Any]]:
+        ) -> Dict[str, Any]:
 
         device = self.get_model_device()
         x = self.preprocess(image, align_size)

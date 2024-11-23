@@ -1,4 +1,4 @@
-from typing import List, Any, Dict, Mapping, Tuple
+from typing import List, Any, Dict, Mapping, Tuple, Sequence
 
 from torch import Tensor
 from torchvision.ops import (
@@ -116,12 +116,16 @@ class TrimNetJot(Joints):
 
     def detect(
             self,
-            image:         Image.Image,
-            conf_thresh:   float=0.5,
-            iou_thresh:    float=0.5,
-            align_size:    int=448,
-            mini_side:     int=1,
+            image:        Image.Image,
+            joints_type:  str='normal',
+            conf_thresh:  float=0.5,
+            iou_thresh:   float=0.5,
+            align_size:   int=448,
+            score_thresh: float=0.5,
+            ocr_params:   Sequence[Tuple[float, int]]=((0.7, 7), (0.9, 5)),
         ) -> List[Dict[str, Any]]:
+
+        assert joints_type in ('normal', 'ocr')
 
         device = self.get_model_device()
         x, scale, pad_x, pad_y = self.preprocess(
@@ -144,7 +148,8 @@ class TrimNetJot(Joints):
         clss = torch.softmax(objs[:, self.bbox_dim:], dim=-1).max(dim=-1)
         labels, probs = clss.indices, clss.values
         scores = conf * probs
-        final_ids = box_ops.batched_nms(boxes, scores, labels, iou_thresh)
+        marked_labels = labels + index[1] * self.num_classes
+        final_ids = box_ops.batched_nms(boxes, scores, marked_labels, iou_thresh)
         boxes = boxes[final_ids]
         labels = labels[final_ids]
         probs = probs[final_ids]
@@ -153,7 +158,6 @@ class TrimNetJot(Joints):
 
         nodes = []
         for score, box, label, prob, anchor in zip(scores, boxes, labels, probs, anchors):
-            if (box[2:] - box[:2]).min() < mini_side: continue
             nodes.append(dict(
                 score=round(score.item(), 5),
                 box=box.round().tolist(),
@@ -168,14 +172,17 @@ class TrimNetJot(Joints):
             size=(x.shape[2], x.shape[3]),
             mode='bilinear')[0, 0].cpu().numpy()
 
-        objs, remains = self.joints(nodes, heatmap_arr)
+        if joints_type == 'normal':
+            objs = self.joints(nodes, heatmap_arr, score_thresh=score_thresh)
+        elif joints_type == 'ocr':
+            objs = self.joints_ocr(nodes, heatmap_arr, params=ocr_params)
 
         heatmap = Image.fromarray(
-            (heatmap_arr[pad_y:pad_y + dst_h, pad_x:pad_x + dst_w] * 255
+            ((heatmap_arr[pad_y:pad_y + dst_h, pad_x:pad_x + dst_w]) * 255
         ).astype(np.uint8)).resize((raw_w,raw_h), resample=Image.Resampling.BILINEAR)
 
-        for ix in range(len(remains)):
-            item = remains[ix]
+        for ix in range(len(nodes)):
+            item = nodes[ix]
             x1, y1, x2, y2 = item['box']
             x1 = round(min(max((x1 - pad_x) / scale, 0), raw_w - 1))
             y1 = round(min(max((y1 - pad_y) / scale, 0), raw_h - 1))
@@ -192,7 +199,7 @@ class TrimNetJot(Joints):
             objs[ix]['rect'] = (cx, cy), (w, h), a
 
         return dict(
-            remains=remains,
+            nodes=nodes,
             heatmap=heatmap,
             objs=objs,
         )

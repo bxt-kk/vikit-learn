@@ -71,15 +71,20 @@ class ConvNormActive(nn.Sequential):
             self,
             in_planes:   int,
             out_planes:  int,
-            kernel_size: int=3,
+            kernel_size: int | Tuple[int, int]=3,
             stride:      int | Tuple[int, int]=1,
-            dilation:    int=1,
+            dilation:    int | Tuple[int, int]=1,
             groups:      int=1,
             norm_layer:  Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
             activation:  Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
         ):
 
-        padding = (kernel_size + 2 * (dilation - 1) - 1) // 2
+        if isinstance(kernel_size, int):
+            kernel_size = kernel_size, kernel_size
+        if isinstance(dilation, int):
+            dilation = dilation, dilation
+        padding = tuple(
+            (ks + 2 * (dl - 1) - 1) // 2 for ks, dl in zip(kernel_size, dilation))
         layers = [nn.Conv2d(
             in_planes, out_planes, kernel_size, stride, padding, dilation, groups=groups),
         ]

@@ -53,7 +53,7 @@ class TrimUnit(nn.Module):
 
 
 class TrimNetX(Basic):
-    '''A light-weight and easy-to-train model base the mobilenetv3
+    '''A light-weight and easy-to-train model
 
     Args:
         num_scans: Number of the Trim-Units.
