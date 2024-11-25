@@ -146,15 +146,13 @@ class TextlineGen(VisionDataset):
     def __getitem__(self, idx:int) -> Tuple[Image.Image | Tensor, Tensor, int]:
         text = self.corpus[idx]
 
-        to_rend_handwriting = self._hwdb_rate > random.random()
-
         font = self._printing.fonts[idx % len(self._printing.fonts)]
         text = font.random_lack(text, ['#'])
 
-        reverse = int(self._reverse_rate > random.random())
-
         printing, xyxys = font.text2image_with_xyxys(text, direction=self._layout_direction)
-        if to_rend_handwriting:
+
+        applied_hwdb = self._hwdb_rate > max(1e-7, random.random())
+        if applied_hwdb:
             image = self._render_handwriting(text, printing, xyxys, direction=self._layout_direction)
         else:
             image = printing
@@ -164,6 +162,7 @@ class TextlineGen(VisionDataset):
             update_size = int(letter_spacing * image.size[1])
             image = self.update_letter_spacing(image, xyxys, update_size)
 
+        reverse = int(self._reverse_rate > max(1e-7, random.random()))
         if reverse:
             image = image.transpose(Image.Transpose.ROTATE_180)
             text = text[::-1]
