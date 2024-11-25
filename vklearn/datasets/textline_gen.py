@@ -6,16 +6,10 @@ from torchvision.datasets.vision import VisionDataset
 import torch
 
 from PIL import Image
-import opencc
 
-try:
-    from printing_character import PrintingCharacter
-    from hwdb_gnt import HWDBGnt
-    from hwdb_pot import HWDBPot
-except ImportError:
-    from .printing_character import PrintingCharacter
-    from .hwdb_gnt import HWDBGnt
-    from .hwdb_pot import HWDBPot
+from .printing_character import PrintingCharacter
+from .hwdb_gnt import HWDBGnt
+from .hwdb_pot import HWDBPot
 
 
 class TextlineGen(VisionDataset):
@@ -85,12 +79,8 @@ class TextlineGen(VisionDataset):
                 assert len(text) == text_length
                 self.corpus.append(text)
 
-        self._converter_t2s = opencc.OpenCC('t2s')
-        self._converter_s2t = opencc.OpenCC('s2t')
-
         self.characters = ['', ' '] + self._printing.characters
         self.char2index = {c: i for i, c in enumerate(self.characters)}
-        self._ctra_rate = kwargs.get('ctra_rate', 0.)
         self._use_debug = kwargs.get('use_debug', False)
         self._reverse_rate = kwargs.get('reverse_rate', 0.)
         self._letter_spacing = kwargs.get('letter_spacing', 0.)
@@ -157,12 +147,6 @@ class TextlineGen(VisionDataset):
         text = self.corpus[idx]
 
         to_rend_handwriting = self._hwdb_rate > random.random()
-        ctra_rate = 0 if to_rend_handwriting else self._ctra_rate
-
-        if ctra_rate <= random.random():
-            text = self._converter_t2s.convert(text)
-        else:
-            text = self._converter_s2t.convert(text)
 
         font = self._printing.fonts[idx % len(self._printing.fonts)]
         text = font.random_lack(text, ['#'])

@@ -7,4 +7,3 @@ faster-coco-eval>=1.6.0
 pycocotools>=2.0.7
 opencv-python>=4.10.0
 flet>=0.24.0
-OpenCC==1.1.9
