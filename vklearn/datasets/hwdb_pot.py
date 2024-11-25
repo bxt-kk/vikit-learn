@@ -30,7 +30,7 @@ class HWDBPot(VisionDataset):
     '''
 
     CHARACTERS_FILE  = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), 'characters_ec2.txt')
+        os.path.abspath(os.path.dirname(__file__)), 'characters/ch_sym_tra.txt')
 
     def __init__(
             self,
