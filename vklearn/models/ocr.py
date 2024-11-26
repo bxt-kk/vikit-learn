@@ -80,7 +80,26 @@ class OCR(Basic):
             targets:        Tensor,
             target_lengths: Tensor,
         ) -> Dict[str, Any]:
-        assert not 'this is an empty func'
+
+        preds = inputs.argmax(dim=2) # n, T
+
+        kernel = torch.tensor([[[-1, 1]]]).type_as(preds)
+        mask = torch.conv1d(
+            preds.unsqueeze(1), kernel, padding='same').squeeze(1) != 0
+        preds = preds * mask
+        # preds, mask: n, T
+
+        nonzero_mask = preds > 0
+        indices = torch.argsort(nonzero_mask, dim=1, descending=True)
+        preds[~nonzero_mask] = self.num_classes
+        preds = torch.gather(preds, dim=1, index=indices)
+        common_length = min(preds.shape[1], targets.shape[1])
+        compared = preds[:, :common_length] == targets[:, :common_length]
+        max_lengths = torch.maximum(nonzero_mask.sum(dim=1), target_lengths)
+        score = (compared.sum(dim=1) / torch.clamp_min(max_lengths, 1)).mean()
+        return dict(
+            rough_accuracy=score,
+        )
 
     def update_metric(
             self,
@@ -115,7 +134,22 @@ class OCR(Basic):
             self,
             batch: List[Any],
         ) -> Any:
-        assert not 'this is an empty func'
+
+        batch_size = len(batch)
+        aligned_width = 0
+        aligned_length = 0
+        for image, target, _ in batch:
+            aligned_width = max(aligned_width, image.shape[2])
+            aligned_length = max(aligned_length, target.shape[0])
+        aligned_width = math.ceil(aligned_width / 32) * 32
+        images = torch.zeros(batch_size, 3, batch[0][0].shape[1], aligned_width)
+        targets = torch.zeros(batch_size, aligned_length, dtype=torch.int64)
+        reverses = torch.zeros(batch_size, dtype=torch.int64)
+        for i, (image, target, reverse) in enumerate(batch):
+            images[i, :, :, :image.shape[-1]] = image
+            targets[i, :target.shape[-1]] = target
+            reverses[i] = reverse
+        return images, targets, reverses
 
     @classmethod
     def get_transforms(
@@ -128,7 +162,7 @@ class OCR(Basic):
         if task_name == 'default':
             transform_list = [
                 transforms.Grayscale(num_output_channels=3),
-                RandomRotate(4.5, prob=1.),
+                # RandomRotate(4.5, prob=1.), # for test
             ]
 
         elif task_name == 'natural':
@@ -232,7 +266,7 @@ class OCR(Basic):
             raise ValueError(f'Unsupported the task `{task_name}`')
 
         transform_list.extend([
-            SameSize(width=max_width, height=align_height),
+            AlignSize(width=max_width, height=align_height),
             transforms.ToTensor(),
             transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ])
@@ -653,7 +687,7 @@ class RandomAffine:
         return f'{self.__class__.__name__}(factor={self.factor}, prob={self.prob})'
 
 
-class SameSize:
+class AlignSize:
     def __init__(self, width:int=320, height:int=32):
         self.width = width
         self.height = height
