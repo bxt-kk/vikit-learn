@@ -4,6 +4,7 @@ from torch import Tensor
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from PIL import Image
 
@@ -120,8 +121,17 @@ class TrimNetOcr(OCR):
 
         device = self.get_model_device()
         x = self.preprocess(image, align_size)
+        print('debug x:', x.shape)
         x = x.to(device)
         x = self.forward(x)
+
+        preds = x.argmax(dim=2) # n, T
+        kernel = torch.tensor([[[-1, 1]]]).type_as(preds)
+        mask = torch.conv1d(
+            F.pad(preds.unsqueeze(1), [0, 1], value=0), kernel).squeeze(1) != 0
+        preds = preds * mask
+        text = ''.join(self._categorie_arr[preds[0].cpu().numpy()])
+
         top_k = min(self.num_classes, top_k)
         topk = x.squeeze(dim=0).softmax(dim=-1).topk(top_k)
         probs = topk.values.cpu().numpy()
@@ -129,4 +139,5 @@ class TrimNetOcr(OCR):
         return dict(
             probs=probs,
             labels=labels,
+            text=text,
         )

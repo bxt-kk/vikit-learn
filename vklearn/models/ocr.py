@@ -41,7 +41,7 @@ class OCR(Basic):
         resized = image.resize((dst_w, dst_h), resample=Image.Resampling.BILINEAR)
         if dst_w % dst_h == 0:
             return self._image2tensor(resized).unsqueeze(dim=0)
-        dst_w = (dst_w // align_size + 1) * align_size
+        dst_w = math.ceil(dst_w / align_size) * align_size
         aligned = Image.new(image.mode, (dst_w, dst_h))
         aligned.paste(resized, (0, 0))
         return self._image2tensor(aligned).unsqueeze(dim=0)
@@ -86,7 +86,7 @@ class OCR(Basic):
 
         kernel = torch.tensor([[[-1, 1]]]).type_as(preds)
         mask = torch.conv1d(
-            preds.unsqueeze(1), kernel, padding='same').squeeze(1) != 0
+            F.pad(preds.unsqueeze(1), [0, 1], value=0), kernel).squeeze(1) != 0
         preds = preds * mask
         # preds, mask: n, T
 
@@ -131,7 +131,7 @@ class OCR(Basic):
         preds_tensor = inputs.argmax(dim=2) # n, T
         kernel = torch.tensor([[[-1, 1]]]).type_as(preds_tensor)
         mask = torch.conv1d(
-            preds_tensor.unsqueeze(1), kernel, padding='same').squeeze(1) != 0
+            F.pad(preds_tensor.unsqueeze(1), [0, 1], value=0), kernel).squeeze(1) != 0
         preds_tensor = preds_tensor * mask
 
         preds = [''.join(items) for items in
