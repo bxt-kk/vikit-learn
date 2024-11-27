@@ -121,7 +121,6 @@ class TrimNetOcr(OCR):
 
         device = self.get_model_device()
         x = self.preprocess(image, align_size)
-        print('debug x:', x.shape)
         x = x.to(device)
         x = self.forward(x)
 

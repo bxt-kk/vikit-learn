@@ -1,6 +1,6 @@
 from typing import List, Any, Dict, Tuple, Sequence
 from collections import defaultdict
-import time
+# import time
 
 from torch import Tensor
 import torch
@@ -224,9 +224,9 @@ class Joints(Basic):
 
         segment_thresh, rect_side_limit = params[0]
         next_params = params[1:]
-        print('joints ocr param:', segment_thresh, rect_side_limit)
+        # print('joints ocr param:', segment_thresh, rect_side_limit)
 
-        clock = time.time()
+        # clock = time.time()
         binary_map = (heatmap > segment_thresh).astype(np.uint8)
         contours, _ = cv.findContours(binary_map, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
         block_rects = [cv.minAreaRect(pts) for pts in contours]
@@ -234,7 +234,7 @@ class Joints(Basic):
         if not block_rects: return []
         block_boxes = shapely.polygons([cv.boxPoints(rect) for rect in block_rects])
 
-        clock2 = time.time()
+        # clock2 = time.time()
         node_groups = defaultdict(list)
         remains = []
         for node in nodes:
@@ -247,7 +247,7 @@ class Joints(Basic):
                     break
             else:
                 remains.append(node)
-        print('nodes size:', len(node), 'remains size:', len(remains))
+        # print('nodes size:', len(node), 'remains size:', len(remains))
         for node in remains:
             node_box = node['box']
             node_poly = shapely.box(*node_box)
@@ -255,7 +255,7 @@ class Joints(Basic):
                 if node_groups[bid]: continue
                 if shapely.intersects(node_poly, block_poly):
                     node_groups[bid].append(node)
-        print('delta2:', time.time() - clock2, params)
+        # print('delta2:', time.time() - clock2, params)
         objs = []
         multilines = []
         calc_diameter = lambda n: 0.5 * (n['box'][2] + n['box'][3] - n['box'][0] - n['box'][1])
@@ -282,11 +282,11 @@ class Joints(Basic):
         for obj in objs:
             xy, wh, a = obj['rect']
             if min(wh) / max(wh) < 0.7: continue
-            print('update src ojb', obj['rect'])
+            # print('update src ojb', obj['rect'])
             side = sum(wh) * 0.5
             obj['rect'] = xy, (side, side), 0
-            print('update dst ojb', obj['rect'])
-        print('debug multilines:', multilines)
+            # print('update dst ojb', obj['rect'])
+        # print('debug multilines:', multilines)
 
         if next_params and multilines:
             mask = np.ones_like(heatmap, dtype=np.uint8)
@@ -297,8 +297,8 @@ class Joints(Basic):
                 remains.extend(node_groups[bid])
             sub_objs = self.joints_ocr(remains, heatmap * mask, next_params)
             objs.extend(sub_objs)
-        print('debug remains:', len(remains), 'full nodes:', len(nodes))
-        print('delta:', time.time() - clock)
+        # print('debug remains:', len(remains), 'full nodes:', len(nodes))
+        # print('delta:', time.time() - clock)
         return objs
 
     def detect(
