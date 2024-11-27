@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 
 from torchvision import transforms
-from torchmetrics.text import CharErrorRate, WordErrorRate
+from torchmetrics.text import CharErrorRate #, WordErrorRate
 
 from PIL import Image, ImageFilter, ImageDraw, ImageOps
 import numpy as np
@@ -25,7 +25,7 @@ class OCR(Basic):
         self.num_classes = len(categories)
 
         self.cer_metric = CharErrorRate()
-        self.wer_metric = WordErrorRate()
+        # self.wer_metric = WordErrorRate()
 
         self._categorie_arr = np.array(self.categories)
 
@@ -71,7 +71,8 @@ class OCR(Basic):
                 targets,
                 input_lengths,
                 target_lengths,
-                zero_infinity=zero_infinity),
+                zero_infinity=zero_infinity,
+                reduction='mean'),
         )
 
     def calc_score(
@@ -101,33 +102,55 @@ class OCR(Basic):
             rough_accuracy=score,
         )
 
+    # def update_metric(
+    #         self,
+    #         inputs:            Tensor,
+    #         targets:           Tensor,
+    #         target_lengths:    Tensor,
+    #         update_cer_metric: bool=True,
+    #         update_wer_metric: bool=False,
+    #     ):
+    #
+    #     assert update_cer_metric or update_wer_metric
+    #     preds = [''.join(items) for items in
+    #         self._categorie_arr[inputs.argmax(dim=-1).cpu().numpy()]]
+    #     trues = [''.join(items) for items in
+    #         self._categorie_arr[targets.cpu().numpy()]]
+    #     if update_cer_metric:
+    #         self.cer_metric.update(preds, trues)
+    #     if update_wer_metric:
+    #         self.wer_metric.update(preds, trues)
+
     def update_metric(
             self,
             inputs:         Tensor,
             targets:        Tensor,
-            update_cer_metric: bool=True,
-            update_wer_metric: bool=False,
+            target_lengths: Tensor,
         ):
 
-        assert update_cer_metric or update_wer_metric
+        preds_tensor = inputs.argmax(dim=2) # n, T
+        kernel = torch.tensor([[[-1, 1]]]).type_as(preds_tensor)
+        mask = torch.conv1d(
+            preds_tensor.unsqueeze(1), kernel, padding='same').squeeze(1) != 0
+        preds_tensor = preds_tensor * mask
+
         preds = [''.join(items) for items in
-            self._categorie_arr[inputs.argmax(dim=-1).cpu().numpy()]]
+            self._categorie_arr[preds_tensor.cpu().numpy()]]
         trues = [''.join(items) for items in
             self._categorie_arr[targets.cpu().numpy()]]
-        if update_cer_metric:
-            self.cer_metric.update(preds, trues)
-        if update_wer_metric:
-            self.wer_metric.update(preds, trues)
+        self.cer_metric.update(preds, trues)
+        # print('debug[preds]:', preds, inputs.shape)
+        # print('debug[trues]:', trues)
 
     def compute_metric(self) -> Dict[str, Any]:
         cer = self.cer_metric.compute()
-        wer = self.wer_metric.compute()
+        # wer = self.wer_metric.compute()
         self.cer_metric.reset()
-        self.wer_metric.reset()
+        # self.wer_metric.reset()
         return dict(
             cer=cer,
-            wer=wer,
-            cwer=cer + wer,
+            # wer=wer,
+            c_score=1 - cer,
         )
 
     def collate_fn(
@@ -144,12 +167,13 @@ class OCR(Basic):
         aligned_width = math.ceil(aligned_width / 32) * 32
         images = torch.zeros(batch_size, 3, batch[0][0].shape[1], aligned_width)
         targets = torch.zeros(batch_size, aligned_length, dtype=torch.int64)
-        reverses = torch.zeros(batch_size, dtype=torch.int64)
+        target_lengths = torch.zeros(batch_size, dtype=torch.int64)
         for i, (image, target, reverse) in enumerate(batch):
+            target_length = target.shape[-1]
+            target_lengths[i] = target_length
+            targets[i, :target_length] = target
             images[i, :, :, :image.shape[-1]] = image
-            targets[i, :target.shape[-1]] = target
-            reverses[i] = reverse
-        return images, targets, reverses
+        return images, targets, target_lengths
 
     @classmethod
     def get_transforms(

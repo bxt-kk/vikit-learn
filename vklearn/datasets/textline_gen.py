@@ -73,11 +73,12 @@ class TextlineGen(VisionDataset):
                 text = f.read(text_length)
                 if len(text) < text_length: break
                 text = text.strip().replace('\n', ' ')
-                k = text_length - len(text)
-                for _ in range(k):
-                    text += random.choice(self._printing.characters)
-                assert len(text) == text_length
-                self.corpus.append(text)
+                # k = text_length - len(text)
+                # for _ in range(k):
+                #     text += random.choice(self._printing.characters)
+                # assert len(text) == text_length
+                # self.corpus.append(text)
+                if text: self.corpus.append(text)
 
         self.characters = ['', ' '] + self._printing.characters
         self.char2index = {c: i for i, c in enumerate(self.characters)}

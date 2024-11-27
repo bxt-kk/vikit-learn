@@ -3,3 +3,4 @@ from .classification import Classification
 from .segmentation import Segmentation
 from .joints import Joints
 from .distillation import Distillation
+from .ocr import OCR
