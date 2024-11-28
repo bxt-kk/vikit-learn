@@ -111,6 +111,10 @@ class Font:
             if text[i] != ' ':
                 submap = bitmap[:, col_l:col_r]
                 shrink = max(1, submap.shape[1] // 9)
+                r0 = 0
+                c0 = 0
+                r1 = submap.shape[0] - 1
+                c1 = submap.shape[1] - 1
                 for r0 in range(submap.shape[0]):
                     if submap[r0, shrink:-shrink].sum() != 0: break
                 for r1 in range(submap.shape[0] - 1, 0, -1):
