@@ -91,7 +91,8 @@ class OCR(Basic):
         # preds, mask: n, T
 
         nonzero_mask = preds > 0
-        indices = torch.argsort(nonzero_mask, dim=1, descending=True)
+        sort_weights = torch.arange(nonzero_mask.shape[1], 0, step=-1).unsqueeze(0)
+        indices = torch.argsort(nonzero_mask * sort_weights, dim=1, descending=True)
         preds[~nonzero_mask] = self.num_classes
         preds = torch.gather(preds, dim=1, index=indices)
         common_length = min(preds.shape[1], targets.shape[1])
@@ -101,25 +102,6 @@ class OCR(Basic):
         return dict(
             rough_accuracy=score,
         )
-
-    # def update_metric(
-    #         self,
-    #         inputs:            Tensor,
-    #         targets:           Tensor,
-    #         target_lengths:    Tensor,
-    #         update_cer_metric: bool=True,
-    #         update_wer_metric: bool=False,
-    #     ):
-    #
-    #     assert update_cer_metric or update_wer_metric
-    #     preds = [''.join(items) for items in
-    #         self._categorie_arr[inputs.argmax(dim=-1).cpu().numpy()]]
-    #     trues = [''.join(items) for items in
-    #         self._categorie_arr[targets.cpu().numpy()]]
-    #     if update_cer_metric:
-    #         self.cer_metric.update(preds, trues)
-    #     if update_wer_metric:
-    #         self.wer_metric.update(preds, trues)
 
     def update_metric(
             self,
