@@ -65,17 +65,17 @@ class TrimNetOcr(OCR):
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def forward_(self, x:Tensor) -> Tensor:
-        hs, _ = self.trimnetx(x)
-        alphas = self.alphas.softmax(dim=-1)
-        p = 0.
-        times = len(hs)
-        bs, cs, _, _ = hs[0].shape
-        for t in range(times):
-            # n, c, r, w -> n, (w, r), c: N, T, C
-            h = hs[t].permute(0, 3, 2, 1).reshape(bs, -1, cs)
-            p = p + self.predictor(h) * alphas[..., t]
-        return p
+    # def forward_(self, x:Tensor) -> Tensor:
+    #     hs, _ = self.trimnetx(x)
+    #     alphas = self.alphas.softmax(dim=-1)
+    #     p = 0.
+    #     times = len(hs)
+    #     bs, cs, _, _ = hs[0].shape
+    #     for t in range(times):
+    #         # n, c, r, w -> n, (w, r), c: N, T, C
+    #         h = hs[t].permute(0, 3, 2, 1).reshape(bs, -1, cs)
+    #         p = p + self.predictor(h) * alphas[..., t]
+    #     return p
 
     def forward(self, x:Tensor) -> Tensor:
         hs, _ = self.trimnetx(x)
@@ -85,7 +85,7 @@ class TrimNetOcr(OCR):
         bs, cs, _, _ = hs[0].shape
         for t in range(times):
             # n, c, r, w -> n, c, (w, r): N, C, T
-            h = hs[t].permute(0, 1, 3, 2).reshape(bs, cs, -1) * alphas[..., t] + t
+            h = hs[t].permute(0, 1, 3, 2).reshape(bs, cs, -1) * alphas[..., t] + h
         p = self.predictor(h).transpose(1, 2)
         return p
 
