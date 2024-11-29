@@ -1,5 +1,7 @@
 from typing import List, Any, Dict, Mapping
 
+from torchvision.ops.misc import SqueezeExcitation
+from torchvision.models.mobilenetv3 import InvertedResidual
 from torch import Tensor
 
 import torch
@@ -10,7 +12,7 @@ from PIL import Image
 
 from .ocr import OCR
 from .trimnetx import TrimNetX
-from .component import DEFAULT_ACTIVATION
+from .component import DEFAULT_ACTIVATION, CBANet
 
 
 class TrimNetOcr(OCR):
@@ -34,6 +36,11 @@ class TrimNetOcr(OCR):
             backbone_pretrained: bool | None=None,
         ):
         super().__init__(categories)
+
+        DROP_GSAT = False
+        if backbone.endswith('_NOGSAT'):
+            backbone = backbone.rstrip('_NOGSAT')
+            DROP_GSAT = True
 
         self.dropout_p = dropout_p
 
@@ -62,20 +69,24 @@ class TrimNetOcr(OCR):
         self.alphas = nn.Parameter(torch.zeros(
             1, merged_dim, 1, self.trimnetx.num_scans))
 
+        if DROP_GSAT:
+            self.drop_gs_channel_att()
+
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    # def forward_(self, x:Tensor) -> Tensor:
-    #     hs, _ = self.trimnetx(x)
-    #     alphas = self.alphas.softmax(dim=-1)
-    #     p = 0.
-    #     times = len(hs)
-    #     bs, cs, _, _ = hs[0].shape
-    #     for t in range(times):
-    #         # n, c, r, w -> n, (w, r), c: N, T, C
-    #         h = hs[t].permute(0, 3, 2, 1).reshape(bs, -1, cs)
-    #         p = p + self.predictor(h) * alphas[..., t]
-    #     return p
+    def drop_gs_channel_att(self):
+        for m in list(self.modules()):
+            if isinstance(m, InvertedResidual):
+                block:nn.Sequential = m.block
+                remove_ids = []
+                for idx, child in block.named_children():
+                    if not isinstance(child, SqueezeExcitation): continue
+                    remove_ids.append(int(idx))
+                for idx in remove_ids[::-1]:
+                    block[idx] = nn.Identity()
+            if isinstance(m, CBANet):
+                m.channel_attention = nn.Identity()
 
     def forward(self, x:Tensor) -> Tensor:
         hs, _ = self.trimnetx(x)
