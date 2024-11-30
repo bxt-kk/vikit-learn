@@ -13,7 +13,9 @@ from PIL import Image
 from .ocr import OCR
 from .trimnetx import TrimNetX
 # from .component import DEFAULT_ACTIVATION, CBANet
-from .component import CBANet, InvertedResidual as VikitInvertedResidual
+from .component import CBANet
+from .component import InvertedResidual as VikitInvertedResidual
+from .component import ConvNormActive
 
 
 class TrimNetOcr(OCR):
@@ -43,32 +45,25 @@ class TrimNetOcr(OCR):
         self.trimnetx = TrimNetX(
             num_scans, scan_range, backbone, backbone_pretrained)
 
-        merged_dim = self.trimnetx.features_dim # self.trimnetx.merged_dim
-        # expanded_dim = merged_dim * 2
+        hidden_dim = self.trimnetx.features_dim
+        merged_dim = hidden_dim + self.trimnetx.merged_dim
 
-        self.conv = VikitInvertedResidual(merged_dim, merged_dim, expand_ratio=2, use_res_connect=True)
+        self.embedding = VikitInvertedResidual(
+            hidden_dim, hidden_dim, expand_ratio=2, use_res_connect=True)
+
+        self.improves = nn.ModuleList([
+            nn.Sequential(
+                ConvNormActive(merged_dim, hidden_dim, kernel_size=1),
+                VikitInvertedResidual(hidden_dim, hidden_dim, expand_ratio=1, use_res_connect=False)
+            ) for _ in range(self.trimnetx.num_scans)])
+
         self.predictor = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
-            nn.Linear(merged_dim, self.num_classes),
+            nn.Linear(hidden_dim, self.num_classes),
         )
-        # self.predictor = nn.Sequential(
-        #     nn.Conv1d(merged_dim, expanded_dim, kernel_size=1),
-        #     nn.BatchNorm1d(expanded_dim),
-        #     DEFAULT_ACTIVATION(inplace=False),
-        #
-        #     nn.Conv1d(expanded_dim, expanded_dim, kernel_size=3, padding=1, groups=expanded_dim),
-        #     nn.BatchNorm1d(expanded_dim),
-        #     DEFAULT_ACTIVATION(inplace=False),
-        #
-        #     nn.Dropout(dropout_p, inplace=False),
-        #
-        #     nn.Conv1d(expanded_dim, merged_dim, kernel_size=1),
-        #     DEFAULT_ACTIVATION(inplace=False),
-        #     nn.Conv1d(merged_dim, self.num_classes, kernel_size=1),
-        # )
 
         self.alphas = nn.Parameter(torch.zeros(
-            1, merged_dim, 1, self.trimnetx.num_scans))
+            1, hidden_dim, 1, 1, self.trimnetx.num_scans))
 
         self.drop_gs_channel_att()
 
@@ -104,14 +99,14 @@ class TrimNetOcr(OCR):
     #     return p
 
     def forward(self, x:Tensor) -> Tensor:
-        f = self.trimnetx.features(x)
-        # print('debug[f]:', f.shape)
-        h = self.conv(f) # n, c, r, w
-        # print('debug[h]:', h.shape)
+        hs, f = self.trimnetx(x)
+        h = self.embedding(f) # n, c, r, w
+        alphas = self.alphas.softmax(dim=-1)
+        for t, block in enumerate(self.improves):
+            h = block(torch.cat([h, hs[t]], dim=1)) * alphas[..., t] + h
         bs, cs, _, _ = h.shape
         # n, c, r, w -> n, (w, r), c -> N, T, C
         h = h.permute(0, 3, 2, 1).reshape(bs, -1, cs)
-        # print('debug[H]:', h.shape)
         p = self.predictor(h)
         return p
 
