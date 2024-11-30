@@ -12,7 +12,8 @@ from PIL import Image
 
 from .ocr import OCR
 from .trimnetx import TrimNetX
-from .component import DEFAULT_ACTIVATION, CBANet
+# from .component import DEFAULT_ACTIVATION, CBANet
+from .component import CBANet, InvertedResidual as VikitInvertedResidual
 
 
 class TrimNetOcr(OCR):
@@ -37,40 +38,39 @@ class TrimNetOcr(OCR):
         ):
         super().__init__(categories)
 
-        DROP_GSAT = False
-        if backbone.endswith('_NOGSAT'):
-            backbone = backbone.rstrip('_NOGSAT')
-            DROP_GSAT = True
-
         self.dropout_p = dropout_p
 
         self.trimnetx = TrimNetX(
             num_scans, scan_range, backbone, backbone_pretrained)
 
-        merged_dim = self.trimnetx.merged_dim
-        expanded_dim = merged_dim * 2
+        merged_dim = self.trimnetx.features_dim # self.trimnetx.merged_dim
+        # expanded_dim = merged_dim * 2
 
+        self.conv = VikitInvertedResidual(merged_dim, merged_dim, expand_ratio=2, use_res_connect=True)
         self.predictor = nn.Sequential(
-            nn.Conv1d(merged_dim, expanded_dim, kernel_size=1),
-            nn.BatchNorm1d(expanded_dim),
-            DEFAULT_ACTIVATION(inplace=False),
-
-            nn.Conv1d(expanded_dim, expanded_dim, kernel_size=3, padding=1, groups=expanded_dim),
-            nn.BatchNorm1d(expanded_dim),
-            DEFAULT_ACTIVATION(inplace=False),
-
             nn.Dropout(dropout_p, inplace=False),
-
-            nn.Conv1d(expanded_dim, merged_dim, kernel_size=1),
-            DEFAULT_ACTIVATION(inplace=False),
-            nn.Conv1d(merged_dim, self.num_classes, kernel_size=1),
+            nn.Linear(merged_dim, self.num_classes),
         )
+        # self.predictor = nn.Sequential(
+        #     nn.Conv1d(merged_dim, expanded_dim, kernel_size=1),
+        #     nn.BatchNorm1d(expanded_dim),
+        #     DEFAULT_ACTIVATION(inplace=False),
+        #
+        #     nn.Conv1d(expanded_dim, expanded_dim, kernel_size=3, padding=1, groups=expanded_dim),
+        #     nn.BatchNorm1d(expanded_dim),
+        #     DEFAULT_ACTIVATION(inplace=False),
+        #
+        #     nn.Dropout(dropout_p, inplace=False),
+        #
+        #     nn.Conv1d(expanded_dim, merged_dim, kernel_size=1),
+        #     DEFAULT_ACTIVATION(inplace=False),
+        #     nn.Conv1d(merged_dim, self.num_classes, kernel_size=1),
+        # )
 
         self.alphas = nn.Parameter(torch.zeros(
             1, merged_dim, 1, self.trimnetx.num_scans))
 
-        if DROP_GSAT:
-            self.drop_gs_channel_att()
+        self.drop_gs_channel_att()
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
@@ -88,16 +88,31 @@ class TrimNetOcr(OCR):
             if isinstance(m, CBANet):
                 m.channel_attention = nn.Identity()
 
+    # def forward(self, x:Tensor) -> Tensor:
+    #     print('debug[x]:', x.shape)
+    #     hs, f = self.trimnetx(x)
+    #     print('debug[f]:', f.shape)
+    #     alphas = self.alphas.softmax(dim=-1)
+    #     h = 0.
+    #     times = len(hs)
+    #     bs, cs, _, _ = hs[0].shape
+    #     print('debug:', hs[0].shape)
+    #     for t in range(times):
+    #         # n, c, r, w -> n, c, (w, r): N, C, T
+    #         h = hs[t].permute(0, 1, 3, 2).reshape(bs, cs, -1) * alphas[..., t] + h
+    #     p = self.predictor(h).transpose(1, 2)
+    #     return p
+
     def forward(self, x:Tensor) -> Tensor:
-        hs, _ = self.trimnetx(x)
-        alphas = self.alphas.softmax(dim=-1)
-        h = 0.
-        times = len(hs)
-        bs, cs, _, _ = hs[0].shape
-        for t in range(times):
-            # n, c, r, w -> n, c, (w, r): N, C, T
-            h = hs[t].permute(0, 1, 3, 2).reshape(bs, cs, -1) * alphas[..., t] + h
-        p = self.predictor(h).transpose(1, 2)
+        f = self.trimnetx.features(x)
+        # print('debug[f]:', f.shape)
+        h = self.conv(f) # n, c, r, w
+        # print('debug[h]:', h.shape)
+        bs, cs, _, _ = h.shape
+        # n, c, r, w -> n, (w, r), c -> N, T, C
+        h = h.permute(0, 3, 2, 1).reshape(bs, -1, cs)
+        # print('debug[H]:', h.shape)
+        p = self.predictor(h)
         return p
 
     @classmethod
