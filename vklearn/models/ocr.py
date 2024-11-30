@@ -168,6 +168,7 @@ class OCR(Basic):
         if task_name == 'default':
             transform_list = [
                 transforms.Grayscale(num_output_channels=3),
+                RandomInvert(prob=0.5),
                 # RandomRotate(4.5, prob=1.), # for test
             ]
 
