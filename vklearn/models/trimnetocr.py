@@ -32,7 +32,7 @@ class TrimNetOcr(OCR):
     def __init__(
             self,
             categories:          List[str],
-            dropout_p:           float=0.2,
+            dropout_p:           float=0.,
             num_scans:           int | None=None,
             scan_range:          int | None=None,
             backbone:            str | None=None,
@@ -67,6 +67,12 @@ class TrimNetOcr(OCR):
 
         self.drop_gs_channel_att()
 
+        for m in self.improves.modules():
+            if not isinstance(m, VikitInvertedResidual): continue
+            layer:nn.Conv2d = m.blocks[-1][0]
+            nn.init.zeros_(layer.weight)
+            nn.init.zeros_(layer.bias)
+
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
@@ -82,21 +88,6 @@ class TrimNetOcr(OCR):
                     block[idx] = nn.Identity()
             if isinstance(m, CBANet):
                 m.channel_attention = nn.Identity()
-
-    # def forward(self, x:Tensor) -> Tensor:
-    #     print('debug[x]:', x.shape)
-    #     hs, f = self.trimnetx(x)
-    #     print('debug[f]:', f.shape)
-    #     alphas = self.alphas.softmax(dim=-1)
-    #     h = 0.
-    #     times = len(hs)
-    #     bs, cs, _, _ = hs[0].shape
-    #     print('debug:', hs[0].shape)
-    #     for t in range(times):
-    #         # n, c, r, w -> n, c, (w, r): N, C, T
-    #         h = hs[t].permute(0, 1, 3, 2).reshape(bs, cs, -1) * alphas[..., t] + h
-    #     p = self.predictor(h).transpose(1, 2)
-    #     return p
 
     def forward(self, x:Tensor) -> Tensor:
         hs, f = self.trimnetx(x)
