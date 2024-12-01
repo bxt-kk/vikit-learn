@@ -92,7 +92,7 @@ class OCR(Basic):
         # preds, mask: n, T
 
         nonzero_mask = preds > 0
-        sort_weights = torch.arange(nonzero_mask.shape[1], 0, step=-1).unsqueeze(0)
+        sort_weights = torch.arange(nonzero_mask.shape[1], 0, step=-1, device=preds.device).unsqueeze(0)
         indices = torch.argsort(nonzero_mask * sort_weights, dim=1, descending=True)
         preds[~nonzero_mask] = self.num_classes
         preds = torch.gather(preds, dim=1, index=indices)
