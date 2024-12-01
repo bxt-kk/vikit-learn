@@ -101,7 +101,8 @@ class OCR(Basic):
         preds = torch.gather(preds, dim=1, index=indices)
         common_length = min(preds.shape[1], targets.shape[1])
         compared = preds[:, :common_length] == targets[:, :common_length] # .cpu()
-        max_lengths = torch.maximum(nonzero_mask.sum(dim=1), target_lengths) # .cpu())
+        # max_lengths = torch.maximum(nonzero_mask.sum(dim=1), target_lengths) # .cpu())
+        max_lengths = torch.maximum(input_lengths, target_lengths) # .cpu())
         score = (compared.sum(dim=1) / torch.clamp_min(max_lengths, 1)).mean()
         return dict(
             rough_accuracy=score,
@@ -122,8 +123,11 @@ class OCR(Basic):
         mask = (F.pad(preds_tensor, [0, 1], value=0)[:, 1:] - preds_tensor) != 0
         preds_tensor = preds_tensor * mask
 
-        preds = [''.join(items) for items in
-            self._categorie_arr[preds_tensor.cpu().numpy()]]
+        # preds = [''.join(items) for items in
+        #     self._categorie_arr[preds_tensor.cpu().numpy()]]
+        lines = [seq[:size] for seq, size in
+            zip(preds_tensor.cpu().numpy(), input_lengths.cpu().numpy())]
+        preds = [''.join(self._categorie_arr[line]) for line in lines]
         trues = [''.join(items) for items in
             self._categorie_arr[targets.cpu().numpy()]]
         self.cer_metric.update(preds, trues)
