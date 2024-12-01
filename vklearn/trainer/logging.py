@@ -60,7 +60,7 @@ class Logger:
     def compute(
             self,
             mode: str,
-            mean: bool=True,
+            # mean: bool=True,
         ) -> Dict[str, float] | None:
 
         if self._step[mode] < 1: return dict()
