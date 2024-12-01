@@ -25,5 +25,5 @@ class OCR(Task):
     key_metrics: Tuple[str]=('c_score', 'cer')
 
     def sample_convert(self, sample: Any) -> Tuple[Any, Any]:
-        inputs, targets, target_lengths = [item.to(self.device) for item in sample]
-        return inputs, (targets, target_lengths)
+        inputs, targets, input_lengths, target_lengths = [item.to(self.device) for item in sample]
+        return inputs, (targets, input_lengths, target_lengths)
