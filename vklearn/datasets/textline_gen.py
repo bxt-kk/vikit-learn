@@ -134,6 +134,7 @@ class TextlineGen(VisionDataset):
             shrink_limit: float=-0.5,
         ) -> Image.Image:
 
+        assert shrink_limit <= 0
         if spacing == 0: return image
         src_w, src_h = image.size
         widths = [r - l for l, _, r, _ in xyxys]
