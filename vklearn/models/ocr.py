@@ -66,6 +66,7 @@ class OCR(Basic):
         log_probs = inputs.transpose(0, 1).log_softmax(dim=2) # T, N, C
         # batch, seq_len = log_probs.shape[1], log_probs.shape[0]
         # input_lengths = torch.full((batch, ), seq_len, dtype=torch.long).to(inputs.device)
+        input_lengths = torch.clamp_max(input_lengths, log_probs.shape[0])
         return dict(
             loss=F.ctc_loss(
                 log_probs,
@@ -161,7 +162,7 @@ class OCR(Basic):
             target_lengths[i] = target_length
             targets[i, :target_length] = target
             image_width = image.shape[-1]
-            input_lengths[i] = min(aligned_width // 8, max(target_length, math.ceil(image_width / 8)))
+            input_lengths[i] = max(target_length, math.ceil(image_width / 8))
             images[i, :, :, :image_width] = image
         return images, targets, input_lengths, target_lengths
 
