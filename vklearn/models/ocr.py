@@ -82,11 +82,12 @@ class OCR(Basic):
             target_lengths: Tensor,
         ) -> Dict[str, Any]:
 
-        preds = inputs.argmax(dim=2).cpu() # n, T
+        preds = inputs.argmax(dim=2) # .cpu() # n, T
 
-        kernel = torch.tensor([[[-1, 1]]]).type_as(preds)
-        mask = torch.conv1d(
-            F.pad(preds.unsqueeze(1), [0, 1], value=0), kernel).squeeze(1) != 0
+        # kernel = torch.tensor([[[-1, 1]]]).type_as(preds)
+        # mask = torch.conv1d(
+        #     F.pad(preds.unsqueeze(1), [0, 1], value=0), kernel).squeeze(1) != 0
+        mask = (F.pad(preds, [0, 1], value=0)[:, 1:] - preds) != 0
         preds = preds * mask
         # preds, mask: n, T
 
@@ -96,8 +97,8 @@ class OCR(Basic):
         preds[~nonzero_mask] = self.num_classes
         preds = torch.gather(preds, dim=1, index=indices)
         common_length = min(preds.shape[1], targets.shape[1])
-        compared = preds[:, :common_length] == targets[:, :common_length].cpu()
-        max_lengths = torch.maximum(nonzero_mask.sum(dim=1), target_lengths.cpu())
+        compared = preds[:, :common_length] == targets[:, :common_length] # .cpu()
+        max_lengths = torch.maximum(nonzero_mask.sum(dim=1), target_lengths) # .cpu())
         score = (compared.sum(dim=1) / torch.clamp_min(max_lengths, 1)).mean()
         return dict(
             rough_accuracy=score,
@@ -110,10 +111,11 @@ class OCR(Basic):
             target_lengths: Tensor,
         ):
 
-        preds_tensor = inputs.argmax(dim=2).cpu() # n, T
-        kernel = torch.tensor([[[-1, 1]]]).type_as(preds_tensor)
-        mask = torch.conv1d(
-            F.pad(preds_tensor.unsqueeze(1), [0, 1], value=0), kernel).squeeze(1) != 0
+        preds_tensor = inputs.argmax(dim=2) # .cpu() # n, T
+        # kernel = torch.tensor([[[-1, 1]]]).type_as(preds_tensor)
+        # mask = torch.conv1d(
+        #     F.pad(preds_tensor.unsqueeze(1), [0, 1], value=0), kernel).squeeze(1) != 0
+        mask = (F.pad(preds_tensor, [0, 1], value=0)[:, 1:] - preds_tensor) != 0
         preds_tensor = preds_tensor * mask
 
         preds = [''.join(items) for items in
