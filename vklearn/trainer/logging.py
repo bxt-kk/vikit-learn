@@ -42,10 +42,10 @@ class Logger:
         #     for mode in self.DEFAULT_MODES}
         self._logs = {}
         for mode in self.DEFAULT_MODES:
-            if mode == 'test':
-                self._logs[mode] = defaultdict(float)
-            else:
+            if mode in ('train', 'valid'):
                 self._logs[mode] = defaultdict(lambda: deque(maxlen=maxlen))
+            else:
+                self._logs[mode] = defaultdict(float)
 
     def update(
             self,
