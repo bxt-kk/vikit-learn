@@ -36,7 +36,7 @@ class TrimNetOcr(OCR):
             num_scans:           int | None=None,
             scan_range:          int | None=None,
             backbone:            str | None=None,
-            backbone_pretrained: bool | None=None,
+            backbone_pretrained: bool | None=False,
         ):
         super().__init__(categories)
 
@@ -89,12 +89,21 @@ class TrimNetOcr(OCR):
             if isinstance(m, CBANet):
                 m.channel_attention = nn.Identity()
 
-    def forward(self, x:Tensor) -> Tensor:
+    def forward_improves(self, x:Tensor) -> Tensor:
         hs, f = self.trimnetx(x)
         h = self.embedding(f) # n, c, r, w
         alphas = self.alphas.softmax(dim=-1)
         for t, block in enumerate(self.improves):
             h = block(torch.cat([h, hs[t]], dim=1)) * alphas[..., t] + h
+        bs, cs, _, _ = h.shape
+        # n, c, r, w -> n, (w, r), c -> N, T, C
+        h = h.permute(0, 3, 2, 1).reshape(bs, -1, cs)
+        p = self.predictor(h)
+        return p
+
+    def forward(self, x:Tensor) -> Tensor:
+        f = self.trimnetx.features(x)
+        h = self.embedding(f) # n, c, r, w
         bs, cs, _, _ = h.shape
         # n, c, r, w -> n, (w, r), c -> N, T, C
         h = h.permute(0, 3, 2, 1).reshape(bs, -1, cs)
