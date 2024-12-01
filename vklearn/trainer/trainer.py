@@ -37,6 +37,7 @@ class Trainer:
         epochs: The total number of training epochs.
         show_step: Set the interval for displaying the training status in steps.
         save_epoch: Set the interval for saving the model in epochs.
+        logs_deque_limit: Set the limit of the logs deque.
     '''
 
     task:              Task
@@ -57,6 +58,7 @@ class Trainer:
     epochs:            int=1
     show_step:         int=50
     save_epoch:        int=1
+    logs_deque_limit:  int=99
 
     def _dump_progress(
             self,
@@ -129,7 +131,7 @@ class Trainer:
         for epoch in range(self.epochs):
             self.model.train()
             optimizer.zero_grad()
-            logger.reset()
+            logger.reset(maxlen=self.logs_deque_limit)
 
             train_loader = self.train_loader
 

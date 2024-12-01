@@ -1,5 +1,5 @@
 from typing import Dict, List
-from collections import defaultdict
+from collections import defaultdict, deque
 import json
 import os
 from datetime import datetime
@@ -35,9 +35,10 @@ class Logger:
             '.txt'
         ))
 
-    def reset(self):
+    def reset(self, maxlen:int=100):
         self._step = defaultdict(int)
-        self._logs = {mode: defaultdict(float)
+        # self._logs = {mode: defaultdict(float)
+        self._logs = {mode: defaultdict(lambda: deque(maxlen=maxlen))
             for mode in self.DEFAULT_MODES}
 
     def update(
@@ -52,7 +53,8 @@ class Logger:
                     value = raw.item()
                 else:
                     value = raw
-                self._logs[mode][key] += value
+                # self._logs[mode][key] += value
+                self._logs[mode][key].append(value)
         self._step[mode] += 1
 
     def compute(
@@ -62,10 +64,12 @@ class Logger:
         ) -> Dict[str, float] | None:
 
         if self._step[mode] < 1: return dict()
-        step = self._step[mode] if mean else 1
+        # step = self._step[mode] if mean else 1
+        calc_mean = lambda vs: round(sum(vs) / max(1, len(vs)), 5)
         return {
-            k: round(v / step, 5)
-            for k, v in self._logs[mode].items()}
+            # k: round(v / step, 5)
+            # for k, v in self._logs[mode].items()}
+            k: calc_mean(vs) for k, vs in self._logs[mode].items()}
 
     def dumps(self, *modes:str) -> str:
         modes = modes or self.DEFAULT_MODES
