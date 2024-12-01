@@ -58,15 +58,13 @@ class OCR(Basic):
             self,
             inputs:         Tensor,
             targets:        Tensor,
-            input_lengths:  Tensor,
             target_lengths: Tensor,
             zero_infinity:  bool=False,
         ) -> Dict[str, Any]:
 
         log_probs = inputs.transpose(0, 1).log_softmax(dim=2) # T, N, C
-        # batch, seq_len = log_probs.shape[1], log_probs.shape[0]
-        # input_lengths = torch.full((batch, ), seq_len, dtype=torch.long).to(inputs.device)
-        input_lengths = torch.clamp_max(input_lengths, log_probs.shape[0])
+        batch, seq_len = log_probs.shape[1], log_probs.shape[0]
+        input_lengths = torch.full((batch, ), seq_len, dtype=torch.long).to(inputs.device)
         return dict(
             loss=F.ctc_loss(
                 log_probs,
@@ -81,7 +79,6 @@ class OCR(Basic):
             self,
             inputs:         Tensor,
             targets:        Tensor,
-            input_lengths:  Tensor,
             target_lengths: Tensor,
         ) -> Dict[str, Any]:
 
@@ -101,8 +98,7 @@ class OCR(Basic):
         preds = torch.gather(preds, dim=1, index=indices)
         common_length = min(preds.shape[1], targets.shape[1])
         compared = preds[:, :common_length] == targets[:, :common_length] # .cpu()
-        # max_lengths = torch.maximum(nonzero_mask.sum(dim=1), target_lengths) # .cpu())
-        max_lengths = torch.maximum(input_lengths, target_lengths) # .cpu())
+        max_lengths = torch.maximum(nonzero_mask.sum(dim=1), target_lengths) # .cpu())
         score = (compared.sum(dim=1) / torch.clamp_min(max_lengths, 1)).mean()
         return dict(
             rough_accuracy=score,
@@ -112,7 +108,6 @@ class OCR(Basic):
             self,
             inputs:         Tensor,
             targets:        Tensor,
-            input_lengths:  Tensor,
             target_lengths: Tensor,
         ):
 
@@ -123,11 +118,8 @@ class OCR(Basic):
         mask = (F.pad(preds_tensor, [0, 1], value=0)[:, 1:] - preds_tensor) != 0
         preds_tensor = preds_tensor * mask
 
-        # preds = [''.join(items) for items in
-        #     self._categorie_arr[preds_tensor.cpu().numpy()]]
-        lines = [seq[:size] for seq, size in
-            zip(preds_tensor.cpu().numpy(), input_lengths.cpu().numpy())]
-        preds = [''.join(self._categorie_arr[line]) for line in lines]
+        preds = [''.join(items) for items in
+            self._categorie_arr[preds_tensor.cpu().numpy()]]
         trues = [''.join(items) for items in
             self._categorie_arr[targets.cpu().numpy()]]
         self.cer_metric.update(preds, trues)
@@ -159,16 +151,13 @@ class OCR(Basic):
         aligned_width = math.ceil(aligned_width / 32) * 32
         images = torch.zeros(batch_size, 3, batch[0][0].shape[1], aligned_width)
         targets = torch.zeros(batch_size, aligned_length, dtype=torch.int64)
-        input_lengths = torch.zeros(batch_size, dtype=torch.int64)
         target_lengths = torch.zeros(batch_size, dtype=torch.int64)
         for i, (image, target, reverse) in enumerate(batch):
             target_length = target.shape[-1]
             target_lengths[i] = target_length
             targets[i, :target_length] = target
-            image_width = image.shape[-1]
-            input_lengths[i] = max(target_length, math.ceil(image_width / 8))
-            images[i, :, :, :image_width] = image
-        return images, targets, input_lengths, target_lengths
+            images[i, :, :, :image.shape[-1]] = image
+        return images, targets, target_lengths
 
     @classmethod
     def get_transforms(
