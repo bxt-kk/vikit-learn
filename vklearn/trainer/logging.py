@@ -38,8 +38,14 @@ class Logger:
     def reset(self, maxlen:int=100):
         self._step = defaultdict(int)
         # self._logs = {mode: defaultdict(float)
-        self._logs = {mode: defaultdict(lambda: deque(maxlen=maxlen))
-            for mode in self.DEFAULT_MODES}
+        # self._logs = {mode: defaultdict(lambda: deque(maxlen=maxlen))
+        #     for mode in self.DEFAULT_MODES}
+        self._logs = {}
+        for mode in self.DEFAULT_MODES:
+            if mode == 'train':
+                self._logs[mode] = defaultdict(lambda: deque(maxlen=maxlen))
+            else:
+                self._logs[mode] = defaultdict(float)
 
     def update(
             self,
@@ -54,8 +60,22 @@ class Logger:
                 else:
                     value = raw
                 # self._logs[mode][key] += value
-                self._logs[mode][key].append(value)
+                # self._logs[mode][key].append(value)
+                if isinstance(self._logs[mode][key], deque):
+                    self._logs[mode][key].append(value)
+                else:
+                    self._logs[mode][key] += value
         self._step[mode] += 1
+
+    def calc_mean_value(
+            self,
+            values: float | deque,
+            step:   int,
+        ) -> float:
+
+        if not isinstance(values, deque):
+            return values / max(1, step)
+        return sum(values) / max(1, len(values))
 
     def compute(
             self,
@@ -65,11 +85,14 @@ class Logger:
 
         if self._step[mode] < 1: return dict()
         # step = self._step[mode] if mean else 1
-        calc_mean = lambda vs: round(sum(vs) / max(1, len(vs)), 5)
+        step = self._step[mode]
+        # calc_mean = lambda vs: round(sum(vs) / max(1, len(vs)), 5)
         return {
             # k: round(v / step, 5)
             # for k, v in self._logs[mode].items()}
-            k: calc_mean(vs) for k, vs in self._logs[mode].items()}
+            # k: calc_mean(vs) for k, vs in self._logs[mode].items()}
+            k: round(self.calc_mean_value(vs, step), 5)
+            for k, vs in self._logs[mode].items()}
 
     def dumps(self, *modes:str) -> str:
         modes = modes or self.DEFAULT_MODES
