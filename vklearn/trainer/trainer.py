@@ -58,7 +58,7 @@ class Trainer:
     epochs:            int=1
     show_step:         int=50
     save_epoch:        int=1
-    logs_deque_limit:  int=99
+    logs_deque_limit:  int=77
 
     def _dump_progress(
             self,
