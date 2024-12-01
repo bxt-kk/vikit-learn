@@ -161,7 +161,7 @@ class OCR(Basic):
             target_lengths[i] = target_length
             targets[i, :target_length] = target
             image_width = image.shape[-1]
-            input_lengths[i] = min(aligned_width, max(target_length, math.ceil(image_width / 8)))
+            input_lengths[i] = min(aligned_width // 8, max(target_length, math.ceil(image_width / 8)))
             images[i, :, :, :image_width] = image
         return images, targets, input_lengths, target_lengths
 
