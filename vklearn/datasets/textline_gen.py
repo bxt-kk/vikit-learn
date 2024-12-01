@@ -128,20 +128,26 @@ class TextlineGen(VisionDataset):
 
     def update_letter_spacing(
             self,
-            image: Image.Image,
-            xyxys: List[Any],
-            size:  int,
+            image:        Image.Image,
+            xyxys:        List[Any],
+            spacing:      float,
+            shrink_limit: float=-0.5,
         ) -> Image.Image:
 
-        if size == 0: return image
+        if spacing == 0: return image
         src_w, src_h = image.size
-        exp_w = max(0, len(xyxys) - 1) * size + src_w
+        widths = [r - l for l, _, r, _ in xyxys]
+        if spacing > 0:
+            offset = int(max(widths) * spacing)
+        else:
+            offset = int(min(widths) * max(spacing, shrink_limit))
+        exp_w = max(0, len(xyxys) - 1) * offset + src_w
         expanded = Image.new('L', (exp_w, src_h), color=0)
         exp_size = 0
         for l, _, r, _ in xyxys:
             sub_image = image.crop((l, 0, r, src_h))
             expanded.paste(sub_image, (l + exp_size, 0, r + exp_size, src_h), mask=sub_image)
-            exp_size += size
+            exp_size += offset
         return expanded
 
     def __getitem__(self, idx:int) -> Tuple[Image.Image | Tensor, Tensor, int]:
@@ -159,9 +165,10 @@ class TextlineGen(VisionDataset):
             image = printing
 
         letter_spacing = random.uniform(-self._letter_spacing, self._letter_spacing)
-        if letter_spacing > -0.25:
-            update_size = int(letter_spacing * image.size[1])
-            image = self.update_letter_spacing(image, xyxys, update_size)
+        # if letter_spacing > -0.25:
+        #     update_size = int(letter_spacing * image.size[1])
+        #     image = self.update_letter_spacing(image, xyxys, update_size)
+        image = self.update_letter_spacing(image, xyxys, letter_spacing)
 
         reverse = int(self._reverse_rate > max(1e-7, random.random()))
         if reverse:
