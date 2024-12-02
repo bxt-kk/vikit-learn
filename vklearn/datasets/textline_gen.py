@@ -128,21 +128,23 @@ class TextlineGen(VisionDataset):
 
     def update_letter_spacing(
             self,
-            image:        Image.Image,
-            xyxys:        List[Any],
-            spacing:      float,
-            shrink_limit: float=-0.5,
+            image:   Image.Image,
+            xyxys:   List[Any],
+            spacing: float,
         ) -> Image.Image:
 
-        assert shrink_limit <= 0
         if spacing == 0: return image
+        if len(xyxys) < 2: return image
         src_w, src_h = image.size
-        widths = [r - l for l, _, r, _ in xyxys]
         if spacing > 0:
-            offset = int(max(widths) * spacing)
+            offset_base = sum([
+                r - l for l, _, r, _ in xyxys]) / len(xyxys)
         else:
-            offset = int(min(widths) * max(spacing, shrink_limit))
-        exp_w = max(0, len(xyxys) - 1) * offset + src_w
+            offset_base = min([
+                xyxys[i + 1][0] - xyxys[i][0] for i in range(len(xyxys) - 1)])
+        offset = int(offset_base * spacing)
+        if offset == 0: return image
+        exp_w = (len(xyxys) - 1) * offset + src_w
         expanded = Image.new('L', (exp_w, src_h), color=0)
         exp_size = 0
         for l, _, r, _ in xyxys:
