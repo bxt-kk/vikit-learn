@@ -160,6 +160,7 @@ class InvertedResidual(nn.Module):
             dilation:        int=1,
             norm_layer:      Callable[..., nn.Module] | None=DEFAULT_NORM_LAYER,
             activation:      Callable[..., nn.Module] | None=DEFAULT_ACTIVATION,
+            use_sse:         bool=False,
             use_res_connect: bool=True,
         ):
 
@@ -190,6 +191,11 @@ class InvertedResidual(nn.Module):
                 norm_layer=norm_layer,
                 activation=None),
         ])
+
+        if use_sse:
+            layers.insert(
+                -1, SSELayer(expanded_dim, max(expanded_dim // 4, 8)))
+
         self.blocks = nn.Sequential(*layers)
         self.use_res_connect = (
             use_res_connect and
@@ -272,6 +278,27 @@ class CSENet(nn.Module):
         return self.project(x * self.fusion(x))
 
 
+class SSELayer(nn.Module):
+
+    def __init__(
+            self,
+            in_channels: int,
+            sq_channels: int,
+        ):
+
+        super().__init__()
+
+        self._scale = nn.Sequential(
+            nn.Conv2d(in_channels, sq_channels, 1),
+            nn.ReLU(inplace=False),
+            nn.Conv2d(sq_channels, in_channels, 1),
+            nn.Hardsigmoid(inplace=False),
+        )
+
+    def forward(self, x:Tensor) -> Tensor:
+        return x * self._scale(x)
+
+
 class ChannelAttention(nn.Module):
 
     def __init__(
@@ -338,6 +365,28 @@ class CBANet(nn.Module):
         x = self.channel_attention(x)
         x = self.spatial_attention(x)
         return self.project(x)
+
+
+class SqueezeAttention(nn.Module):
+
+    def __init__(
+            self,
+            in_channels:int,
+            in_rows:int,
+        ):
+
+        super().__init__()
+
+        self.attention = nn.Sequential(
+            nn.Conv2d(in_channels, in_rows, kernel_size=(in_rows, 1)),
+            nn.Softmax(dim=1))
+
+    def forward(self, x:Tensor) -> Tensor:
+        # x shape: n, c, h, w
+        m = self.attention(x).transpose(1, 2) # n, h, 1, w -> n, 1, h, w
+        n, _, _, w = x.shape
+        x = (x * m).reshape(n, -1, 1, w) # n, c, 1, w
+        return x
 
 
 class DetPredictor(nn.Module):
@@ -585,3 +634,86 @@ class DinoFeatures(nn.Module):
         dr, dc = x.shape[2] // self.cell_size, x.shape[3] // self.cell_size
         x = self.features.forward_features(x)['x_norm_patchtokens']
         return x.transpose(1, 2).reshape(-1, self.features_dim, dr, dc)
+
+
+class CaresFeatures(nn.Module):
+
+    def __init__(self, arch:str):
+
+        super().__init__()
+
+        if arch == 'small':
+            self.features_dim= 192
+
+            self.features2d = nn.Sequential(
+                ConvNormActive(3, 8, kernel_size=3, stride=2, activation=nn.ReLU, norm_layer=None),
+                ConvNormActive(8, 16, kernel_size=1, activation=nn.ReLU),
+
+                InvertedResidual(16, 16, 1, stride=2, activation=nn.ReLU),
+                InvertedResidual(16, 24, 4, stride=2, activation=nn.ReLU),
+                InvertedResidual(24, 24, 4, stride=1, activation=nn.ReLU),
+            )
+
+            features2d_channel = 24
+
+        elif arch == 'large':
+            self.features_dim= 320
+
+            self.features2d = nn.Sequential(
+                ConvNormActive(3, 8, kernel_size=3, stride=2, activation=nn.ReLU, norm_layer=None),
+                ConvNormActive(8, 16, kernel_size=1, activation=nn.ReLU),
+
+                InvertedResidual(16, 16, 1, stride=1, activation=nn.ReLU),
+                InvertedResidual(16, 24, 4, stride=2, activation=nn.ReLU),
+                InvertedResidual(24, 24, 3, stride=1, activation=nn.ReLU),
+                InvertedResidual(24, 40, 3, kernel_size=5, stride=2, activation=nn.ReLU),
+                InvertedResidual(40, 40, 3, kernel_size=5, stride=1, activation=nn.ReLU),
+                InvertedResidual(40, 40, 3, kernel_size=5, stride=1, activation=nn.ReLU),
+            )
+
+            features2d_channel = 40
+
+        else:
+            raise ValueError(f'Unsupported arch `{arch}`')
+
+        self.cell_size = 8
+
+        in_rows = 4
+        hidden_dim = features2d_channel * in_rows
+
+        self.sq_attation = SqueezeAttention(
+            features2d_channel, in_rows=in_rows)
+
+        self.feedforward = nn.Sequential(
+            InvertedResidual(
+                hidden_dim,
+                hidden_dim,
+                6,
+                kernel_size=(1, 5),
+                norm_layer=LayerNorm2d,
+                use_sse=True,
+                use_res_connect=False,
+            ),
+            InvertedResidual(
+                hidden_dim,
+                hidden_dim,
+                6,
+                kernel_size=(1, 5),
+                norm_layer=LayerNorm2d,
+                use_sse=True,
+                use_res_connect=True,
+            ),
+            ConvNormActive(
+                hidden_dim,
+                self.features_dim,
+                kernel_size=1,
+                norm_layer=LayerNorm2d,
+            ),
+        )
+
+
+    def forward(self, x:Tensor) -> Tensor:
+        x = self.features2d(x)
+        x = self.sq_attation(x)
+        x = self.feedforward(x)
+        return x

@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from .component import ConvNormActive
-from .component import MobileNetFeatures, DinoFeatures
+from .component import MobileNetFeatures, DinoFeatures, CaresFeatures
 from .component import CBANet
 from .basic import Basic
 
@@ -119,6 +119,16 @@ class TrimNetX(Basic):
             self.features_dim = self.features.features_dim
             self.merged_dim   = 192
 
+        elif backbone == 'cares_small':
+            self.features     = CaresFeatures(arch='small')
+            self.features_dim = self.features.features_dim
+            self.merged_dim   = 128
+
+        elif backbone == 'cares_large':
+            self.features     = CaresFeatures(arch='large')
+            self.features_dim = self.features.features_dim
+            self.merged_dim   = 192
+
         else:
             raise ValueError(f'Unsupported backbone `{backbone}`')
 
@@ -147,6 +157,7 @@ class TrimNetX(Basic):
             with torch.no_grad():
                 f = self.features(x)
 
+        if not self.num_scans: return [], f
         h = self.trim_units[0](f)
         ht = [h]
         times = len(self.trim_units)

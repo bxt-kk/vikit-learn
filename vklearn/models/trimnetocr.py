@@ -1,7 +1,5 @@
 from typing import List, Any, Dict, Mapping
 
-from torchvision.ops.misc import SqueezeExcitation
-from torchvision.models.mobilenetv3 import InvertedResidual
 from torch import Tensor
 
 import torch
@@ -12,10 +10,6 @@ from PIL import Image
 
 from .ocr import OCR
 from .trimnetx import TrimNetX
-# from .component import DEFAULT_ACTIVATION, CBANet
-from .component import CBANet
-from .component import InvertedResidual as VikitInvertedResidual
-from .component import ConvNormActive
 
 
 class TrimNetOcr(OCR):
@@ -33,9 +27,9 @@ class TrimNetOcr(OCR):
             self,
             categories:          List[str],
             dropout_p:           float=0.,
-            num_scans:           int | None=None,
+            num_scans:           int | None=0,
             scan_range:          int | None=None,
-            backbone:            str | None=None,
+            backbone:            str | None='cares_small',
             backbone_pretrained: bool | None=False,
         ):
         super().__init__(categories)
@@ -45,70 +39,22 @@ class TrimNetOcr(OCR):
         self.trimnetx = TrimNetX(
             num_scans, scan_range, backbone, backbone_pretrained)
 
-        hidden_dim = self.trimnetx.features_dim
-        merged_dim = hidden_dim + self.trimnetx.merged_dim
+        features_dim = self.trimnetx.features_dim
 
-        self.embedding = VikitInvertedResidual(
-            hidden_dim, hidden_dim, expand_ratio=2, use_res_connect=True)
-
-        self.improves = nn.ModuleList([
-            nn.Sequential(
-                ConvNormActive(merged_dim, hidden_dim, kernel_size=1),
-                VikitInvertedResidual(hidden_dim, hidden_dim, expand_ratio=1, use_res_connect=False)
-            ) for _ in range(self.trimnetx.num_scans)])
-
-        self.predictor = nn.Sequential(
+        self.classifier = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
-            nn.Linear(hidden_dim, self.num_classes),
+            nn.Linear(features_dim, self.num_classes),
         )
-
-        self.alphas = nn.Parameter(torch.zeros(
-            1, hidden_dim, 1, 1, self.trimnetx.num_scans))
-
-        self.drop_gs_channel_att()
-
-        for m in self.improves.modules():
-            if not isinstance(m, VikitInvertedResidual): continue
-            layer:nn.Conv2d = m.blocks[-1][0]
-            nn.init.zeros_(layer.weight)
-            nn.init.zeros_(layer.bias)
 
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def drop_gs_channel_att(self):
-        for m in list(self.modules()):
-            if isinstance(m, InvertedResidual):
-                block:nn.Sequential = m.block
-                remove_ids = []
-                for idx, child in block.named_children():
-                    if not isinstance(child, SqueezeExcitation): continue
-                    remove_ids.append(int(idx))
-                for idx in remove_ids[::-1]:
-                    block[idx] = nn.Identity()
-            if isinstance(m, CBANet):
-                m.channel_attention = nn.Identity()
-
-    def forward_improves(self, x:Tensor) -> Tensor:
-        hs, f = self.trimnetx(x)
-        h = self.embedding(f) # n, c, r, w
-        alphas = self.alphas.softmax(dim=-1)
-        for t, block in enumerate(self.improves):
-            h = block(torch.cat([h, hs[t]], dim=1)) * alphas[..., t] + h
-        bs, cs, _, _ = h.shape
-        # n, c, r, w -> n, (w, r), c -> N, T, C
-        h = h.permute(0, 3, 2, 1).reshape(bs, -1, cs)
-        p = self.predictor(h)
-        return p
-
     def forward(self, x:Tensor) -> Tensor:
-        f = self.trimnetx.features(x)
-        h = self.embedding(f) # n, c, r, w
-        bs, cs, _, _ = h.shape
-        # n, c, r, w -> n, (w, r), c -> N, T, C
-        h = h.permute(0, 3, 2, 1).reshape(bs, -1, cs)
-        p = self.predictor(h)
-        return p
+        _, x = self.trimnetx(x)
+        # n, c, 1, w -> n, c, w -> n, w, c
+        x = x.squeeze(dim=2).transpose(1, 2)
+        x = self.classifier(x)
+        return x
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetOcr':
