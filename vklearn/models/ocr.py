@@ -131,10 +131,11 @@ class OCR(Basic):
         # wer = self.wer_metric.compute()
         self.cer_metric.reset()
         # self.wer_metric.reset()
+        c_score = torch.clamp_min(1 - cer, 0)
         return dict(
             cer=cer,
             # wer=wer,
-            c_score=1 - cer,
+            c_score=c_score,
         )
 
     def collate_fn(

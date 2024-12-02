@@ -711,7 +711,6 @@ class CaresFeatures(nn.Module):
             ),
         )
 
-
     def forward(self, x:Tensor) -> Tensor:
         x = self.features2d(x)
         x = self.sq_attation(x)
