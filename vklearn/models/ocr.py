@@ -703,13 +703,14 @@ class RandomAffine:
 
 class AlignSize:
     def __init__(self, width:int=320, height:int=32):
+        assert width % height == 0
         self.width = width
         self.height = height
 
     def __call__(self, img:Image.Image):
         src_width, src_height = img.size
         dst_height = self.height
-        dst_width = min(int(dst_height / src_height * src_width), self.width)
+        dst_width = min(dst_height / src_height * src_width, self.width)
         dst_width = math.ceil(dst_width / dst_height) * dst_height
         resized = img.resize((dst_width, dst_height), resample=Image.Resampling.BILINEAR)
         return resized
