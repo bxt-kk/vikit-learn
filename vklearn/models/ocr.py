@@ -170,8 +170,9 @@ class OCR(Basic):
         if task_name == 'default':
             transform_list = [
                 transforms.Grayscale(num_output_channels=3),
-                RandomInvert(prob=0.5),
                 # RandomRotate(4.5, prob=1.), # for test
+                RandomPad([4, 0.], prob=1.), # for test
+                RandomInvert(prob=0.5),
             ]
 
         elif task_name == 'natural':
@@ -217,6 +218,7 @@ class OCR(Basic):
                         RandomRotate(4.5, prob=1.),
                     ]),
                 ]),
+                RandomPad([4, 0.], prob=1.),
                 VerticalLine(prob=0.05),
                 RandomLine(prob=0.05),
                 RandomPixelTrans(prob=0.5),
@@ -253,6 +255,7 @@ class OCR(Basic):
                         RandomRotate(4.5, prob=1.),
                     ]),
                 ]),
+                RandomPad([4, 0.], prob=1.),
                 VerticalLine(prob=0.05),
                 RandomLine(prob=0.05),
                 RandomPixelTrans(prob=0.5),
@@ -294,7 +297,7 @@ class RandomPad:
         padding = [int(random.randint(0, int(r * src_height))) for r in self.rate]
         dst_width = padding[0] + src_width
         dst_height = padding[1] + src_height
-        new_img = Image.new('L', (dst_width, dst_height), color=0)
+        new_img = Image.new(img.mode, (dst_width, dst_height), color=0)
         offset = [random.randint(0, p) for p in padding]
         new_img.paste(img, (offset[0], offset[1]))
         return new_img
@@ -318,7 +321,9 @@ class RandomRotate:
         cos_theta = (v_b @ v_u) / (np.linalg.norm(v_b) * np.linalg.norm(v_u))
         theta = np.arccos(cos_theta)
         angle_limit = np.degrees(theta)
-        angle = min(self.angle, angle_limit) * random.uniform(-1, 1)
+        # angle = min(self.angle, angle_limit) * random.uniform(-1, 1)
+        angle = self.angle * random.uniform(-1, 1)
+        angle = min(max(angle, -angle_limit), angle_limit)
         img = img.rotate(
             angle, resample=Image.Resampling.BILINEAR, expand=1, fillcolor=0)
         return img
@@ -506,7 +511,7 @@ class NoiseCharacters:
         if random.random() >= self.prob: return img
         src_w, src_h = img.size
         dst_w, dst_h = src_w, round(src_h * (1. + self.rate))
-        new_img = Image.new('L', (dst_w, dst_h))
+        new_img = Image.new(img.mode, (dst_w, dst_h))
         if random.random() < 0.5:
             cropped = img.crop((0, 0, src_w, dst_h - src_h))
             cropped = cropped.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
@@ -704,8 +709,9 @@ class AlignSize:
     def __call__(self, img:Image.Image):
         src_width, src_height = img.size
         dst_height = self.height
-        dst_width = int(dst_height / src_height * src_width)
-        resized = img.resize((min(dst_width, self.width), dst_height), resample=Image.Resampling.BILINEAR)
+        dst_width = min(int(dst_height / src_height * src_width), self.width)
+        dst_width = math.ceil(dst_width / dst_height) * dst_height
+        resized = img.resize((dst_width, dst_height), resample=Image.Resampling.BILINEAR)
         return resized
 
     def __repr__(self):

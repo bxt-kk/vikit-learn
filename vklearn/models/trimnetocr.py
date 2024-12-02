@@ -2,7 +2,6 @@ from typing import List, Any, Dict, Mapping
 
 from torch import Tensor
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -92,9 +91,7 @@ class TrimNetOcr(OCR):
         x = self.forward(x)
 
         preds = x.argmax(dim=2) # n, T
-        kernel = torch.tensor([[[-1, 1]]]).type_as(preds)
-        mask = torch.conv1d(
-            F.pad(preds.unsqueeze(1), [0, 1], value=0), kernel).squeeze(1) != 0
+        mask = (F.pad(preds, [0, 1], value=0)[:, 1:] - preds) != 0
         preds = preds * mask
         text = ''.join(self._categorie_arr[preds[0].cpu().numpy()])
 
