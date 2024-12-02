@@ -678,11 +678,11 @@ class CaresFeatures(nn.Module):
 
         self.cell_size = 8
 
-        in_rows = 4
-        hidden_dim = features2d_channel * in_rows
+        f2d_rows = 4
+        hidden_dim = features2d_channel * f2d_rows
 
         self.sq_attation = SqueezeAttention(
-            features2d_channel, in_rows=in_rows)
+            features2d_channel, in_rows=f2d_rows)
 
         self.feedforward = nn.Sequential(
             InvertedResidual(

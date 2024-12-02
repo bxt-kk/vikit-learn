@@ -29,7 +29,7 @@ class TrimNetOcr(OCR):
             dropout_p:           float=0.,
             num_scans:           int | None=0,
             scan_range:          int | None=None,
-            backbone:            str | None='cares_small',
+            backbone:            str | None='cares_large',
             backbone_pretrained: bool | None=False,
         ):
         super().__init__(categories)
@@ -50,7 +50,7 @@ class TrimNetOcr(OCR):
         self.trimnetx.train_features(flag)
 
     def forward(self, x:Tensor) -> Tensor:
-        _, x = self.trimnetx(x)
+        hs, x = self.trimnetx(x)
         # n, c, 1, w -> n, c, w -> n, w, c
         x = x.squeeze(dim=2).transpose(1, 2)
         x = self.classifier(x)
