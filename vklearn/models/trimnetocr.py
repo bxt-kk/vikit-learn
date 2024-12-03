@@ -40,7 +40,13 @@ class TrimNetOcr(OCR):
 
         features_dim = self.trimnetx.features_dim
 
-        self.rnn = nn.LSTM(features_dim, features_dim // 2, batch_first=True, bidirectional=True)
+        self.rnn = nn.LSTM(
+            features_dim,
+            features_dim // 2,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True,
+        )
 
         self.classifier = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
