@@ -39,12 +39,14 @@ class OCR(Basic):
         scale = align_size / src_h
         dst_w, dst_h = round(src_w * scale), round(src_h * scale)
         resized = image.resize((dst_w, dst_h), resample=Image.Resampling.BILINEAR)
-        if dst_w % dst_h == 0:
-            return self._image2tensor(resized).unsqueeze(dim=0)
-        dst_w = math.ceil(dst_w / align_size) * align_size
-        aligned = Image.new(image.mode, (dst_w, dst_h))
-        aligned.paste(resized, (0, 0))
-        return self._image2tensor(aligned).unsqueeze(dim=0)
+        inputs, _transforms = resized, self._image2tensor.transforms
+        for transform in _transforms[:-1]: inputs = transform(inputs)
+        if inputs.mean() < 0.5: inputs = 1 - inputs
+        pixel_min, pixel_max = inputs.min(), inputs.max()
+        inputs = (inputs - pixel_min) / torch.clamp_min(pixel_max - pixel_min, 1e-5)
+        padding = math.ceil(dst_w / align_size) * align_size - dst_w
+        inputs = F.pad(inputs, [0, padding], value=1)
+        return _transforms[-1](inputs).unsqueeze(dim=0)
 
     def recognize(
             self,

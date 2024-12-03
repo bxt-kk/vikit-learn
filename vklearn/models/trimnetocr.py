@@ -40,6 +40,8 @@ class TrimNetOcr(OCR):
 
         features_dim = self.trimnetx.features_dim
 
+        self.rnn = nn.LSTM(features_dim, features_dim // 2, batch_first=True, bidirectional=True)
+
         self.classifier = nn.Sequential(
             nn.Dropout(dropout_p, inplace=False),
             nn.Linear(features_dim, self.num_classes),
@@ -52,6 +54,8 @@ class TrimNetOcr(OCR):
         hs, x = self.trimnetx(x)
         # n, c, 1, w -> n, c, w -> n, w, c
         x = x.squeeze(dim=2).transpose(1, 2)
+        # print('rnn out shape:', self.rnn(x)[0].shape)
+        x, _ = self.rnn(x)
         x = self.classifier(x)
         return x
 
