@@ -158,6 +158,9 @@ class OCR(Basic):
             target_lengths[i] = target_length
             targets[i, :target_length] = target
             images[i, :, :, :image.shape[-1]] = image
+        # transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+        images = transforms.functional.normalize(
+            images, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         return images, targets, target_lengths
 
     @classmethod
@@ -172,7 +175,7 @@ class OCR(Basic):
             transform_list = [
                 transforms.Grayscale(num_output_channels=3),
                 # RandomRotate(4.5, prob=1.), # for test
-                RandomPad([4, 0.], prob=1.), # for test
+                # RandomPad([4, 0.], prob=1.), # for test
                 RandomInvert(prob=0.5),
             ]
 
@@ -219,7 +222,7 @@ class OCR(Basic):
                         RandomRotate(4.5, prob=1.),
                     ]),
                 ]),
-                RandomPad([4, 0.], prob=1.),
+                RandomPad([4, 0.], prob=0.5),
                 VerticalLine(prob=0.05),
                 RandomLine(prob=0.05),
                 RandomPixelTrans(prob=0.5),
@@ -256,7 +259,7 @@ class OCR(Basic):
                         RandomRotate(4.5, prob=1.),
                     ]),
                 ]),
-                RandomPad([4, 0.], prob=1.),
+                RandomPad([4, 0.], prob=0.5),
                 VerticalLine(prob=0.05),
                 RandomLine(prob=0.05),
                 RandomPixelTrans(prob=0.5),
@@ -281,7 +284,7 @@ class OCR(Basic):
         transform_list.extend([
             AlignSize(width=max_width, height=align_height),
             transforms.ToTensor(),
-            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+            # transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
         ])
         return transforms.Compose(transform_list)
 
