@@ -55,8 +55,8 @@ class TrimNetOcr(OCR):
         # n, c, 1, w -> n, c, w -> n, w, c
         x = x.squeeze(dim=2).transpose(1, 2)
         # print('rnn out shape:', self.rnn(x)[0].shape)
-        s, _ = self.rnn(x.detach())
-        x = self.classifier(x + s)
+        x, _ = self.rnn(x)
+        x = self.classifier(x)
         return x
 
     @classmethod

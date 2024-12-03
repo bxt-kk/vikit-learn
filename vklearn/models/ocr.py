@@ -37,7 +37,7 @@ class OCR(Basic):
 
         src_w, src_h = image.size
         scale = align_size / src_h
-        dst_w, dst_h = round(src_w * scale), round(src_h * scale)
+        dst_w, dst_h = round(src_w * scale), align_size # round(src_h * scale)
         resized = image.resize((dst_w, dst_h), resample=Image.Resampling.BILINEAR)
         inputs, _transforms = resized, self._image2tensor.transforms
         for transform in _transforms[:-1]: inputs = transform(inputs)
