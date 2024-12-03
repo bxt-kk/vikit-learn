@@ -19,6 +19,29 @@ class LayerNorm2d(nn.GroupNorm):
         super().__init__(1, num_channels)
 
 
+class LayerNorm2dChannel(nn.Module):
+    def __init__(
+            self,
+            dim: int,
+            eps: float=1e-5,
+        ):
+
+        super().__init__()
+
+        self.weight = nn.Parameter(torch.ones(dim), requires_grad=True)
+        self.bias   = nn.Parameter(torch.zeros(dim), requires_grad=True)
+        self.shape  = (dim, )
+        self.eps    = eps
+
+    def forward(self, x:Tensor) -> Tensor:
+        return F.layer_norm(
+            x.transpose(1, 3),
+            normalized_shape=self.shape,
+            weight=self.weight,
+            bias=self.bias,
+            eps=self.eps).transpose(1, 3)
+
+
 DEFAULT_NORM_LAYER = nn.BatchNorm2d # LayerNorm2d
 DEFAULT_ACTIVATION = nn.Hardswish
 DEFAULT_SIGMOID    = nn.Hardsigmoid
@@ -690,7 +713,7 @@ class CaresFeatures(nn.Module):
                 hidden_dim,
                 6,
                 kernel_size=(1, 5),
-                norm_layer=LayerNorm2d,
+                norm_layer=LayerNorm2dChannel,
                 use_sse=True,
                 use_res_connect=False,
             ),
@@ -699,7 +722,7 @@ class CaresFeatures(nn.Module):
                 hidden_dim,
                 6,
                 kernel_size=(1, 5),
-                norm_layer=LayerNorm2d,
+                norm_layer=LayerNorm2dChannel,
                 use_sse=True,
                 use_res_connect=True,
             ),
@@ -707,7 +730,7 @@ class CaresFeatures(nn.Module):
                 hidden_dim,
                 self.features_dim,
                 kernel_size=1,
-                norm_layer=LayerNorm2d,
+                norm_layer=LayerNorm2dChannel,
             ),
         )
 
