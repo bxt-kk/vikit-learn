@@ -375,6 +375,7 @@ class CBANet(nn.Module):
             out_planes:    int,
             kernel_size:   int=7,
             shrink_factor: int=4,
+            norm_layer:    Callable[..., nn.Module]=DEFAULT_NORM_LAYER,
         ):
 
         super().__init__()
@@ -382,7 +383,7 @@ class CBANet(nn.Module):
         self.channel_attention = ChannelAttention(in_planes, shrink_factor)
         self.spatial_attention = SpatialAttention(in_planes, kernel_size)
         self.project = ConvNormActive(
-            in_planes, out_planes, 1, activation=None)
+            in_planes, out_planes, 1, norm_layer=norm_layer, activation=None)
 
     def forward(self, x:Tensor) -> Tensor:
         x = self.channel_attention(x)

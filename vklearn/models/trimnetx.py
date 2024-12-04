@@ -28,7 +28,7 @@ class TrimUnit(nn.Module):
         groups = out_planes // head_dim
         dense_dim = out_planes // scan_range
 
-        self.cbanet = CBANet(in_planes, out_planes)
+        self.cbanet = CBANet(in_planes, out_planes, norm_layer=norm_layer)
         self.convs = nn.ModuleList()
         self.denses = nn.ModuleList()
         for r in range(scan_range):
