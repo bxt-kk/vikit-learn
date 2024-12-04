@@ -1,11 +1,11 @@
-from typing import List, Mapping, Any, Dict, Tuple
+from typing import List, Mapping, Any, Dict, Tuple, Callable
 
 from torch import Tensor
 
 import torch
 import torch.nn as nn
 
-from .component import ConvNormActive
+from .component import ConvNormActive, DEFAULT_NORM_LAYER
 from .component import MobileNetFeatures, DinoFeatures, CaresFeatures
 from .component import CBANet
 from .basic import Basic
@@ -19,6 +19,7 @@ class TrimUnit(nn.Module):
             out_planes: int,
             head_dim:   int,
             scan_range: int=4,
+            norm_layer: Callable[..., nn.Module]=DEFAULT_NORM_LAYER,
         ):
 
         super().__init__()
@@ -39,8 +40,8 @@ class TrimUnit(nn.Module):
                 norm_layer=None,
                 activation=None,
             ))
-            self.denses.append(ConvNormActive(out_planes, dense_dim, 1))
-        self.merge = ConvNormActive(dense_dim * scan_range, out_planes, 1)
+            self.denses.append(ConvNormActive(out_planes, dense_dim, 1, norm_layer=norm_layer))
+        self.merge = ConvNormActive(dense_dim * scan_range, out_planes, 1, norm_layer=norm_layer)
 
     def forward(self, x:Tensor) -> Tensor:
         x = self.cbanet(x)
@@ -68,6 +69,7 @@ class TrimNetX(Basic):
             scan_range:          int | None=None,
             backbone:            str | None=None,
             backbone_pretrained: bool | None=None,
+            norm_layer:          Callable[..., nn.Module]=DEFAULT_NORM_LAYER,
         ):
 
         super().__init__()
@@ -135,7 +137,7 @@ class TrimNetX(Basic):
         self.cell_size = self.features.cell_size
 
         self.projects = nn.ModuleList([
-            ConvNormActive(self.merged_dim, self.merged_dim, 1, activation=None)
+            ConvNormActive(self.merged_dim, self.merged_dim, 1, activation=None, norm_layer=norm_layer)
             for _ in range(num_scans - 1)])
 
         self.trim_units = nn.ModuleList()
@@ -148,6 +150,7 @@ class TrimNetX(Basic):
                 self.merged_dim,
                 head_dim=16,
                 scan_range=scan_range,
+                norm_layer=norm_layer,
             ))
 
     def forward(self, x:Tensor) -> Tuple[List[Tensor], Tensor]:
