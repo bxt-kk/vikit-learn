@@ -709,15 +709,15 @@ class CaresFeatures(nn.Module):
             features2d_channel, in_rows=f2d_rows)
 
         self.feedforward = nn.Sequential(
-            # InvertedResidual(
-            #     hidden_dim,
-            #     hidden_dim,
-            #     6,
-            #     kernel_size=(1, 5),
-            #     norm_layer=LayerNorm2dChannel,
-            #     use_sse=True,
-            #     use_res_connect=False,
-            # ),
+            InvertedResidual(
+                hidden_dim,
+                hidden_dim,
+                6,
+                kernel_size=(1, 5),
+                norm_layer=LayerNorm2dChannel,
+                use_sse=True,
+                use_res_connect=False,
+            ),
             # InvertedResidual(
             #     hidden_dim,
             #     hidden_dim,
