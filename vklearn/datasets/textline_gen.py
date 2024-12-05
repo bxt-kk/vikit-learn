@@ -156,7 +156,8 @@ class TextlineGen(VisionDataset):
     def __getitem__(self, idx:int) -> Tuple[Image.Image | Tensor, Tensor, int]:
         text = self.corpus[idx]
 
-        font = self._printing.fonts[idx % len(self._printing.fonts)]
+        # font = self._printing.fonts[idx % len(self._printing.fonts)]
+        font = random.choice(self._printing.fonts)
         text = font.random_lack(text, ['#'])
 
         printing, xyxys = font.text2image_with_xyxys(text, direction=self._layout_direction)
