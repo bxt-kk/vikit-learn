@@ -93,4 +93,4 @@ class OCR:
         text = result['text']
         ax = fig.add_subplot()
         ax.imshow(image)
-        ax.set_xlabel(f'ocr result: {repr(text)}')
+        ax.set_xlabel(text)
