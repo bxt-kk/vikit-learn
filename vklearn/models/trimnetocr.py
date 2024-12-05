@@ -1,7 +1,8 @@
-from typing import List, Any, Dict, Mapping
+from typing import List, Any, Dict, Mapping, Tuple
 
 from torch import Tensor
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -9,6 +10,7 @@ from PIL import Image
 
 from .ocr import OCR
 from .trimnetx import TrimNetX
+from .component import LayerNorm2dChannel, CBANet
 
 
 class TrimNetOcr(OCR):
@@ -26,26 +28,28 @@ class TrimNetOcr(OCR):
             self,
             categories:          List[str],
             dropout_p:           float=0.,
-            num_scans:           int | None=0,
+            num_scans:           int | None=None,
             scan_range:          int | None=None,
             backbone:            str | None='cares_large',
             backbone_pretrained: bool | None=False,
         ):
+
+        assert backbone.startswith('cares')
+
         super().__init__(categories)
 
         self.dropout_p = dropout_p
 
         self.trimnetx = TrimNetX(
-            num_scans, scan_range, backbone, backbone_pretrained)
+            num_scans, scan_range, backbone, backbone_pretrained,
+            norm_layer=LayerNorm2dChannel)
 
         features_dim = self.trimnetx.features_dim
+        merged_dim = self.trimnetx.merged_dim
 
-        self.rnn = nn.LSTM(
-            features_dim,
-            features_dim // 2,
-            num_layers=2,
-            batch_first=True,
-            bidirectional=True,
+        self.project = nn.Sequential(
+            nn.Linear(features_dim + merged_dim, features_dim),
+            nn.LayerNorm((features_dim, )),
         )
 
         self.classifier = nn.Sequential(
@@ -53,17 +57,29 @@ class TrimNetOcr(OCR):
             nn.Linear(features_dim, self.num_classes),
         )
 
+        for m in list(self.trimnetx.trim_units.modules()):
+            if not isinstance(m, CBANet): continue
+            m.channel_attention = nn.Identity()
+            # m.spatial_attention = nn.Identity()
+
+        self._temp_num_scans = self.trimnetx.num_scans
+
     def train_features(self, flag:bool):
         self.trimnetx.train_features(flag)
 
-    def forward(self, x:Tensor) -> Tensor:
-        hs, x = self.trimnetx(x)
-        # n, c, 1, w -> n, c, w -> n, w, c
-        x = x.squeeze(dim=2).transpose(1, 2)
-        # print('rnn out shape:', self.rnn(x)[0].shape)
-        x, _ = self.rnn(x)
+    def set_num_scans(self, num_scans:int):
+        self._temp_num_scans = num_scans
+
+    def forward(self, x:Tensor) -> Tuple[Tensor, List[Tensor]]:
+        hs, f = self.trimnetx(x, self._temp_num_scans)
+        fs = [f.squeeze(dim=2).transpose(1, 2)]
+        for h in hs:
+            h = h.squeeze(dim=2).transpose(1, 2)
+            p = self.project(torch.cat([h, fs[-1]], dim=-1))
+            fs.append(p + fs[-1])
+        x = fs.pop()
         x = self.classifier(x)
-        return x
+        return x, fs
 
     @classmethod
     def load_from_state(cls, state:Mapping[str, Any]) -> 'TrimNetOcr':
@@ -93,12 +109,17 @@ class TrimNetOcr(OCR):
             image:      Image.Image,
             top_k:      int=10,
             align_size: int=32,
+            to_gray:    bool=True,
         ) -> Dict[str, Any]:
 
         device = self.get_model_device()
+        if to_gray and (image.mode != 'L'):
+            image = image.convert('L')
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
         x = self.preprocess(image, align_size)
         x = x.to(device)
-        x = self.forward(x)
+        x, _ = self.forward(x)
 
         preds = x.argmax(dim=2) # n, T
         mask = (F.pad(preds, [0, 1], value=0)[:, 1:] - preds) != 0
@@ -114,3 +135,53 @@ class TrimNetOcr(OCR):
             labels=labels,
             text=text,
         )
+
+    def calc_loss(
+            self,
+            inputs:         Tuple[Tensor, List[Tensor]],
+            targets:        Tensor,
+            target_lengths: Tensor,
+            zero_infinity:  bool=False,
+            weights:        Dict[str, float] | None=None,
+        ) -> Dict[str, Any]:
+
+        predicts, features = inputs
+
+        losses = super().calc_loss(
+            predicts, targets, target_lengths, zero_infinity=zero_infinity)
+
+        weights = weights or dict()
+        auxi_weight = weights.get('auxi', 0)
+        if auxi_weight == 0: features = []
+
+        loss = losses['loss']
+        losses['pf_loss'] = loss
+
+        auxi_loss = 0
+        for fid, feature in enumerate(features):
+            predicts = self.classifier(feature)
+            auxi_i_loss = super().calc_loss(
+                predicts, targets, target_lengths, zero_infinity=zero_infinity)['loss']
+            auxi_loss = auxi_loss + auxi_i_loss
+            losses[f'p{fid}_loss'] = auxi_i_loss
+
+        losses['loss'] = (
+            loss * max(0, 1 - len(features) * auxi_weight) +
+            auxi_loss * auxi_weight)
+        return losses
+
+    def calc_score(
+            self,
+            inputs:         Tuple[Tensor, List[Tensor]],
+            targets:        Tensor,
+            target_lengths: Tensor,
+        ) -> Dict[str, Any]:
+        return super().calc_score(inputs[0], targets, target_lengths)
+
+    def update_metric(
+            self,
+            inputs:         Tuple[Tensor, List[Tensor]],
+            targets:        Tensor,
+            target_lengths: Tensor,
+        ):
+        return super().update_metric(inputs[0], targets, target_lengths)
