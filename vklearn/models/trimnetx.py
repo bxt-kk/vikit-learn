@@ -153,18 +153,24 @@ class TrimNetX(Basic):
                 norm_layer=norm_layer,
             ))
 
-    def forward(self, x:Tensor) -> Tuple[List[Tensor], Tensor]:
+    def forward(
+            self,
+            x:         Tensor,
+            num_scans: int | None=None,
+        ) -> Tuple[List[Tensor], Tensor]:
+
         if not self._keep_features:
             f = self.features(x)
         else:
             with torch.no_grad():
                 f = self.features(x)
 
-        if not self.num_scans: return [], f
+        num_scans = num_scans or self.num_scans
+
+        if not num_scans: return [], f
         h = self.trim_units[0](f)
         ht = [h]
-        times = len(self.trim_units)
-        for t in range(1, times):
+        for t in range(1, num_scans):
             e = self.projects[t - 1](h)
             h = self.trim_units[t](torch.cat([f, e], dim=1))
             ht.append(h)
