@@ -28,6 +28,7 @@ setup(
     packages=find_packages(),
     package_data={'vklearn':[
         'datasets/ms_coco_classnames.json',
+        'datasets/characters/*.txt',
     ]},
     install_requires=requirements,
     entry_points = {

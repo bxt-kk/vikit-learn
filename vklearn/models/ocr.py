@@ -53,6 +53,7 @@ class OCR(Basic):
             image:      Image.Image,
             top_k:      int=10,
             align_size: int=32,
+            to_gray:    bool=True,
         ) -> List[Dict[str, Any]]:
         assert not 'this is an empty func'
 

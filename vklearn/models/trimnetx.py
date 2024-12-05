@@ -165,7 +165,8 @@ class TrimNetX(Basic):
             with torch.no_grad():
                 f = self.features(x)
 
-        num_scans = num_scans or self.num_scans
+        if num_scans is None:
+            num_scans = self.num_scans
 
         if not num_scans: return [], f
         h = self.trim_units[0](f)
