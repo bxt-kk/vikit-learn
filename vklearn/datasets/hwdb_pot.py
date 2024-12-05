@@ -11,6 +11,8 @@ from torchvision.datasets.vision import VisionDataset
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 
+from .characters import CHARACTERS_DICT
+
 
 class HWDBPot(VisionDataset):
     '''HWDB-Pot Dataset
@@ -29,8 +31,7 @@ class HWDBPot(VisionDataset):
             and returns a transformed version.
     '''
 
-    CHARACTERS_FILE  = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), 'characters/ch_sym_tra.txt')
+    CHARACTERS_FILE  = CHARACTERS_DICT['ch_sym_sim']
 
     def __init__(
             self,

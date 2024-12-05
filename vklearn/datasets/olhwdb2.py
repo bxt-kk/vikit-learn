@@ -14,6 +14,8 @@ import numpy as np
 
 from tqdm import tqdm
 
+from .characters import CHARACTERS_DICT
+
 
 class OLHWDB2Line(VisionDataset):
     '''OLHWDB2 Dataset
@@ -31,8 +33,7 @@ class OLHWDB2Line(VisionDataset):
             and returns a transformed version.
     '''
 
-    CHARACTERS_FILE  = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), 'characters/ch_sym_tra.txt')
+    CHARACTERS_FILE  = CHARACTERS_DICT['ch_sym_sim']
 
     def __init__(
             self,

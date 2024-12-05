@@ -11,6 +11,8 @@ from PIL import Image
 from tqdm import tqdm
 import numpy as np
 
+from .characters import CHARACTERS_DICT
+
 
 class HWDBGnt(VisionDataset):
     '''HWDB-Gnt Dataset
@@ -28,8 +30,7 @@ class HWDBGnt(VisionDataset):
             and returns a transformed version.
     '''
 
-    CHARACTERS_FILE  = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), 'characters/ch_sym_tra.txt')
+    CHARACTERS_FILE  = CHARACTERS_DICT['ch_sym_sim']
 
     def __init__(
             self,
