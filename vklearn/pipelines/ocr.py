@@ -54,6 +54,8 @@ class OCR:
             image:      PILImage | str | ndarray,
             top_k:      int=10,
             align_size: int=224,
+            to_gray:    bool=True,
+            whitelist:  List[str] | None=None,
         ) -> List[Dict[str, Any]]:
         '''Invoke the method for image ocr.
 
@@ -61,6 +63,8 @@ class OCR:
             image: The image to be recognized.
             top_k: Specifies the number of top classes to return, sorted by probability in descending order.
             align_size: The size to which the image will be aligned after preprocessing.
+            to_gray: Convert the image mode to be gray, default: True.
+            whitelist: The whitelist of the characters, default: None is disable the whitelist.
         '''
 
         if isinstance(image, str):
@@ -73,6 +77,8 @@ class OCR:
                 image=image,
                 top_k=top_k,
                 align_size=align_size,
+                to_gray=to_gray,
+                whitelist=whitelist,
             )
         return result
 

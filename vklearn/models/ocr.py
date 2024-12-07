@@ -54,6 +54,7 @@ class OCR(Basic):
             top_k:      int=10,
             align_size: int=32,
             to_gray:    bool=True,
+            whitelist:  List[str] | None=None,
         ) -> List[Dict[str, Any]]:
         assert not 'this is an empty func'
 
@@ -170,7 +171,7 @@ class OCR(Basic):
     def get_transforms(
             cls,
             task_name:    str='default',
-            max_width:    int=1024,
+            max_width:    int=800,
             align_height: int=32,
         ) -> Callable:
 

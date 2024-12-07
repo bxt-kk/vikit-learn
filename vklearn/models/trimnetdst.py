@@ -27,6 +27,8 @@ class TrimNetDst(Distiller):
             teacher = MobileNetFeatures(teacher_arch, pretrained=True)
         elif teacher_arch.startswith('dinov2'):
             teacher = DinoFeatures(teacher_arch)
+        elif teacher_arch.startswith('cares'):
+            teacher = DinoFeatures(teacher_arch)
         else:
             raise ValueError(f'Unsupported arch `{teacher_arch}`')
 

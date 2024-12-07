@@ -110,6 +110,7 @@ class TrimNetOcr(OCR):
             top_k:      int=10,
             align_size: int=32,
             to_gray:    bool=True,
+            whitelist:  List[str] | None=None,
         ) -> Dict[str, Any]:
 
         device = self.get_model_device()
@@ -120,6 +121,12 @@ class TrimNetOcr(OCR):
         x = self.preprocess(image, align_size)
         x = x.to(device)
         x, _ = self.forward(x)
+
+        if whitelist is not None:
+            white_ixs = [self.categories.index(char) for char in whitelist]
+            for ix in range(1, len(self.categories)):
+                if ix in white_ixs: continue
+                x[..., ix] = -10000
 
         preds = x.argmax(dim=2) # n, T
         mask = (F.pad(preds, [0, 1], value=0)[:, 1:] - preds) != 0
