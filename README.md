@@ -6,21 +6,23 @@ This package aims to provide a series of easy-to-use tools that can handle real-
 
 The project is still under active construction and development, so please look forward to this work!
 
-Current Support: Image Classification, Object Detection, Semantic Segmentation, Keypoint&Joint Detection 
+Current Support: Image Classification, Object Detection, Semantic Segmentation, Keypoint&Joint Detection, OCR
 
 ## Installation
 
 ### Dependencies
 
 - matplotlib>=3.7.5
-- torch>=2.1.2
-- torchvision>=0.16.2
-- torchmetrics>=1.4.0
-- lightning-utilities>=0.11.2
-- faster-coco-eval>=1.5.4
+- torch>=2.4.0
+- torchvision>=0.19.0
+- torchmetrics>=1.4.2
+- lightning-utilities>=0.11.7
+- faster-coco-eval>=1.6.0
 - pycocotools>=2.0.7
-- clip @ git+https://github.com/openai/CLIP.git
 - opencv-python>=4.10.0
+- flet>=0.24.0
+- shapely>=2.0.6
+- tqdm>=4.66.5
 
 ### With pip
 
@@ -67,7 +69,7 @@ test_data = OxfordIIITPet(
 
 # Create model TrbnetX
 model = Model(
-    categories=train_data.bin_classes,
+    categories=train_data.classes,
 )
 
 # Create DataLoader
@@ -181,3 +183,19 @@ Here are some objectives that support directional localization, which is impleme
 ![](./asset/Figure_33.png)
 ![](./asset/Figure_34.png)
 ![](./asset/Figure_35.png)
+
+Here are some examples of text detection in natural scenes:
+
+![](./asset/Figure_36.png)
+![](./asset/Figure_37.png)
+![](./asset/Figure_38.png)
+![](./asset/Figure_39.png)
+![](./asset/Figure_40.png)
+
+Here are some examples of Optical Character Recognition (OCR):
+
+![](./asset/Figure_41.png)
+![](./asset/Figure_42.png)
+![](./asset/Figure_43.png)
+![](./asset/Figure_44.png)
+![](./asset/Figure_45.png)
