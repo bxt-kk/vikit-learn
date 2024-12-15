@@ -125,7 +125,6 @@ class OxfordIIITPet(VisionDataset):
         self._labels = _labels
         self._bin_labels = _bin_labels
 
-
     def __len__(self) -> int:
         return len(self._images)
 
