@@ -39,6 +39,8 @@ class TrimNetSeg(Segment):
             num_scans, scan_range, backbone, backbone_pretrained)
 
         merged_dim = self.trimnetx.merged_dim
+        
+        self.scale_compensate = self.trimnetx.cell_size / 2**4
 
         self.predictor = SegPredictor(merged_dim, self.num_classes, self.trimnetx.num_scans)
         self.decoder = nn.Conv2d(self.predictor.embeded_dim, self.num_classes, 1)
@@ -58,7 +60,8 @@ class TrimNetSeg(Segment):
         for t in range(times):
             scale_factor = 2**(3 - t)
             if scale_factor == 1: continue
-            ps[t] = F.interpolate(ps[t], scale_factor=scale_factor, mode='bilinear')
+            ps[t] = F.interpolate(
+                ps[t], scale_factor=scale_factor * self.scale_compensate, mode='bilinear')
         return torch.cat([p[..., None] for p in ps], dim=-1)
 
     @classmethod
