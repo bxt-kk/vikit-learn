@@ -194,20 +194,23 @@ class TrimNetSeg(Segment):
                 inputs[..., t],
                 target,
             ).mean()
-            bce = torch.zeros_like(dice)
+            ce = torch.zeros_like(dice)
             if alpha < 1:
-                bce = F.cross_entropy(
+                ce_weight = target.transpose(0, 1).flatten(1).sum(1)
+                ce_weight = 1 - ce_weight / torch.clamp_min(ce_weight.sum(), 1)
+                ce = F.cross_entropy(
                     inputs[..., t],
                     target.argmax(dim=1),
+                    weight=ce_weight,
                     reduction='mean',
                 )
-            loss_t = alpha * dice + (1 - alpha) * bce
+            loss_t = alpha * dice + (1 - alpha) * ce
             loss = loss + loss_t / times
 
         return dict(
             loss=loss,
             dice_loss=dice,
-            bce_loss=bce,
+            ce_loss=ce,
         )
 
     # def calc_score(
