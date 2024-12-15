@@ -108,6 +108,23 @@ class TrimNetSeg(Segment):
         p = F.interpolate(p, (src_h, src_w), mode='bilinear')
         return p[0].cpu().numpy()
 
+    # def dice_loss(
+    #         self,
+    #         inputs: Tensor,
+    #         target: Tensor,
+    #         eps:    float=1e-5,
+    #     ) -> Tensor:
+    #
+    #     predict = torch.sigmoid(inputs).flatten(1)
+    #     ground = target.flatten(1)
+    #     intersection = predict * ground
+    #     dice = (
+    #         intersection.sum(dim=1) * 2 /
+    #         (predict.sum(dim=1) + ground.sum(dim=1) + eps)
+    #     )
+    #     dice_loss = 1 - dice
+    #     return dice_loss
+
     def dice_loss(
             self,
             inputs: Tensor,
@@ -115,13 +132,13 @@ class TrimNetSeg(Segment):
             eps:    float=1e-5,
         ) -> Tensor:
 
-        predict = torch.sigmoid(inputs).flatten(1)
-        ground = target.flatten(1)
+        predict = torch.sigmoid(inputs).flatten(2)
+        ground = target.flatten(2)
         intersection = predict * ground
         dice = (
-            intersection.sum(dim=1) * 2 /
-            (predict.sum(dim=1) + ground.sum(dim=1) + eps)
-        )
+            intersection.sum(dim=2) * 2 /
+            (predict.sum(dim=2) + ground.sum(dim=2) + eps)
+        ).mean(dim=1)
         dice_loss = 1 - dice
         return dice_loss
 
