@@ -197,5 +197,8 @@ class TrimNetSeg(Segment):
             conf_thresh: float=0.5,
         ):
 
-        predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
+        if conf_thresh > 0.:
+            predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
+        else:
+            predicts = F.one_hot(inputs[..., -1].argmax(dim=1)).permute(0, 3, 1, 2)
         self.m_iou_metric.update(predicts.to(torch.int), target.to(torch.int))
