@@ -47,8 +47,11 @@ class MaskSegment(VisionDataset):
         target = Image.open(self._masks[idx])
         if image.size != target.size:
             image = image.resize(target.size, resample=Image.Resampling.BICUBIC)
+        target = tv_tensors.Mask(target, dtype=torch.long)
         if self.transforms is not None:
-            target = tv_tensors.Mask(target, dtype=torch.long)
             image, target = self.transforms(image, target)
-            target = self._format_mask(target)
+        target = self._format_mask(target)
+
+        if target.shape[0] != len(self.classes):
+            return self.__getitem__((idx + 1) % self.__len__())
         return image, target
