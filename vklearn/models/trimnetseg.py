@@ -187,6 +187,8 @@ class TrimNetSeg(Segment):
         target = target.type_as(inputs)
         times = inputs.shape[-1]
         F_alpha = lambda t: (math.cos(t / times * math.pi) + 1) * 0.5
+        ce_weight = target.transpose(0, 1).flatten(1).sum(1)
+        ce_weight = 1 - ce_weight / torch.clamp_min(ce_weight.sum(), 1)
         loss = 0.
         for t in range(times):
             alpha = F_alpha(t)
@@ -196,8 +198,6 @@ class TrimNetSeg(Segment):
             ).mean()
             ce = torch.zeros_like(dice)
             if alpha < 1:
-                ce_weight = target.transpose(0, 1).flatten(1).sum(1)
-                ce_weight = 1 - ce_weight / torch.clamp_min(ce_weight.sum(), 1)
                 ce = F.cross_entropy(
                     inputs[..., t],
                     target.argmax(dim=1),
