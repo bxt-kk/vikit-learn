@@ -129,15 +129,15 @@ class TrimNetSeg(Segment):
             self,
             inputs: Tensor,
             target: Tensor,
-            eps:    float=1e-5,
+            smooth: float=1.,
         ) -> Tensor:
 
         predict = torch.softmax(inputs, dim=1).flatten(2)
         ground = target.flatten(2)
         intersection = predict * ground
         dice = (
-            (intersection.sum(dim=2) * 2 + eps) /
-            (predict.sum(dim=2) + ground.sum(dim=2) + eps)
+            (intersection.sum(dim=2) * 2 + smooth) /
+            (predict.sum(dim=2) + ground.sum(dim=2) + smooth)
         ).mean(dim=1)
         dice_loss = 1 - dice
         return dice_loss
