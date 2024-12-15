@@ -45,6 +45,8 @@ class MaskSegment(VisionDataset):
     def __getitem__(self, idx:int) -> Tuple[Any, Any]:
         image = Image.open(self._images[idx]).convert('RGB')
         target = Image.open(self._masks[idx])
+        if image.size != target.size:
+            image = image.resize(target.size, resample=Image.Resampling.BICUBIC)
         if self.transforms is not None:
             target = tv_tensors.Mask(target, dtype=torch.long)
             image, target = self.transforms(image, target)
