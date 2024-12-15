@@ -185,6 +185,7 @@ class TrimNetSeg(Segment):
             target:  Tensor,
             weights: Dict[str, float] | None=None,
             gamma:   float=0.5,
+            alpha:   float=0.,
         ) -> Dict[str, Any]:
 
         target = target.type_as(inputs)
@@ -194,20 +195,23 @@ class TrimNetSeg(Segment):
         ce_weight = 1 - ce_weight / torch.clamp_min(ce_weight.sum(), 1)
         loss = 0.
         for t in range(times):
-            alpha = F_alpha(t)
+            if alpha > 0.:
+                alpha_t = alpha
+            else:
+                alpha_t = F_alpha(t)
             dice = self.dice_loss(
                 inputs[..., t],
                 target,
             ).mean()
             ce = torch.zeros_like(dice)
-            if alpha < 1:
+            if alpha_t < 1:
                 ce = F.cross_entropy(
                     inputs[..., t],
                     target.argmax(dim=1),
                     weight=ce_weight,
                     reduction='mean',
                 )
-            loss_t = alpha * dice + (1 - alpha) * ce
+            loss_t = alpha_t * dice + (1 - alpha_t) * ce
             loss = loss + loss_t / times
 
         return dict(
