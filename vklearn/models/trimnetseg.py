@@ -136,7 +136,7 @@ class TrimNetSeg(Segment):
         ground = target.flatten(2)
         intersection = predict * ground
         dice = (
-            intersection.sum(dim=2) * 2 /
+            (intersection.sum(dim=2) * 2 + eps) /
             (predict.sum(dim=2) + ground.sum(dim=2) + eps)
         ).mean(dim=1)
         dice_loss = 1 - dice
