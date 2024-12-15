@@ -132,7 +132,7 @@ class TrimNetSeg(Segment):
             eps:    float=1e-5,
         ) -> Tensor:
 
-        predict = torch.sigmoid(inputs).flatten(2)
+        predict = torch.softmax(inputs, dim=1).flatten(2)
         ground = target.flatten(2)
         intersection = predict * ground
         dice = (
@@ -141,6 +141,40 @@ class TrimNetSeg(Segment):
         ).mean(dim=1)
         dice_loss = 1 - dice
         return dice_loss
+
+    # def calc_loss(
+    #         self,
+    #         inputs:  Tensor,
+    #         target:  Tensor,
+    #         weights: Dict[str, float] | None=None,
+    #         gamma:   float=0.5,
+    #     ) -> Dict[str, Any]:
+    #
+    #     target = target.type_as(inputs)
+    #     times = inputs.shape[-1]
+    #     F_alpha = lambda t: (math.cos(t / times * math.pi) + 1) * 0.5
+    #     loss = 0.
+    #     for t in range(times):
+    #         alpha = F_alpha(t)
+    #         dice = self.dice_loss(
+    #             inputs[..., t],
+    #             target,
+    #         ).mean()
+    #         bce = torch.zeros_like(dice)
+    #         if alpha < 1:
+    #             bce = F.binary_cross_entropy_with_logits(
+    #                 inputs[..., t],
+    #                 target,
+    #                 reduction='mean',
+    #             )
+    #         loss_t = alpha * dice + (1 - alpha) * bce
+    #         loss = loss + loss_t / times
+    #
+    #     return dict(
+    #         loss=loss,
+    #         dice_loss=dice,
+    #         bce_loss=bce,
+    #     )
 
     def calc_loss(
             self,
@@ -162,9 +196,9 @@ class TrimNetSeg(Segment):
             ).mean()
             bce = torch.zeros_like(dice)
             if alpha < 1:
-                bce = F.binary_cross_entropy_with_logits(
+                bce = F.cross_entropy(
                     inputs[..., t],
-                    target,
+                    target.argmax(dim=1),
                     reduction='mean',
                 )
             loss_t = alpha * dice + (1 - alpha) * bce
@@ -176,6 +210,20 @@ class TrimNetSeg(Segment):
             bce_loss=bce,
         )
 
+    # def calc_score(
+    #         self,
+    #         inputs: Tensor,
+    #         target: Tensor,
+    #         eps:    float=1e-5,
+    #     ) -> Dict[str, Any]:
+    #
+    #     predicts = torch.sigmoid(inputs[..., -1])
+    #     distance = torch.abs(predicts - target).mean(dim=(2, 3)).mean()
+    #
+    #     return dict(
+    #         mae=distance,
+    #     )
+
     def calc_score(
             self,
             inputs: Tensor,
@@ -183,12 +231,22 @@ class TrimNetSeg(Segment):
             eps:    float=1e-5,
         ) -> Dict[str, Any]:
 
-        predicts = torch.sigmoid(inputs[..., -1])
+        predicts = torch.softmax(inputs[..., -1], dim=1)
         distance = torch.abs(predicts - target).mean(dim=(2, 3)).mean()
 
         return dict(
             mae=distance,
         )
+
+    # def update_metric(
+    #         self,
+    #         inputs:      Tensor,
+    #         target:      Tensor,
+    #         conf_thresh: float=0.5,
+    #     ):
+    #
+    #     predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
+    #     self.m_iou_metric.update(predicts.to(torch.int), target.to(torch.int))
 
     def update_metric(
             self,
@@ -197,8 +255,5 @@ class TrimNetSeg(Segment):
             conf_thresh: float=0.5,
         ):
 
-        if conf_thresh > 0.:
-            predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
-        else:
-            predicts = F.one_hot(inputs[..., -1].argmax(dim=1)).permute(0, 3, 1, 2)
+        predicts = F.one_hot(inputs[..., -1].argmax(dim=1)).permute(0, 3, 1, 2)
         self.m_iou_metric.update(predicts.to(torch.int), target.to(torch.int))
