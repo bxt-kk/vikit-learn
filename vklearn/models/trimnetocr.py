@@ -76,7 +76,8 @@ class TrimNetOcr(OCR):
         for h in hs:
             h = h.squeeze(dim=2).transpose(1, 2)
             p = self.project(torch.cat([h, fs[-1]], dim=-1))
-            fs.append(p + fs[-1])
+            # fs.append(p + fs[-1])
+            fs.append((p + fs[-1]) * 0.5)
         x = fs.pop()
         x = self.classifier(x)
         return x, fs
