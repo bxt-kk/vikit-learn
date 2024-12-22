@@ -40,18 +40,16 @@ class MaskSegment(VisionDataset):
 
     def _format_mask(self, mask:tv_tensors.Mask) -> tv_tensors.Mask:
         return tv_tensors.Mask(
-            F.one_hot(mask).transpose(0, 3).squeeze(-1))
+            F.one_hot(mask, len(self.classes)).transpose(0, 3).squeeze(-1))
 
     def __getitem__(self, idx:int) -> Tuple[Any, Any]:
         image = Image.open(self._images[idx]).convert('RGB')
         target = Image.open(self._masks[idx])
+        assert target.mode == 'P'
         if image.size != target.size:
             image = image.resize(target.size, resample=Image.Resampling.BICUBIC)
         target = tv_tensors.Mask(target, dtype=torch.long)
         if self.transforms is not None:
             image, target = self.transforms(image, target)
         target = self._format_mask(target)
-
-        if target.shape[0] != len(self.classes):
-            return self.__getitem__((idx + 1) % self.__len__())
         return image, target
