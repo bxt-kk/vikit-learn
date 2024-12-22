@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from PIL import Image
 
 import torch
+import torch.nn.functional as F
 from torchvision.datasets.utils import download_and_extract_archive, verify_str_arg
 from torchvision.datasets.vision import VisionDataset
 from torchvision import tv_tensors
@@ -155,13 +156,12 @@ class OxfordIIITPet(VisionDataset):
 
     def _load_mask(self, idx:int) -> tv_tensors.Mask:
         image = Image.open(self._segs[idx])
-        mask = tv_tensors.Mask(image)
+        mask = tv_tensors.Mask(image, dtype=torch.long)
+        mask[mask == 2] = 0
+        mask[mask == 1] = 2
         mask[mask == 3] = 1
-        mask[mask != 1] = 0
-        rows, cols = mask.shape[1], mask.shape[2]
-        data = torch.zeros((2, rows, cols), dtype=mask.dtype)
-        data[self._bin_labels[idx]] = mask.data
-        return tv_tensors.Mask(data)
+        return tv_tensors.Mask(
+            F.one_hot(mask).transpose(0, 3).squeeze(-1))
 
     def __getitem__(self, idx: int) -> Tuple[Any, Any]:
         image = Image.open(self._images[idx]).convert('RGB')

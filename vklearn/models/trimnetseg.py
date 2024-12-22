@@ -1,5 +1,4 @@
 from typing import List, Any, Dict, Mapping
-import math
 
 from torch import Tensor
 
@@ -111,23 +110,6 @@ class TrimNetSeg(Segment):
         p = F.interpolate(p, (src_h, src_w), mode='bilinear')
         return p[0].cpu().numpy()
 
-    # def dice_loss(
-    #         self,
-    #         inputs: Tensor,
-    #         target: Tensor,
-    #         eps:    float=1e-5,
-    #     ) -> Tensor:
-    #
-    #     predict = torch.sigmoid(inputs).flatten(1)
-    #     ground = target.flatten(1)
-    #     intersection = predict * ground
-    #     dice = (
-    #         intersection.sum(dim=1) * 2 /
-    #         (predict.sum(dim=1) + ground.sum(dim=1) + eps)
-    #     )
-    #     dice_loss = 1 - dice
-    #     return dice_loss
-
     def dice_loss(
             self,
             inputs: Tensor,
@@ -145,73 +127,31 @@ class TrimNetSeg(Segment):
         dice_loss = 1 - dice
         return dice_loss
 
-    # def calc_loss(
-    #         self,
-    #         inputs:  Tensor,
-    #         target:  Tensor,
-    #         weights: Dict[str, float] | None=None,
-    #         gamma:   float=0.5,
-    #     ) -> Dict[str, Any]:
-    #
-    #     target = target.type_as(inputs)
-    #     times = inputs.shape[-1]
-    #     F_alpha = lambda t: (math.cos(t / times * math.pi) + 1) * 0.5
-    #     loss = 0.
-    #     for t in range(times):
-    #         alpha = F_alpha(t)
-    #         dice = self.dice_loss(
-    #             inputs[..., t],
-    #             target,
-    #         ).mean()
-    #         bce = torch.zeros_like(dice)
-    #         if alpha < 1:
-    #             bce = F.binary_cross_entropy_with_logits(
-    #                 inputs[..., t],
-    #                 target,
-    #                 reduction='mean',
-    #             )
-    #         loss_t = alpha * dice + (1 - alpha) * bce
-    #         loss = loss + loss_t / times
-    #
-    #     return dict(
-    #         loss=loss,
-    #         dice_loss=dice,
-    #         bce_loss=bce,
-    #     )
-
     def calc_loss(
             self,
             inputs:  Tensor,
             target:  Tensor,
-            weights: Dict[str, float] | None=None,
-            gamma:   float=0.5,
-            alpha:   float=0.,
+            weights: Tensor | None=None,
+            alpha:   float=0.25,
         ) -> Dict[str, Any]:
 
         target = target.type_as(inputs)
         times = inputs.shape[-1]
-        F_alpha = lambda t: (math.cos(t / times * math.pi) + 1) * 0.5
-        ce_weight = target.transpose(0, 1).flatten(1).sum(1)
-        ce_weight = 1 - ce_weight / torch.clamp_min(ce_weight.sum(), 1)
         loss = 0.
         for t in range(times):
-            if alpha > 0.:
-                alpha_t = alpha
-            else:
-                alpha_t = F_alpha(t)
             dice = self.dice_loss(
                 inputs[..., t],
                 target,
             ).mean()
             ce = torch.zeros_like(dice)
-            if alpha_t < 1:
+            if alpha < 1.:
                 ce = F.cross_entropy(
                     inputs[..., t],
                     target.argmax(dim=1),
-                    weight=ce_weight,
+                    weight=weights,
                     reduction='mean',
                 )
-            loss_t = alpha_t * dice + (1 - alpha_t) * ce
+            loss_t = alpha * dice + (1 - alpha) * ce
             loss = loss + loss_t / times
 
         return dict(
@@ -219,20 +159,6 @@ class TrimNetSeg(Segment):
             dice_loss=dice,
             ce_loss=ce,
         )
-
-    # def calc_score(
-    #         self,
-    #         inputs: Tensor,
-    #         target: Tensor,
-    #         eps:    float=1e-5,
-    #     ) -> Dict[str, Any]:
-    #
-    #     predicts = torch.sigmoid(inputs[..., -1])
-    #     distance = torch.abs(predicts - target).mean(dim=(2, 3)).mean()
-    #
-    #     return dict(
-    #         mae=distance,
-    #     )
 
     def calc_score(
             self,
@@ -247,16 +173,6 @@ class TrimNetSeg(Segment):
         return dict(
             mae=distance,
         )
-
-    # def update_metric(
-    #         self,
-    #         inputs:      Tensor,
-    #         target:      Tensor,
-    #         conf_thresh: float=0.5,
-    #     ):
-    #
-    #     predicts = torch.sigmoid(inputs[..., -1]) > conf_thresh
-    #     self.m_iou_metric.update(predicts.to(torch.int), target.to(torch.int))
 
     def update_metric(
             self,
