@@ -105,7 +105,7 @@ class TrimNetSeg(Segment):
 
         src_w, src_h = image.size
         dst_w, dst_h = round(scale * src_w), round(scale * src_h)
-        p = torch.sigmoid(p[..., pad_y:pad_y + dst_h, pad_x:pad_x + dst_w])
+        p = torch.softmax(p[..., pad_y:pad_y + dst_h, pad_x:pad_x + dst_w], dim=1)
         p[p < conf_thresh] = 0.
         p = F.interpolate(p, (src_h, src_w), mode='bilinear')
         return p[0].cpu().numpy()
