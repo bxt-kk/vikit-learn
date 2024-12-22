@@ -161,7 +161,7 @@ class OxfordIIITPet(VisionDataset):
         mask[mask == 1] = 2
         mask[mask == 3] = 1
         return tv_tensors.Mask(
-            F.one_hot(mask).transpose(0, 3).squeeze(-1))
+            F.one_hot(mask, 3).transpose(0, 3).squeeze(-1))
 
     def __getitem__(self, idx: int) -> Tuple[Any, Any]:
         image = Image.open(self._images[idx]).convert('RGB')

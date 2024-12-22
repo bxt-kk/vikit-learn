@@ -185,7 +185,12 @@ class PrintingCharacter(VisionDataset):
         self.fonts = []
         print('loading fonts...')
         for font_path in tqdm(sorted(font_paths), ncols=80):
-            self.fonts.append(Font(font_path, fontsize, self.characters))
+            try:
+                font = Font(font_path, fontsize, self.characters)
+            except OSError as e:
+                print(e, font_path)
+                continue
+            self.fonts.append(font)
 
     def __len__(self):
         return len(self.fonts) * len(self.characters)
