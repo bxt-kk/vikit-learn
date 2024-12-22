@@ -176,9 +176,8 @@ class TrimNetSeg(Segment):
 
     def update_metric(
             self,
-            inputs:      Tensor,
-            target:      Tensor,
-            conf_thresh: float=0.5,
+            inputs: Tensor,
+            target: Tensor,
         ):
 
         predicts = F.one_hot(inputs[..., -1].argmax(dim=1)).permute(0, 3, 1, 2)

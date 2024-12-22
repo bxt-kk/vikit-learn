@@ -40,7 +40,8 @@ class Segment(Basic):
             self,
             inputs:  Tensor,
             target:  Tensor,
-            weights: Dict[str, float] | None=None,
+            weights: Tensor | None=None,
+            alpha:   float=0.25,
         ) -> Dict[str, Any]:
         assert not 'this is an empty func'
 
@@ -54,9 +55,8 @@ class Segment(Basic):
 
     def update_metric(
             self,
-            inputs:      Tensor,
-            target:      Tensor,
-            conf_thresh: float=0.5,
+            inputs: Tensor,
+            target: Tensor,
         ):
         assert not 'this is an empty func'
 
