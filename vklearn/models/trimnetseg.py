@@ -129,10 +129,10 @@ class TrimNetSeg(Segment):
 
     def calc_loss(
             self,
-            inputs:  Tensor,
-            target:  Tensor,
-            weights: Tensor | None=None,
-            alpha:   float=0.25,
+            inputs:    Tensor,
+            target:    Tensor,
+            ce_weight: Tensor | None=None,
+            alpha:     float=0.25,
         ) -> Dict[str, Any]:
 
         target = target.type_as(inputs)
@@ -148,7 +148,7 @@ class TrimNetSeg(Segment):
                 ce = F.cross_entropy(
                     inputs[..., t],
                     target.argmax(dim=1),
-                    weight=weights,
+                    weight=ce_weight,
                     reduction='mean',
                 )
             loss_t = alpha * dice + (1 - alpha) * ce

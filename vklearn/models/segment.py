@@ -38,10 +38,10 @@ class Segment(Basic):
 
     def calc_loss(
             self,
-            inputs:  Tensor,
-            target:  Tensor,
-            weights: Tensor | None=None,
-            alpha:   float=0.25,
+            inputs:    Tensor,
+            target:    Tensor,
+            ce_weight: Tensor | None=None,
+            alpha:     float=0.25,
         ) -> Dict[str, Any]:
         assert not 'this is an empty func'
 
