@@ -66,7 +66,16 @@ class PlainBBox(VisionDataset):
             image_size: Tuple[int, int],
         ) -> List[float]:
 
-        cx, cy, w, h = cxcywh
+        cxcywh = cxcywh
+        if len(cxcywh) == 8:
+            xs = [cxcywh[i] for i in range(0, 7, 2)]
+            ys = [cxcywh[i] for i in range(1, 8, 2)]
+            cx = sum(xs) / 4
+            cy = sum(ys) / 4
+            w = max(xs) - min(xs)
+            h = max(ys) - min(ys)
+        else:
+            cx, cy, w, h = cxcywh
         x1 = (cx - w / 2) * image_size[0]
         y1 = (cy - h / 2) * image_size[1]
         x2 = (cx + w / 2) * image_size[0]

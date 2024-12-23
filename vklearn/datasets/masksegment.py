@@ -34,6 +34,7 @@ class MaskSegment(VisionDataset):
 
         self._images = sorted(glob(os.path.join(root, split, 'image', '*')))
         self._masks = sorted(glob(os.path.join(root, split, 'mask', '*')))
+        assert len(self._images) == len(self._masks)
 
     def __len__(self) -> int:
         return len(self._images)
