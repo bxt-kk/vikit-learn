@@ -12,6 +12,8 @@ from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 from torchvision.models.segmentation import deeplabv3_mobilenet_v3_large
 from torchvision.models.segmentation import DeepLabV3_MobileNet_V3_Large_Weights
 
+import timm
+
 
 class LayerNorm2d(nn.GroupNorm):
 
@@ -580,7 +582,7 @@ class MobileNetFeatures(nn.Module):
                 features[12:-1], # 160, 16, 16
             ])
 
-        elif arch == 'mobilenet_v3_larges':
+        elif arch == 'mobilenet_v3_large_dl':
             weights_state = deeplabv3_mobilenet_v3_large(
                 weights=DeepLabV3_MobileNet_V3_Large_Weights.DEFAULT,
             ).backbone.state_dict()
@@ -611,6 +613,20 @@ class MobileNetFeatures(nn.Module):
                 features[4:7], # 32, 64, 64
                 features[7:12], # 96, 32, 32
                 features[12:-2], # 160, 16, 16
+            ])
+
+        elif arch == 'mobilenet_v4_small':
+            backbone = timm.create_model(
+                'mobilenetv4_conv_small', pretrained=pretrained)
+
+            layer_dims = (32, 32, 64, 96, 128)
+
+            self.layers = nn.ModuleList([
+                nn.Sequential(backbone.conv_stem, backbone.bn1), # 32, 256, 256
+                backbone.blocks[0], # 32, 128, 128
+                backbone.blocks[1], # 64, 64, 64
+                backbone.blocks[2], # 96, 32, 32
+                backbone.blocks[3], # 128, 16, 16
             ])
 
         else:
