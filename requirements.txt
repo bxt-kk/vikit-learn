@@ -9,3 +9,4 @@ opencv-python>=4.10.0
 flet>=0.24.0
 shapely>=2.0.6
 tqdm>=4.66.5
+timm>=1.0.12
