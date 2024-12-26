@@ -117,9 +117,9 @@ class TrimNetX(Basic):
             self.features_dim = self.features.features_dim
 
             self.merged_dim = 128
-            if backbone.endswith('medium'):
+            if 'medium' in backbone:
                 self.merged_dim   = 192
-            elif backbone.endswith('large'):
+            elif 'large' in backbone:
                 self.merged_dim   = 384
 
         elif backbone == 'dinov2_vits14':

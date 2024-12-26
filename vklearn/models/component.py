@@ -619,9 +619,9 @@ class MobileNetFeatures(nn.Module):
             tag = arch.lstrip('mobilenet_v4_')
 
             layer_dims = (32, 32, 64, 96, 128)
-            if tag.endswith('medium'):
+            if 'medium' in tag:
                 layer_dims = (32, 48, 80, 160, 256)
-            elif tag.endswith('large'):
+            elif 'large' in tag:
                 layer_dims = (24, 48, 96, 192, 512)
 
             backbone = timm.create_model(
