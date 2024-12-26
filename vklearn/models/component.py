@@ -615,18 +615,24 @@ class MobileNetFeatures(nn.Module):
                 features[12:-2], # 160, 16, 16
             ])
 
-        elif arch == 'mobilenet_v4_small':
-            backbone = timm.create_model(
-                'mobilenetv4_conv_small', pretrained=pretrained)
+        elif arch.startswith('mobilenet_v4_'):
+            tag = arch.lstrip('mobilenet_v4_')
 
             layer_dims = (32, 32, 64, 96, 128)
+            if tag.endswith('medium'):
+                layer_dims = (32, 48, 80, 160, 256)
+            elif tag.endswith('large'):
+                layer_dims = (24, 48, 96, 192, 512)
+
+            backbone = timm.create_model(
+                'mobilenetv4_' + tag, pretrained=pretrained)
 
             self.layers = nn.ModuleList([
-                nn.Sequential(backbone.conv_stem, backbone.bn1), # 32, 256, 256
-                backbone.blocks[0], # 32, 128, 128
-                backbone.blocks[1], # 64, 64, 64
-                backbone.blocks[2], # 96, 32, 32
-                backbone.blocks[3], # 128, 16, 16
+                nn.Sequential(backbone.conv_stem, backbone.bn1), # 256, 256
+                backbone.blocks[0], # 128, 128
+                backbone.blocks[1], # 64, 64
+                backbone.blocks[2], # 32, 32
+                backbone.blocks[3], # 16, 16
             ])
 
         else:
