@@ -252,10 +252,15 @@ class UpSample(nn.Sequential):
 
 class PoolWithPosCode(nn.Module):
 
-    def __init__(self, stride:int):
+    def __init__(
+            self,
+            stride:    int,
+            scale_dim: int=1,
+        ):
         super().__init__()
 
         self.stride = stride
+        self.scale = 1 / scale_dim**0.5
 
     def forward(self, x:Tensor) -> Tensor:
         in_planes = x.shape[1]
@@ -264,8 +269,8 @@ class PoolWithPosCode(nn.Module):
         l = (torch.square(x.detach())).sum(dim=1, keepdim=True)
         u = F.pixel_unshuffle(l, self.stride)
         I = u.argmax(dim=1, keepdim=True)
-        cr = (I // self.stride).type_as(x) / (0.5 * (self.stride - 1)) - 1
-        cc = (I % self.stride).type_as(x) / (0.5 * (self.stride - 1)) - 1
+        cr = (I // self.stride).type_as(x) / (0.5 * (self.stride - 1)) * self.scale - self.scale
+        cc = (I % self.stride).type_as(x) / (0.5 * (self.stride - 1)) * self.scale - self.scale
 
         bs, _, ny, nx = u.shape
         x = F.pixel_unshuffle(x, self.stride)
@@ -638,12 +643,12 @@ class MobileNetFeatures(nn.Module):
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
 
-        self.pools2 = PoolWithPosCode(stride=2)
-        self.pools4 = PoolWithPosCode(stride=4)
-        self.pools8 = PoolWithPosCode(stride=8)
-
         self.features_dim = sum(layer_dims) + 2 * 3
         self.cell_size    = 16
+
+        self.pools2 = PoolWithPosCode(stride=2, scale_dim=self.features_dim)
+        self.pools4 = PoolWithPosCode(stride=4, scale_dim=self.features_dim)
+        self.pools8 = PoolWithPosCode(stride=8, scale_dim=self.features_dim)
 
     def forward(self, x:Tensor) -> Tensor:
         f0 = self.layers[0](x)
