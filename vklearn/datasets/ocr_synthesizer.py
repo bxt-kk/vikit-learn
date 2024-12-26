@@ -7,21 +7,19 @@ import torch
 
 from PIL import Image
 
-from .printing_character import PrintingCharacter
+from .ocr_printing import PrintingCharacter
 from .hwdb_gnt import HWDBGnt
 from .hwdb_pot import HWDBPot
 
 
-class TextlineGen(VisionDataset):
-    '''Textline-Generator Dataset
+class OCRSynthesizer(VisionDataset):
+    '''OCR-Synthesizer Dataset
 
     Args:
         root: Root directory of the dataset.
         fonts_dir: The directory of font files.
         characters_file: The path of character-set file.
         split: The dataset split, supports `"train"` (default) or `"test"`.
-        limit: Limit the number of data files to be loaded.
-        align_size: Image alignment.
         transform: A function/transform that takes in a PIL image
             and returns a transformed version. E.g, ``transforms.PILToTensor``
         target_transform: A function/transform that takes in the
