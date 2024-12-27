@@ -102,7 +102,7 @@ class InstructSubject(VisionDataset):
             points: List[List[int]],
         ) -> Image.Image:
 
-        rect = cv.minAreaRect(np.int0(points))
+        rect = cv.minAreaRect(np.intp(points))
         bbox = cv.boxPoints(rect)
         if bbox[1, 0] < bbox[3, 0]:
             width, height = rect[1]
