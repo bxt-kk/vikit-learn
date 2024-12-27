@@ -178,6 +178,7 @@ class OCRSynthesizer(VisionDataset):
             text = text[::-1]
 
         if self.transform is not None:
+            image.__ONLY_PRINT__ = not applied_hwdb
             image = self.transform(image)
 
         target = torch.LongTensor([self.char2index[c] for c in text])
