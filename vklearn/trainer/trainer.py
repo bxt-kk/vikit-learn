@@ -34,6 +34,7 @@ class Trainer:
         lrf: The learning rate decay factor.
         T_num: The number of learning rate change cycles.
         grad_steps: The number of steps for gradient updates.
+        grad_max_norm: The max norm of gradient.
         epochs: The total number of training epochs.
         show_step: Set the interval for displaying the training status in steps.
         save_epoch: Set the interval for saving the model in epochs.
@@ -55,6 +56,7 @@ class Trainer:
     lrf:               float=1.
     T_num:             float=1.
     grad_steps:        int=1
+    grad_max_norm:     float=0.
     epochs:            int=1
     show_step:         int=50
     save_epoch:        int=1
@@ -160,6 +162,9 @@ class Trainer:
                         print('valid:', logger.dumps('valid'))
 
                 if (step + 1) % self.grad_steps == 0:
+                    if self.grad_max_norm > 0.:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), max_norm=self.grad_max_norm)
                     optimizer.step()
                     optimizer.zero_grad()
 
