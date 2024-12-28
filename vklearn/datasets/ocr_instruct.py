@@ -23,6 +23,7 @@ class OCRInstruct(Dataset):
             self,
             subject_roots:    List[str],
             synthesizer:      OCRSynthesizer,
+            synthesis_rate:   float=1.,
             transforms:       Callable | None=None,
             transform:        Callable | None=None,
             target_transform: Callable | None=None,
@@ -42,12 +43,17 @@ class OCRInstruct(Dataset):
         self.synthesizer   = synthesizer
         self.subject_total = sum([len(subject) for subject in self.subjects])
 
+        self.synthesis_limit = int(len(synthesizer) * synthesis_rate)
+
     def __len__(self):
-        return self.subject_total + len(self.synthesizer)
+        return self.subject_total + self.synthesis_limit
 
     def __getitem__(self, idx:int):
         if idx >= self.subject_total:
-            return self.synthesizer[idx - self.subject_total]
+            synthesis_size = len(self.synthesizer)
+            if self.synthesis_limit == synthesis_size:
+                return self.synthesizer[idx - self.subject_total]
+            return self.synthesizer[random.randrange(synthesis_size)]
         begin = 0
         for subject in self.subjects:
             end = len(subject) + begin
@@ -57,6 +63,7 @@ class OCRInstruct(Dataset):
 
 
 class InstructSubject(VisionDataset):
+
     def __init__(
             self,
             root:             str,
