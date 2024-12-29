@@ -132,13 +132,15 @@ class InstructSubject(VisionDataset):
             im_arr = cv.cvtColor(im_arr, cv.COLOR_BGR2RGB)
         image = Image.fromarray(im_arr)
 
-        if image.size[0] < image.size[1]:
-            image = image.transpose(Image.Transpose.ROTATE_90)
+        # if image.size[0] < image.size[1]:
+        #     image = image.transpose(Image.Transpose.ROTATE_90)
         return image
 
     def __getitem__(self, idx:int) -> Tuple[Image.Image | Tensor, Tensor, int]:
         path, text, points = self.items[idx]
         image = self._load_image(path, points)
+        if (len(text) > 1) and (image.size[0] < image.size[1]):
+            image = image.transpose(Image.Transpose.ROTATE_90)
 
         reverse = int(self._reverse_rate > max(1e-7, random.random()))
         if reverse:
