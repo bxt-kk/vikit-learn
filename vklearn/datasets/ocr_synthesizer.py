@@ -159,6 +159,8 @@ class OCRSynthesizer(VisionDataset):
         text = font.random_lack(text, ['#'])
 
         printing, xyxys = font.text2image_with_xyxys(text, direction=self._layout_direction)
+        if min(printing.size) == 0:
+            return self.__getitem__((idx + 1) % self.__len__())
 
         applied_hwdb = self._hwdb_rate > max(1e-7, random.random())
         if applied_hwdb:
