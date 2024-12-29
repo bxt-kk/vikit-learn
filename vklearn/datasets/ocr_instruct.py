@@ -1,4 +1,4 @@
-from typing import List, Callable, Tuple
+from typing import List, Callable, Tuple, Sequence
 from glob import glob
 import os
 import json
@@ -21,7 +21,7 @@ class OCRInstruct(Dataset):
 
     def __init__(
             self,
-            subject_roots:    List[str],
+            subject_datas:    List[str | VisionDataset],
             synthesizer:      OCRSynthesizer,
             synthesis_rate:   float=1.,
             transforms:       Callable | None=None,
@@ -30,20 +30,38 @@ class OCRInstruct(Dataset):
         ):
 
         self.subjects = []
-        for root in subject_roots:
-            self.subjects.append(InstructSubject(
-                root,
-                synthesizer.characters,
-                synthesizer._reverse_rate,
-                transforms=transforms,
-                transform=transform,
-                target_transform=target_transform,
-            ))
+        for data in subject_datas:
+            if isinstance(data, str):
+                self.subjects.append(InstructSubject(
+                    data,
+                    synthesizer.characters,
+                    synthesizer._reverse_rate,
+                    transforms=transforms,
+                    transform=transform,
+                    target_transform=target_transform,
+                ))
+            elif isinstance(data, Sequence) and isinstance(data[0], str):
+                self.subjects.append(InstructSubject(
+                    data[0],
+                    synthesizer.characters,
+                    synthesizer._reverse_rate,
+                    transform=data[1],
+                ))
+            else:
+                self.subjects.append(data)
 
         self.synthesizer   = synthesizer
         self.subject_total = sum([len(subject) for subject in self.subjects])
 
         self.synthesis_limit = int(len(synthesizer) * synthesis_rate)
+
+    def __repr__(self):
+        info = f'Dataset {self.__class__.__name__}\n'
+        info += f'\tNumber of datapoints: {len(self)}\n'
+        info += 'Subjects:'
+        for subject in self.subjects:
+            info += f'\n* {str(subject)}'
+        return info
 
     def __len__(self):
         return self.subject_total + self.synthesis_limit
