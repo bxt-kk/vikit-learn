@@ -693,6 +693,9 @@ class CaresFeatures(nn.Module):
 
         super().__init__()
 
+        self.cell_size = 8
+        f2d_rows = 4
+
         if arch == 'small':
             self.features_dim= 192
 
@@ -724,12 +727,32 @@ class CaresFeatures(nn.Module):
 
             features2d_channel = 40
 
+        elif arch in ('largex48', 'largex64'):
+            self.features_dim= 320
+            self.cell_size = 16
+
+            self.features2d = nn.Sequential(
+                ConvNormActive(3, 8, kernel_size=3, stride=2, activation=nn.ReLU, norm_layer=None),
+                ConvNormActive(8, 16, kernel_size=1, activation=nn.ReLU),
+
+                InvertedResidual(16, 16, 1, stride=1, activation=nn.ReLU),
+                InvertedResidual(16, 24, 4, stride=2, activation=nn.ReLU),
+                InvertedResidual(24, 24, 3, stride=1, activation=nn.ReLU),
+                InvertedResidual(24, 40, 3, kernel_size=5, stride=2, activation=nn.ReLU),
+                InvertedResidual(40, 40, 3, kernel_size=5, stride=1, activation=nn.ReLU),
+                InvertedResidual(40, 40, 3, kernel_size=5, stride=2, activation=nn.ReLU),
+                InvertedResidual(40, 80, 6, kernel_size=5, stride=1, activation=nn.ReLU),
+            )
+
+            features2d_channel = 80
+            if arch.endswith('x48'):
+                f2d_rows = 3
+            elif arch.endswith('x64'):
+                f2d_rows = 4
+
         else:
             raise ValueError(f'Unsupported arch `{arch}`')
 
-        self.cell_size = 8
-
-        f2d_rows = 4
         hidden_dim = features2d_channel * f2d_rows
 
         self.sq_attation = SqueezeAttention(

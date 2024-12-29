@@ -137,13 +137,8 @@ class TrimNetX(Basic):
             self.features_dim = self.features.features_dim
             self.merged_dim   = 128
 
-        elif backbone == 'cares_large':
-            self.features     = CaresFeatures(arch='large')
-            self.features_dim = self.features.features_dim
-            self.merged_dim   = 192
-
-        elif backbone == 'cares_large':
-            self.features     = CaresFeatures(arch='large')
+        elif backbone.startswith('cares_large'):
+            self.features     = CaresFeatures(arch=backbone.lstrip('cares_'))
             self.features_dim = self.features.features_dim
             self.merged_dim   = 192
 
