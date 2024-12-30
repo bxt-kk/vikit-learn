@@ -58,6 +58,7 @@ class OCRInstruct(Dataset):
     def __repr__(self):
         info = f'Dataset {self.__class__.__name__}\n'
         info += f'\tNumber of datapoints: {len(self)}\n'
+        info += f'Synthesizer: {self.synthesizer}\n'
         info += 'Subjects:'
         for subject in self.subjects:
             info += f'\n* {str(subject)}'
