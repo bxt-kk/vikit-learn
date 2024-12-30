@@ -282,6 +282,30 @@ class OCR(Basic):
                 transforms.Grayscale(num_output_channels=3),
             ]
 
+        elif task_name == 'noise':
+            transform_list = [
+                RandomInvert(prob=0.5),
+                transforms.RandomChoice([
+                    NoiseCharacters(prob=0.05),
+                    RandomVerticalCrop(prob=0.05),
+                ]),
+                RandomTableLine(prob=0.05),
+                InterLine(prob=0.05),
+                VerticalLine(prob=0.05),
+                RandomLine(prob=0.05),
+                RandomChoices([
+                    RandomGradient(prob=0.1),
+                    RandomLevelScale(prob=0.1),
+                    DropoutVertical(prob=0.1),
+                    DropoutHorizontal(prob=0.1),
+                    transforms.RandomChoice([
+                        RandomNoise(prob=0.1),
+                        RandomBlur(prob=0.1),
+                    ]),
+                ], times=3),
+                RandomInvert(prob=0.5),
+            ]
+
         else:
             raise ValueError(f'Unsupported the task `{task_name}`')
 
@@ -365,9 +389,11 @@ class RandomLine:
         if random.random() >= self.prob: return img
         img = img.copy()
         w, h = img.size
+        fill = random.randint(self.fill[0], self.fill[1])
+        if img.mode == 'RGB': fill = (fill, fill, fill)
         draw = ImageDraw.Draw(img)
         draw.line(tuple(random.randint(0, i - 1) for i in (w, h, w, h)),
-                  fill=random.randint(self.fill[0], self.fill[1]),
+                  fill=fill,
                   width=random.randint(1, self.width))
         return img
 
@@ -394,6 +420,7 @@ class RandomTableLine:
         y1 = random.randint(h - self.bias, h) - 1
         width = random.randint(1, self.width)
         fill = random.randint(self.fill[0], self.fill[1])
+        if img.mode == 'RGB': fill = (fill, fill, fill)
         if anchor == 0:
             draw.line((x0, y0, x1, y0), fill=fill, width=width)
             draw.line((x0, y0, x0, y1), fill=fill, width=width)
@@ -424,7 +451,8 @@ class RandomGradient:
         x = np.arange(w)
         y = 0.5 * np.sin(x * (2 * np.pi / T) + b) + 0.5
         y = np.clip(y, 0.8, None)
-        arr = np.array(img) * y[None, :]
+        arr = np.array(img)# * y[None, :]
+        arr = arr * y.reshape((1, -1, 1)[:len(arr.shape)])
         img = Image.fromarray(arr.astype(np.uint8))
         return img
 
@@ -469,8 +497,9 @@ class RandomNoise:
 
     def __call__(self, img:Image.Image):
         if random.random() >= self.prob: return img
-        shape = img.size[1], img.size[0]
+        # shape = img.size[1], img.size[0]
         arr = np.array(img)
+        shape = arr.shape
         density_mask = np.random.random(shape) < self.density
         noise = np.random.randint(-self.intensity, self.intensity, shape)
         noise = density_mask * noise
@@ -549,10 +578,12 @@ class InterLine:
         w, h = img.size
         y0 = int(random.uniform(self.beta, 1 - self.beta) * h)
         y1 = y0 + random.randint(-3, 3)
+        fill = random.randint(self.fill[0], self.fill[1])
+        if img.mode == 'RGB': fill = (fill, fill, fill)
         draw = ImageDraw.Draw(img)
         draw.line(
             (0, y0, w, y1),
-            fill=random.randint(self.fill[0], self.fill[1]),
+            fill=fill,
             width=random.randint(1, self.width))
         return img
 
@@ -574,10 +605,12 @@ class VerticalLine:
         pd = round(h * self.beta)
         x0 = random.randint(pd, max(w - pd, pd + 1))
         x1 = x0 + random.randint(-3, 3)
+        fill = random.randint(self.fill[0], self.fill[1])
+        if img.mode == 'RGB': fill = (fill, fill, fill)
         draw = ImageDraw.Draw(img)
         draw.line(
             (x0, 0, x1, h),
-            fill=random.randint(self.fill[0], self.fill[1]),
+            fill=fill,
             width=random.randint(1, self.width))
         return img
 
@@ -614,7 +647,7 @@ class DropoutHorizontal:
         mask = np.abs(np.random.randn(arr.shape[0])) < self.thresh
         rows = mask.sum()
         if rows == 0: return img
-        rate = np.random.random((rows, 1))
+        rate = np.random.random((rows, 1, 1)[:len(arr.shape)])
         arr[mask] = (arr[mask] * rate).astype(np.uint8)
         img = Image.fromarray(arr)
         return img
@@ -634,7 +667,7 @@ class DropoutVertical:
         mask = np.abs(np.random.randn(arr.shape[1])) < self.thresh
         cols = mask.sum()
         if cols == 0: return img
-        rate = np.random.random((1, cols))
+        rate = np.random.random((1, cols, 1)[:len(arr.shape)])
         arr[:, mask] = (arr[:, mask] * rate).astype(np.uint8)
         img = Image.fromarray(arr)
         return img
