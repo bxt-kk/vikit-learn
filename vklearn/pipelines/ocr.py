@@ -31,8 +31,12 @@ class OCR:
             state = torch.load(state, map_location='cpu', weights_only=True)
         return cls(model.load_from_state(state).eval())
 
-    def export_onnx(self, f: str | io.BytesIO):
-        inputs = torch.randn(1, 3, 224, 224)
+    def export_onnx(
+            self,
+            f:          str | io.BytesIO,
+            align_size: int=32,
+        ):
+        inputs = torch.randn(1, 3, align_size, align_size * 10)
         torch.onnx.export(
             model=self.model,
             args=inputs,
@@ -40,8 +44,8 @@ class OCR:
             input_names=['input'],
             output_names=['output'],
             dynamic_axes={
-                'input': {0: 'batch_size' },
-                'output': {0: 'batch_size'},
+                'input': {3: 'img_width'},
+                'output': {3: 'seq_length'},
             },
         )
 
