@@ -250,34 +250,62 @@ class UpSample(nn.Sequential):
         )
 
 
+# class PoolWithPosCode(nn.Module):
+#
+#     def __init__(
+#             self,
+#             stride:    int,
+#             scale_dim: int=1,
+#         ):
+#         super().__init__()
+#
+#         self.stride = stride
+#         self.scale = 1 / scale_dim**0.5
+#
+#     def forward(self, x:Tensor) -> Tensor:
+#         in_planes = x.shape[1]
+#
+#         # l = (x * x).sum(dim=1, keepdim=True)
+#         l = (torch.square(x.detach())).sum(dim=1, keepdim=True)
+#         u = F.pixel_unshuffle(l, self.stride)
+#         I = u.argmax(dim=1, keepdim=True)
+#         cr = (I // self.stride).type_as(x) / (0.5 * (self.stride - 1)) * self.scale - self.scale
+#         cc = (I % self.stride).type_as(x) / (0.5 * (self.stride - 1)) * self.scale - self.scale
+#
+#         bs, _, ny, nx = u.shape
+#         x = F.pixel_unshuffle(x, self.stride)
+#         x = x.reshape(bs, in_planes, -1, ny, nx)
+#         J = I.unsqueeze(1).expand(-1, in_planes, -1, -1, -1)
+#         x = x.gather(dim=2, index=J).squeeze(2)
+#         return torch.cat([cr, cc, x], dim=1)
+
+
 class PoolWithPosCode(nn.Module):
 
     def __init__(
             self,
+            in_planes: int,
             stride:    int,
-            scale_dim: int=1,
         ):
+
         super().__init__()
 
+        assert stride > 1
+
+        self.pos_embed = nn.Sequential(
+            nn.Conv2d(in_planes, 1, 1),
+            DEFAULT_ACTIVATION(inplace=False),
+            nn.Conv2d(1, 2, kernel_size=stride, stride=stride),
+            DEFAULT_ACTIVATION(inplace=False),
+        )
+
         self.stride = stride
-        self.scale = 1 / scale_dim**0.5
 
     def forward(self, x:Tensor) -> Tensor:
-        in_planes = x.shape[1]
-
-        # l = (x * x).sum(dim=1, keepdim=True)
-        l = (torch.square(x.detach())).sum(dim=1, keepdim=True)
-        u = F.pixel_unshuffle(l, self.stride)
-        I = u.argmax(dim=1, keepdim=True)
-        cr = (I // self.stride).type_as(x) / (0.5 * (self.stride - 1)) * self.scale - self.scale
-        cc = (I % self.stride).type_as(x) / (0.5 * (self.stride - 1)) * self.scale - self.scale
-
-        bs, _, ny, nx = u.shape
-        x = F.pixel_unshuffle(x, self.stride)
-        x = x.reshape(bs, in_planes, -1, ny, nx)
-        J = I.unsqueeze(1).expand(-1, in_planes, -1, -1, -1)
-        x = x.gather(dim=2, index=J).squeeze(2)
-        return torch.cat([cr, cc, x], dim=1)
+        return torch.cat([
+            self.pos_embed(x),
+            F.max_pool2d(x, self.stride),
+        ], dim=1)
 
 
 class CSENet(nn.Module):
@@ -646,9 +674,13 @@ class MobileNetFeatures(nn.Module):
         self.features_dim = sum(layer_dims) + 2 * 3
         self.cell_size    = 16
 
-        self.pools2 = PoolWithPosCode(stride=2, scale_dim=self.features_dim)
-        self.pools4 = PoolWithPosCode(stride=4, scale_dim=self.features_dim)
-        self.pools8 = PoolWithPosCode(stride=8, scale_dim=self.features_dim)
+        # self.pools2 = PoolWithPosCode(stride=2, scale_dim=self.features_dim)
+        # self.pools4 = PoolWithPosCode(stride=4, scale_dim=self.features_dim)
+        # self.pools8 = PoolWithPosCode(stride=8, scale_dim=self.features_dim)
+
+        self.pools2 = PoolWithPosCode(layer_dims[2], stride=2)
+        self.pools4 = PoolWithPosCode(layer_dims[1], stride=4)
+        self.pools8 = PoolWithPosCode(layer_dims[0], stride=8)
 
     def forward(self, x:Tensor) -> Tensor:
         f0 = self.layers[0](x)
