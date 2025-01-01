@@ -292,7 +292,7 @@ class PoolWithPosCode(nn.Module):
 
         assert stride > 1
 
-        self.pos_embed = nn.Sequential(
+        self.pos_code = nn.Sequential(
             nn.Conv2d(in_planes, 1, 1),
             DEFAULT_ACTIVATION(inplace=False),
             nn.Conv2d(1, 2, kernel_size=stride, stride=stride),
@@ -303,7 +303,7 @@ class PoolWithPosCode(nn.Module):
 
     def forward(self, x:Tensor) -> Tensor:
         return torch.cat([
-            self.pos_embed(x),
+            self.pos_code(x),
             F.max_pool2d(x, self.stride),
         ], dim=1)
 
