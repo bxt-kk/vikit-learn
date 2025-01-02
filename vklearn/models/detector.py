@@ -445,6 +445,55 @@ class Detector(Basic):
                 )
             ])
 
+        elif task_name == 'documentx640':
+            train_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.ScaleJitter(
+                    target_size=(640, 640),
+                    scale_range=(512 / 640, 1.1),
+                    antialias=True),
+                v2.RandomPhotometricDistort(p=1),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
+                v2.RandomCrop(
+                    size=(640, 640),
+                    pad_if_needed=True,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+                v2.RandomChoice([v2.Identity()] + [
+                    v2.RandomRotation(
+                        degrees=(degree - 0.1, degree + 0.1),
+                        interpolation=v2.InterpolationMode.BILINEAR,
+                        fill={tv_tensors.Image: 127, tv_tensors.Mask: 0})
+                    for degree in (90, 180, 270)
+                ]),
+                v2.SanitizeBoundingBoxes(min_size=3),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+            test_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=639,
+                    max_size=640,
+                    antialias=True),
+                v2.Pad(
+                    padding=640 // 4,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+                v2.CenterCrop(640),
+                v2.SanitizeBoundingBoxes(min_size=3),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+
         else:
             raise ValueError(f'Unsupported the task `{task_name}`')
 

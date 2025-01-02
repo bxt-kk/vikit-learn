@@ -18,10 +18,23 @@ from tqdm import tqdm
 
 
 class OCRInstruct(Dataset):
+    '''`OCR Instruct dataset.
+
+    Args:
+        subject_datas: A list of sbuject datas.
+        synthesizer: The OCRSynthesizer object.
+        synthesis_rate: The adoption rate of the synthesis data.
+        transform: A function/transform that takes in a PIL image
+            and returns a transformed version. E.g, ``transforms.PILToTensor``
+        target_transform: A function/transform that takes in the
+            target and transforms it.
+        transforms: A function/transform that takes input sample and its target as entry
+            and returns a transformed version.
+    '''
 
     def __init__(
             self,
-            subject_datas:    List[str | VisionDataset],
+            subject_datas:    List[str | Tuple[str, Callable] | VisionDataset],
             synthesizer:      OCRSynthesizer,
             synthesis_rate:   float=1.,
             transforms:       Callable | None=None,
@@ -82,6 +95,19 @@ class OCRInstruct(Dataset):
 
 
 class InstructSubject(VisionDataset):
+    '''`Instruct Subject dataset.
+
+    Args:
+        root: Root directory where images are downloaded to.
+        characters: A list of the characters.
+        reverse_rate: The rate of images reversed.
+        transform: A function/transform that takes in a PIL image
+            and returns a transformed version. E.g, ``transforms.PILToTensor``
+        target_transform: A function/transform that takes in the
+            target and transforms it.
+        transforms: A function/transform that takes input sample and its target as entry
+            and returns a transformed version.
+    '''
 
     def __init__(
             self,

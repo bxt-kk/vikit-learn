@@ -9,6 +9,7 @@ import cv2 as cv
 import numpy as np
 
 import torch
+from torch.utils.data import Dataset
 from torchvision.datasets.vision import VisionDataset
 from torchvision.tv_tensors import BoundingBoxes, Mask
 from torchvision.ops import box_convert
@@ -19,6 +20,7 @@ class LabelmeJoints(VisionDataset):
 
     Args:
         root: Root directory where images are downloaded to.
+        split: The dataset split, supports ``""`` (default), ``"train"``, ``"val"`` or ``"test"``.
         transform: A function/transform that takes in a PIL image
             and returns a transformed version. E.g, ``transforms.PILToTensor``
         target_transform: A function/transform that takes in the
@@ -55,7 +57,7 @@ class LabelmeJoints(VisionDataset):
         return len(self.label_paths)
 
     def _load_image(self, path:str) -> Image.Image:
-        return Image.open(os.path.join(self.dataset_dir, path)).convert("RGB")
+        return Image.open(os.path.join(self.dataset_dir, path)).convert('RGB')
 
     def _format_anns(
         self,
@@ -148,3 +150,61 @@ class LabelmeJoints(VisionDataset):
         assert len(target['boxes']) == num_boxes
 
         return image, target
+
+
+class LabelmeJointInstruct(Dataset):
+    '''`Labelme Joints Instruct dataset.
+
+    Args:
+        subject_datas: A list of sbuject datas.
+        split: The dataset split, supports ``""`` (default), ``"train"``, ``"val"`` or ``"test"``.
+        transform: A function/transform that takes in a PIL image
+            and returns a transformed version. E.g, ``transforms.PILToTensor``
+        target_transform: A function/transform that takes in the
+            target and transforms it.
+        transforms: A function/transform that takes input sample and its target as entry
+            and returns a transformed version.
+    '''
+
+    def __init__(
+            self,
+            subject_datas:    List[str | VisionDataset],
+            split:            str='',
+            transforms:       Callable | None=None,
+            transform:        Callable | None=None,
+            target_transform: Callable | None=None,
+        ):
+
+        self.subjects = []
+        for data in subject_datas:
+            if isinstance(data, str):
+                self.subjects.append(LabelmeJoints(
+                    data,
+                    split=split,
+                    transforms=transforms,
+                    transform=transform,
+                    target_transform=target_transform,
+                ))
+            else:
+                self.subjects.append(data)
+
+        self.subject_total = sum([len(subject) for subject in self.subjects])
+
+    def __repr__(self):
+        info = f'Dataset {self.__class__.__name__}\n'
+        info += f'\tNumber of datapoints: {len(self)}\n'
+        info += 'Subjects:'
+        for subject in self.subjects:
+            info += f'\n* {str(subject)}'
+        return info
+
+    def __len__(self):
+        return self.subject_total
+
+    def __getitem__(self, idx:int):
+        begin = 0
+        for subject in self.subjects:
+            end = len(subject) + begin
+            if idx < end: break
+            begin = end
+        return subject[idx - begin]
