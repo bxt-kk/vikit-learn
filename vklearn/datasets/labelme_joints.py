@@ -100,7 +100,8 @@ class LabelmeJoints(VisionDataset):
             if i % 2 == 0: continue
             pt1 = boxes[i - 1][:2].round().numpy().astype(int)
             pt2 = boxes[i][:2].round().numpy().astype(int)
-            cv.line(ground, pt1, pt2, 1, self.LINE_THICKNESS, lineType=cv.LINE_AA)
+            thickness = max(1, min(self.LINE_THICKNESS, round(0.33 * boxes[i -1][3].item())))
+            cv.line(ground, pt1, pt2, 1, thickness, lineType=cv.LINE_AA)
         return Mask(np.expand_dims(ground, 0))
 
     def _load_anns(self, id:int) -> Tuple[List[Any], str]:
