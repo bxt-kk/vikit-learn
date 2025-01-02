@@ -208,15 +208,15 @@ class TrimNetJot(Joints):
             self,
             inputs: Tensor,
             target: Tensor,
-            eps:    float=1e-5,
+            smooth: float=1.,
         ) -> Tensor:
 
         predict = torch.sigmoid(inputs).flatten(1)
         ground = target.flatten(1)
         intersection = predict * ground
         dice = (
-            intersection.sum(dim=1) * 2 /
-            (predict.sum(dim=1) + ground.sum(dim=1) + eps)
+            (intersection.sum(dim=1) * 2 + smooth) /
+            (predict.sum(dim=1) + ground.sum(dim=1) + smooth)
         )
         dice_loss = 1 - dice
         return dice_loss
