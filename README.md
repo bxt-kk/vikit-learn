@@ -1,5 +1,7 @@
 # vikit-learn
 
+![](./asset/vikit-learn.jpeg)
+
 Vikit-learn is a computer vision processing toolkit developed using Python, based on deep learning technology.
 
 This package aims to provide a series of easy-to-use tools that can handle real-world tasks.
