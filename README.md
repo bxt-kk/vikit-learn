@@ -1,7 +1,5 @@
 # vikit-learn
 
-![](./asset/vikit-learn.jpeg)
-
 Vikit-learn is a computer vision processing toolkit developed using Python, based on deep learning technology.
 
 This package aims to provide a series of easy-to-use tools that can handle real-world tasks.
@@ -9,6 +7,8 @@ This package aims to provide a series of easy-to-use tools that can handle real-
 The project is still under active construction and development, so please look forward to this work!
 
 Current Support: Image Classification, Object Detection, Semantic Segmentation, Keypoint&Joint Detection, OCR
+
+![](./asset/vikit-learn.jpeg)
 
 ## Installation
 
@@ -25,6 +25,7 @@ Current Support: Image Classification, Object Detection, Semantic Segmentation, 
 - flet>=0.24.0
 - shapely>=2.0.6
 - tqdm>=4.66.5
+- timm>=1.0.12
 
 ### With pip
 
