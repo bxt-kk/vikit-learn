@@ -7,6 +7,7 @@ from PIL import Image
 from numpy import ndarray
 import cv2 as cv
 from matplotlib.pyplot import Figure, Circle, Polygon
+import numpy as np
 
 from ..models.joints import Joints as Model
 
@@ -62,7 +63,7 @@ class Joints:
             iou_thresh:   float=0.5,
             align_size:   int=448,
             score_thresh: float=0.5,
-            ocr_params:   Sequence[Tuple[float, int]]=((0.7, 7), (0.9, 5)),
+            ocr_params:   Sequence[Tuple[float, int]]=((0.7, 2), (0.9, 2)),
         ) -> List[Dict[str, Any]]:
         '''Invoke the method for keypoint&joint detection.
 
@@ -110,7 +111,7 @@ class Joints:
 
         if show_heatmap:
             ax = fig.add_subplot(1, 2, 1)
-            fig.add_subplot(1, 2, 2).imshow(result['heatmap'])
+            fig.add_subplot(1, 2, 2).imshow(np.array(result['heatmap']) > 255 * 0.5)
         else:
             ax = fig.add_subplot()
         ax.imshow(image)

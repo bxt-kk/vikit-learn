@@ -241,8 +241,12 @@ class Joints(Basic):
             node_box = node['box']
             node_poly = shapely.box(*node_box)
             node_centroid = shapely.centroid(node_poly)
+            node_side = node_box[2] - node_box[0]
             for bid, block_poly in enumerate(block_boxes):
                 if shapely.contains(block_poly, node_centroid):
+                    node_groups[bid].append(node)
+                    break
+                if (node_side < 10) and shapely.intersects(block_poly, node_poly):
                     node_groups[bid].append(node)
                     break
             else:
@@ -259,34 +263,36 @@ class Joints(Basic):
         objs = []
         multilines = []
         calc_diameter = lambda n: 0.5 * (n['box'][2] + n['box'][3] - n['box'][0] - n['box'][1])
+        box2pts = lambda x0, y0, x1, y1: np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
         need_mask_blocks = []
         for bid, rect in enumerate(block_rects):
             diameters = [calc_diameter(node) for node in node_groups[bid]]
             if not diameters:
                 need_mask_blocks.append(bid)
                 continue
-            mean_diameter = sum(diameters) / max(1, len(diameters))
+            diameter = max(diameters)
             min_side = min(rect[1])
-            if next_params and (min_side > 1.5 * mean_diameter):
+            if next_params and (min_side > 1.5 * diameter):
                 multilines.append(bid)
                 continue
             need_mask_blocks.append(bid)
-            if min_side < 1.5 * mean_diameter:
-                xy, (w, h), a = rect
-                if w > h:
-                    rect = xy, (w + mean_diameter, mean_diameter), a
-                else:
-                    rect = xy, (mean_diameter, h + mean_diameter), a
+            # if min_side < 1.5 * diameter:
+            pts_list = [box2pts(*node['box']) for node in node_groups[bid]]
+            pts_list.append(cv.boxPoints(rect))
+            contour = np.vstack(pts_list).astype(np.int32).reshape(-1, 1, 2)
+            rect = cv.minAreaRect(contour)
             objs.append(dict(rect=rect, label='text', score=0.8))
 
+        square_fit_thresh = 0.7
         for obj in objs:
-            xy, wh, a = obj['rect']
-            if min(wh) / max(wh) < 0.7: continue
-            # print('update src ojb', obj['rect'])
-            side = sum(wh) * 0.5
-            obj['rect'] = xy, (side, side), 0
-            # print('update dst ojb', obj['rect'])
-        # print('debug multilines:', multilines)
+            rect = obj['rect']
+            if min(rect[1]) / max(rect[1]) < square_fit_thresh: continue
+            points = cv.boxPoints(rect)
+            x0, y0 = points.min(axis=0)
+            x1, y1 = points.max(axis=0)
+            xy = round(0.5 * (x0 + x1)), round(0.5 * (y0 + y1))
+            size = x1 - x0, y1 - y0
+            obj['rect'] = xy, size, 0
 
         if next_params and multilines:
             mask = np.ones_like(heatmap, dtype=np.uint8)

@@ -122,7 +122,7 @@ class TrimNetJot(Joints):
             iou_thresh:   float=0.5,
             align_size:   int=448,
             score_thresh: float=0.5,
-            ocr_params:   Sequence[Tuple[float, int]]=((0.7, 7), (0.9, 5)),
+            ocr_params:   Sequence[Tuple[float, int]]=((0.7, 2), (0.9, 2)),
         ) -> List[Dict[str, Any]]:
 
         assert joints_type in ('normal', 'ocr')
