@@ -1,10 +1,8 @@
 from typing import Any, Callable, List, Tuple, Dict
-from collections import Counter
 import os.path
 
 from PIL import Image
 
-from torch import Tensor
 import torch
 from torchvision.datasets.vision import VisionDataset
 from torchvision import tv_tensors
@@ -40,34 +38,25 @@ class PubLayNetDet(VisionDataset):
         from pycocotools.coco import COCO
 
         self.coco = COCO(annFile)
-        self.ids = list(sorted(self.coco.imgs.keys()))
+
+        print('discard redundant annotations.')
+        ids = list(sorted(self.coco.imgs.keys()))
+        paths = set(os.listdir(root))
+        self.ids = []
+        for ix in tqdm(ids, ncols=80):
+            path = self.coco.loadImgs(ix)[0]['file_name']
+            if path not in paths: continue
+            paths.remove(path)
+            self.ids.append(ix)
 
         self.coid2class = {
             clss['id']: clss['name']
             for clss in self.coco.dataset['categories']}
 
-        idxs = sorted(self.coid2class.keys())
-        self.classes = [self.coid2class[i] for i in idxs]
+        self.classes = [self.coid2class[i] for i in sorted(self.coid2class.keys())]
 
     def __len__(self) -> int:
         return len(self.ids)
-
-    def calc_balance_weight(self, gamma:float=0.1) -> Tensor:
-        weight = torch.zeros(len(self.classes))
-        counter = Counter()
-        print('count categories...')
-        for _id in tqdm(self.ids, ncols=80):
-            anns = self._load_anns(_id)
-            for ann in anns:
-                category_id = ann['category_id']
-                classname = self.coid2class[category_id]
-                counter[classname] += 1
-        for name, count in counter.items():
-            label_id = self.classes.index(name)
-            weight[label_id] = 1 / count
-        weight = weight**gamma
-        weight /= weight.mean()
-        return weight
 
     def _load_image(self, id:int) -> Image.Image:
         path = self.coco.loadImgs(id)[0]['file_name']
