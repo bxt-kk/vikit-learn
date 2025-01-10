@@ -235,7 +235,7 @@ class OCR(Basic):
                     RandomNoise(prob=0.1),
                     RandomGradient(prob=0.1),
                     RandomBlur(prob=0.1),
-                    RandomLevelScale(prob=0.1),
+                    RandomLevelScale([0.5, 1.5], prob=0.1),
                     DropoutVertical(prob=0.1),
                     DropoutHorizontal(prob=0.1),
                 ], times=3),
