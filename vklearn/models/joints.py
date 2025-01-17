@@ -198,7 +198,8 @@ class Joints(Basic):
         ) -> List[Dict[str, Any]]:
 
         thresh_map = (heatmap > 0.5).astype(np.uint8)
-        contours, _ = cv.findContours(thresh_map, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
+        # contours, _ = cv.findContours(thresh_map, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
+        contours, _ = cv.findContours(thresh_map, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
         boxes = shapely.polygons([cv.boxPoints(cv.minAreaRect(pts)) for pts in contours])
 
         node_groups = defaultdict(list)
@@ -228,7 +229,8 @@ class Joints(Basic):
 
         # clock = time.time()
         binary_map = (heatmap > segment_thresh).astype(np.uint8)
-        contours, _ = cv.findContours(binary_map, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
+        # contours, _ = cv.findContours(binary_map, cv.RETR_LIST, cv.CHAIN_APPROX_NONE)
+        contours, _ = cv.findContours(binary_map, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_NONE)
         block_rects = [cv.minAreaRect(pts) for pts in contours]
         block_rects = [rect for rect in block_rects if min(rect[1]) > rect_side_limit]
         if not block_rects: return []

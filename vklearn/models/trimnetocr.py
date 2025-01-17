@@ -108,7 +108,7 @@ class TrimNetOcr(OCR):
     def recognize(
             self,
             image:      Image.Image,
-            top_k:      int=10,
+            top_k:      int=0,
             align_size: int=32,
             to_gray:    bool=True,
             whitelist:  List[str] | None=None,
@@ -132,16 +132,21 @@ class TrimNetOcr(OCR):
         preds = x.argmax(dim=2) # n, T
         mask = (F.pad(preds, [0, 1], value=0)[:, 1:] - preds) != 0
         preds = preds * mask
-        text = ''.join(self._categorie_arr[preds[0].cpu().numpy()])
+        decoded = self._categorie_arr[preds[0].cpu().numpy()]
+        text = ''.join(decoded)
 
+        probs = None
+        labels = None
         top_k = min(self.num_classes, top_k)
-        topk = x.squeeze(dim=0).softmax(dim=-1).topk(top_k)
-        probs = topk.values.cpu().numpy()
-        labels = topk.indices.cpu().numpy()
+        if top_k > 0:
+            topk = x.squeeze(dim=0).softmax(dim=-1).topk(top_k)
+            probs = topk.values.cpu().numpy()
+            labels = topk.indices.cpu().numpy()
         return dict(
             probs=probs,
             labels=labels,
             text=text,
+            decoded=decoded,
         )
 
     def calc_loss(
