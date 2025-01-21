@@ -140,7 +140,7 @@ class TrimNetJot(Joints):
         raw_w, raw_h = image.size
         index = torch.nonzero(conf_prob > conf_thresh, as_tuple=True)
         if len(index[0]) == 0: return dict(
-            nodes=[], objs=[], heatmap=np.zeros((raw_h, raw_w), dtype=np.uint8))
+            nodes=[], objs=[], heatmap=Image.new('L', image.size))
 
         conf = conf_prob[index[0], index[1], index[2], index[3]]
         objs = pred_objs[index[0], index[1], index[2], index[3]]
