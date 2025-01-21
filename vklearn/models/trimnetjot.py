@@ -137,12 +137,14 @@ class TrimNetJot(Joints):
         pred_objs = det_predict[..., 1:]
         conf_prob = torch.sigmoid(det_predict[..., 0])
 
+        raw_w, raw_h = image.size
         index = torch.nonzero(conf_prob > conf_thresh, as_tuple=True)
-        if len(index[0]) == 0: return []
+        if len(index[0]) == 0: return dict(
+            nodes=[], objs=[], heatmap=np.zeros((raw_h, raw_w), dtype=np.uint8))
+
         conf = conf_prob[index[0], index[1], index[2], index[3]]
         objs = pred_objs[index[0], index[1], index[2], index[3]]
 
-        raw_w, raw_h = image.size
         boxes = self.pred2boxes(objs[:, :self.bbox_dim], index[2], index[3])
 
         clss = torch.softmax(objs[:, self.bbox_dim:], dim=-1).max(dim=-1)
