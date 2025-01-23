@@ -128,43 +128,76 @@ class Classifier(Basic):
             aligned_size = 512
         elif task_name == 'imagenetx640':
             aligned_size = 640
+        elif task_name == 'documentx224':
+            aligned_size = 224
         else:
             raise ValueError(f'Unsupported the task `{task_name}`')
 
-        train_transforms = v2.Compose([
-            v2.ToImage(),
-            v2.ScaleJitter(
-                target_size=(aligned_size, aligned_size),
-                scale_range=(1., 2.),
-                antialias=True),
-            v2.RandomPhotometricDistort(p=1),
-            v2.RandomHorizontalFlip(p=0.5),
-            v2.RandomChoice([
-                v2.GaussianBlur(7, sigma=(0.1, 2.0)),
-                v2.RandomAdjustSharpness(2, p=0.5),
-                v2.RandomEqualize(p=0.5),
-            ]),
-            v2.RandomCrop(
-                size=(aligned_size, aligned_size),
-                pad_if_needed=True,
-                fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            )
-        ])
-        test_transforms = v2.Compose([
-            v2.ToImage(),
-            v2.Resize(
-                size=aligned_size,
-                antialias=True),
-            v2.CenterCrop(aligned_size),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            )
-        ])
+        if task_name.startswith('imagenet'):
+            train_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.ScaleJitter(
+                    target_size=(aligned_size, aligned_size),
+                    scale_range=(1., 2.),
+                    antialias=True),
+                v2.RandomPhotometricDistort(p=1),
+                v2.RandomHorizontalFlip(p=0.5),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
+                v2.RandomCrop(
+                    size=(aligned_size, aligned_size),
+                    pad_if_needed=True,
+                    fill={tv_tensors.Image: 127, tv_tensors.Mask: 0}),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+            test_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=aligned_size,
+                    antialias=True),
+                v2.CenterCrop(aligned_size),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+
+        elif task_name.startswith('document'):
+            train_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=(aligned_size, aligned_size),
+                    antialias=True),
+                v2.RandomPhotometricDistort(p=1),
+                v2.RandomChoice([
+                    v2.GaussianBlur(7, sigma=(0.1, 2.0)),
+                    v2.RandomAdjustSharpness(2, p=0.5),
+                    v2.RandomEqualize(p=0.5),
+                ]),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
+            test_transforms = v2.Compose([
+                v2.ToImage(),
+                v2.Resize(
+                    size=(aligned_size, aligned_size),
+                    antialias=True),
+                v2.ToDtype(torch.float32, scale=True),
+                v2.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                )
+            ])
 
         return train_transforms, test_transforms
