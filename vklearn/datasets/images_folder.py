@@ -32,7 +32,7 @@ class ImagesFolder(VisionDataset):
         ):
 
         super().__init__(root, transforms, transform, target_transform)
-        assert split in ['train', 'val']
+        assert split in ['train', 'val', '']
         self.dataset_dir = os.path.join(root, split)
         self.classes = sorted(os.listdir(self.dataset_dir))
         self.paths = []
