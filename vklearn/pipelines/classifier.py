@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Mapping
+from typing import List, Dict, Any, Mapping, Tuple
 import io
 
 from PIL.Image import Image as PILImage
@@ -57,7 +57,7 @@ class Classifier:
             self,
             image:      PILImage | str | ndarray,
             top_k:      int=10,
-            align_size: int=224,
+            align_size: int | Tuple[int, int]=224,
         ) -> List[Dict[str, Any]]:
         '''Invoke the method for image classification.
 

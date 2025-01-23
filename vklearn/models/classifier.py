@@ -33,27 +33,31 @@ class Classifier(Basic):
     def preprocess(
             self,
             image:      Image.Image,
-            align_size: int,
+            align_size: int | Tuple[int, int],
         ) -> Tensor:
 
-        src_w, src_h = image.size
-        scale = align_size / min(src_w, src_h)
-        dst_w, dst_h = round(src_w * scale), round(src_h * scale)
-        x1 = (dst_w - align_size) // 2
-        y1 = (dst_h - align_size) // 2
-        x2 = x1 + align_size
-        y2 = y1 + align_size
+        if isinstance(align_size, int):
+            src_w, src_h = image.size
+            scale = align_size / min(src_w, src_h)
+            dst_w, dst_h = round(src_w * scale), round(src_h * scale)
+            x1 = (dst_w - align_size) // 2
+            y1 = (dst_h - align_size) // 2
+            x2 = x1 + align_size
+            y2 = y1 + align_size
 
-        resized = image.resize((dst_w, dst_h), resample=Image.Resampling.BILINEAR)
-        croped = resized.crop((x1, y1, x2, y2))
-        return self._image2tensor(croped).unsqueeze(dim=0)
+            resized = image.resize((dst_w, dst_h), resample=Image.Resampling.BILINEAR)
+            sampled = resized.crop((x1, y1, x2, y2))
+        else:
+            sampled = image.resize(align_size, resample=Image.Resampling.BILINEAR)
+
+        return self._image2tensor(sampled).unsqueeze(dim=0)
 
 
     def classify(
             self,
             image:      Image.Image,
             top_k:      int=10,
-            align_size: int=224,
+            align_size: int | Tuple[int, int]=224,
         ) -> List[Dict[str, Any]]:
         assert not 'this is an empty func'
 

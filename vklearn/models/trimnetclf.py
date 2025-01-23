@@ -1,4 +1,4 @@
-from typing import List, Any, Dict, Mapping
+from typing import List, Any, Dict, Mapping, Tuple
 
 from torch import Tensor
 
@@ -93,7 +93,7 @@ class TrimNetClf(Classifier):
             self,
             image:      Image.Image,
             top_k:      int=10,
-            align_size: int=224,
+            align_size: int | Tuple[int, int]=224,
         ) -> Dict[str, Any]:
 
         device = self.get_model_device()
