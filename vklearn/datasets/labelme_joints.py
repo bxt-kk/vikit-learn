@@ -2,7 +2,7 @@ from typing import Any, Callable, List, Tuple, Dict
 from glob import glob
 import os.path
 import json
-# import math
+import random
 
 from PIL import Image
 import cv2 as cv
@@ -176,26 +176,32 @@ class LabelmeJointInstruct(Dataset):
         ):
 
         self.subjects = []
-        for data in subject_datas:
+        for item in subject_datas:
+            sample_size = None
+            if len(item) == 2:
+                data, sample_size = item
+            else:
+                data = item
             if isinstance(data, str):
-                self.subjects.append(LabelmeJoints(
+                data = LabelmeJoints(
                     data,
                     split=split,
                     transforms=transforms,
                     transform=transform,
                     target_transform=target_transform,
-                ))
-            else:
-                self.subjects.append(data)
+                )
+            if sample_size is None:
+                sample_size = len(data)
+            self.subjects.append((data, sample_size))
 
-        self.subject_total = sum([len(subject) for subject in self.subjects])
+        self.subject_total = sum([subject[1] for subject in self.subjects])
 
     def __repr__(self):
         info = f'Dataset {self.__class__.__name__}\n'
         info += f'\tNumber of datapoints: {len(self)}\n'
         info += 'Subjects:'
-        for subject in self.subjects:
-            info += f'\n* {str(subject)}'
+        for data, sample_size in self.subjects:
+            info += f'\n* {str(data)} sample size: {sample_size}'
         return info
 
     def __len__(self):
@@ -203,8 +209,10 @@ class LabelmeJointInstruct(Dataset):
 
     def __getitem__(self, idx:int):
         begin = 0
-        for subject in self.subjects:
-            end = len(subject) + begin
+        for data, sample_size in self.subjects:
+            end = sample_size + begin
             if idx < end: break
             begin = end
-        return subject[idx - begin]
+        if len(data) != sample_size:
+            return data[random.randrange(len(data))]
+        return data[idx - begin]
