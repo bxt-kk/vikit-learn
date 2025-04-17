@@ -120,7 +120,10 @@ class Classifier(Basic):
         train_transforms = None
         test_transforms  = None
 
-        if task_name in ('default', 'imagenetx224'):
+        if task_name == 'default':
+            task_name = 'imagenetx224'
+
+        if task_name in 'imagenetx224':
             aligned_size = 224
         elif task_name == 'imagenetx256':
             aligned_size = 256
