@@ -123,7 +123,7 @@ class Classifier(Basic):
         if task_name == 'default':
             task_name = 'imagenetx224'
 
-        if task_name in 'imagenetx224':
+        if task_name == 'imagenetx224':
             aligned_size = 224
         elif task_name == 'imagenetx256':
             aligned_size = 256
